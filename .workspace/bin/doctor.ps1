@@ -6,6 +6,8 @@
 param([switch]$Quiet)
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 $Root = 'C:\dev'
 $issues = @()
 
@@ -39,22 +41,37 @@ foreach ($p in $projects) {
         Problem $n 'ยังไม่เป็น git repo (ธรรมนูญข้อ 1)'
     }
 
+    $isNode = Test-Path (Join-Path $dir 'package.json')
+    $isPython = (Test-Path (Join-Path $dir 'requirements.txt')) -or (Test-Path (Join-Path $dir 'pyproject.toml'))
+
     $gi = Join-Path $dir '.gitignore'
     if (Test-Path $gi) {
         $text = Get-Content $gi -Raw
-        foreach ($must in '.env', 'node_modules') {
+        $mustIgnore = @('.env')
+        if ($isNode) { $mustIgnore += 'node_modules' }
+        if ($isPython) { $mustIgnore += '.venv' }
+        foreach ($must in $mustIgnore) {
             if ($text -notmatch [regex]::Escape($must)) {
                 Problem $n ".gitignore ไม่ได้ ignore $must"
             }
         }
     }
 
+    if ($isNode -or $isPython) {
+        if (-not (Test-Path (Join-Path $dir '.github\workflows\ci.yml'))) {
+            Problem $n 'ไม่มี CI (.github/workflows/ci.yml)'
+        }
+    }
+
     # secret หลุดเข้า git หรือยัง + มี remote ไหม
     if (Test-Path (Join-Path $dir '.git')) {
         Push-Location $dir
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         $tracked = & git ls-files 2>$null
         $remote = & git remote 2>$null
-        $unpushed = & git log '@{u}..' --oneline 2>$null
+        $unpushed = if ($remote) { & git log '@{u}..' --oneline 2>$null } else { $null }
+        $ErrorActionPreference = $prevEAP
         Pop-Location
 
         if (-not $remote) {

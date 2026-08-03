@@ -162,7 +162,9 @@ try {
         'python' {
             New-Item -ItemType Directory -Path "$ProjectDir\src" -Force | Out-Null
             Write-Utf8 "$ProjectDir\src\main.py" "def main() -> None:`n    print('$Name is alive')`n`n`nif __name__ == '__main__':`n    main()`n"
-            Write-Utf8 "$ProjectDir\requirements.txt" "# แพ็กเกจของโปรเจกต์นี้`n"
+            Write-Utf8 "$ProjectDir\requirements.txt" "# แพ็กเกจของโปรเจกต์นี้`npytest`n"
+            New-Item -ItemType Directory -Path "$ProjectDir\tests" -Force | Out-Null
+            Write-Utf8 "$ProjectDir\tests\test_smoke.py" "def test_smoke() -> None:`n    assert True`n"
             if (-not $NoInstall) {
                 Step "สร้าง .venv"
                 & python -m venv "$ProjectDir\.venv"
@@ -208,7 +210,23 @@ Write-Utf8 "$ProjectDir\README.md" (Render 'README.md.tpl' $map)
 Copy-Item (Join-Path $Templates $gitignore) "$ProjectDir\.gitignore" -Force
 Copy-Item (Join-Path $Templates 'gitattributes') "$ProjectDir\.gitattributes" -Force
 Copy-Item (Join-Path $Root '.editorconfig') "$ProjectDir\.editorconfig" -Force
+if ($Type -in @('web', 'next', 'node')) {
+    Copy-Item (Join-Path $Root '.nvmrc') "$ProjectDir\.nvmrc" -Force
+}
 Ok "ใส่ CLAUDE.md / README.md / .gitignore / .gitattributes / .editorconfig"
+
+# ---------- 4b. CI (GitHub Actions) ----------
+
+$ciTpl = switch ($Type) {
+    { $_ -in @('web', 'next', 'node') } { 'ci-node.yml.tpl' }
+    'python' { 'ci-python.yml.tpl' }
+    default { $null }
+}
+if ($ciTpl) {
+    New-Item -ItemType Directory -Path "$ProjectDir\.github\workflows" -Force | Out-Null
+    Write-Utf8 "$ProjectDir\.github\workflows\ci.yml" (Render $ciTpl $map)
+    Ok "ใส่ CI (.github/workflows/ci.yml)"
+}
 
 # ---------- 5. ลงทะเบียนพอร์ต ----------
 
