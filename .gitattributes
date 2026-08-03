@@ -1,0 +1,9 @@
+* text=auto eol=lf
+# .ps1 ที่มีภาษาไทยต้องเป็น UTF-8 with BOM ไม่งั้น PowerShell 5.1 อ่านเป็น ANSI แล้วพัง
+# git เก็บ BOM ไว้ให้อยู่แล้ว แต่อย่าเผลอ normalize ทิ้ง
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.pdf binary
+*.xlsx binary
