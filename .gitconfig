@@ -1,0 +1,6 @@
+# identity ประจำประเทศ — ทุก repo ใต้ C:\dev ใช้อันนี้อัตโนมัติ
+# ถูกดึงเข้ามาผ่าน includeIf ใน global .gitconfig
+# (งานบริษัทที่อยู่นอก C:\dev ยังใช้ identity เดิม ไม่กระทบ)
+[user]
+	name = surakarn4327
+	email = 193883223+surakarn4327@users.noreply.github.com

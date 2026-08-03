@@ -12,6 +12,7 @@
 !/.editorconfig
 !/.gitignore
 !/.gitattributes
+!/.gitconfig
 
 # _docs/ ไม่เข้า git — อาจมีเอกสาร/สเปรดชีตงานจริงที่ไม่ควรขึ้น remote
 

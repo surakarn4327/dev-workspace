@@ -18,7 +18,13 @@ param(
     [string]$Description = '',
 
     # ข้าม npm install / create-* (สร้างแค่โครงไฟล์)
-    [switch]$NoInstall
+    [switch]$NoInstall,
+
+    # ไม่ต้องสร้าง repo บน GitHub (ปกติสร้างให้เป็น private อัตโนมัติ)
+    [switch]$NoRemote,
+
+    # สร้าง repo เป็น public แทน private -- คิดให้ดีก่อนใช้
+    [switch]$Public
 )
 
 $ErrorActionPreference = 'Stop'
