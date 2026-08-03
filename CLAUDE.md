@@ -56,13 +56,22 @@ powershell -File C:\dev\.workspace\bin\new-project.ps1 -Name my-app -Type web
 
 ชื่อโฟลเดอร์เป็น **kebab-case ภาษาอังกฤษ** เสมอ (`smart-drive-map` ไม่ใช่ `SmartDriveMap`)
 
-## 4. ความปลอดภัย (ข้อนี้ห้ามละเมิด)
+## 4. ความปลอดภัยและการสำรองข้อมูล (ข้อนี้ห้ามละเมิด)
 
 - ห้าม commit ค่า secret จริง — API key, token, connection string, ไฟล์ `.env*`
   ให้ commit เฉพาะ `.env.example` ที่ใส่ค่าหลอก
 - ห้ามใส่ secret ลงในโค้ดฝั่ง client (อะไรที่ bundle ไป browser คือสาธารณะ)
-- ก่อน `git push` ครั้งแรกของทุก repo ต้องเช็กว่าไม่มีไฟล์ secret หลุดเข้า history
 - `.env` / `.env.local` อยู่ในเครื่องเท่านั้น
+- **ทุกโปรเจกต์ต้องมี git remote** — ไม่มี remote = ดิสก์พังแล้วหายหมด
+  `new-project.ps1` สร้าง GitHub repo เป็น **private** ให้อัตโนมัติ
+  ถ้าจะทำ public ต้องสั่ง `-Public` เอง และตรวจ history ให้แน่ใจก่อนว่าไม่มี secret หลุด
+- ตัว workspace เองก็อยู่ใน git → `github.com/surakarn4327/dev-workspace` (private)
+
+### identity
+
+ทุก repo ใต้ `C:\dev` ใช้บัญชี **surakarn4327** อัตโนมัติ ผ่าน `includeIf` ที่ชี้มาที่
+`C:\dev\.gitconfig` — ไม่ต้องตั้ง `user.email` รายโปรเจกต์
+งานนอก `C:\dev` (เช่นงานบริษัท) ยังใช้ identity เดิม ไม่กระทบกัน
 
 ## 5. พอร์ต
 

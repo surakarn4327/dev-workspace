@@ -49,11 +49,20 @@ foreach ($p in $projects) {
         }
     }
 
-    # secret หลุดเข้า git หรือยัง
+    # secret หลุดเข้า git หรือยัง + มี remote ไหม
     if (Test-Path (Join-Path $dir '.git')) {
         Push-Location $dir
         $tracked = & git ls-files 2>$null
+        $remote = & git remote 2>$null
+        $unpushed = & git log '@{u}..' --oneline 2>$null
         Pop-Location
+
+        if (-not $remote) {
+            Problem $n 'ไม่มี git remote -- ดิสก์พังคือหายหมด (ธรรมนูญข้อ 4)'
+        }
+        elseif ($unpushed) {
+            Problem $n "มี $(@($unpushed).Count) commit ที่ยังไม่ push"
+        }
         $leaked = @($tracked | Where-Object { $_ -match '(^|/)\.env($|\.)' -and $_ -notmatch '\.example$' })
         foreach ($l in $leaked) { Problem $n "!! ไฟล์ secret ถูก track ใน git: $l" }
     }
