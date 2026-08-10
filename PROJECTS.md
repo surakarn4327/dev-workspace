@@ -5,6 +5,7 @@
 | โปรเจกต์ | ชนิด | พอร์ต | เกิดเมื่อ | คำอธิบาย |
 |---|---|---|---|---|
 <!-- PROJECTS:START -->
+| [smart-indicator](smart-indicator/) | blank | - | 2026-08-10 | TradingView Pine Script indicator ที่หา entry signal ตามระบบ Smart Money Concept (SMC) ของผู้ใช้ - order block, liquidity, BOS/CHoCH, FVG - plot signal บนกราฟ ไม่ auto-trade |
 <!-- PROJECTS:END -->
 
 ## ช่วงพอร์ตที่กันไว้

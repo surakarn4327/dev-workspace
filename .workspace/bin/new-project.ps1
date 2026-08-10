@@ -271,9 +271,14 @@ try {
         Write-Host "  ! ไม่พบ gh CLI -- ยังไม่มี remote ตั้ง backup เองด้วย" -ForegroundColor Yellow
     }
     else {
+        & gh auth switch --hostname github.com --user surakarn4327 2>$null
         $owner = (& gh api user --jq '.login') 2>$null
+        if ($owner -ne 'surakarn4327') {
+            Write-Host "  ! gh ไม่ได้ login เป็น surakarn4327 (ได้ '$owner') -- ยังไม่มี remote, ตั้งเองภายหลัง" -ForegroundColor Yellow
+            $owner = $null
+        }
         if (-not $owner) {
-            Write-Host "  ! gh ยังไม่ได้ login -- ยังไม่มี remote" -ForegroundColor Yellow
+            Write-Host "  ! ยังไม่มี remote" -ForegroundColor Yellow
         }
         else {
             $vis = if ($Public) { '--public' } else { '--private' }

@@ -27,6 +27,10 @@ C:\dev\
 └── <ชื่อโปรเจกต์>\     ← พลเมือง: git repo อิสระ 1 repo ต่อ 1 โปรเจกต์
 ```
 
+**ทุกงาน แม้เป็นไฟล์เดียว (เช่น script เดี่ยว, ไฟล์ config, indicator เดี่ยวๆ) ต้อง scaffold เป็น
+project folder เต็มรูปแบบผ่าน `new-project.ps1` เสมอ** ห้ามวางไฟล์เดี่ยวๆ ลอยๆ ไว้ที่ root
+หรือที่ไหนใน `C:\dev` โดยไม่มี CLAUDE.md/README.md/git repo ของตัวเอง เผื่ออนาคตต้องขยาย
+
 **หนึ่งโปรเจกต์ = หนึ่งโฟลเดอร์ = หนึ่ง git repo** ไม่มี monorepo ไม่มี nested repo
 โปรเจกต์คุยกันผ่าน HTTP หรือไฟล์ที่ export เท่านั้น — ห้าม `import` ข้ามโฟลเดอร์โปรเจกต์
 (`../money-app/src/...` คือสิ่งต้องห้าม) ถ้าโค้ดต้องใช้ร่วมกันจริง ให้ทำเป็นแพ็กเกจแยก
@@ -67,12 +71,21 @@ powershell -File C:\dev\.workspace\bin\new-project.ps1 -Name my-app -Type web
   `new-project.ps1` สร้าง GitHub repo เป็น **private** ให้อัตโนมัติ
   ถ้าจะทำ public ต้องสั่ง `-Public` เอง และตรวจ history ให้แน่ใจก่อนว่าไม่มี secret หลุด
 - ตัว workspace เองก็อยู่ใน git → `github.com/surakarn4327/dev-workspace` (private)
+- **ทุกบริการ/API/hosting ที่ใช้ในทุกโปรเจกต์ ต้องฟรี และห้ามผูกบัตร (no card verification)**
+  แม้ tier ฟรีจะไม่มีค่าใช้จ่ายจริง ถ้าขั้นตอน sign up ต้องกรอกบัตร ถือว่าใช้ไม่ได้
+  ห้ามเสนอ Oracle Cloud / AWS / GCP / TradingView Pro หรือบริการอื่นที่ต้องผูกบัตรแม้จะฟรี
+  ถ้าจำเป็นต้องผูกบัตรจริงๆ (ไม่มีทางเลือกฟรี-ไม่ผูกบัตร) ต้องถามผู้ใช้ก่อนเสมอ ห้ามเสนอเป็นค่า default
 
 ### identity
 
 ทุก repo ใต้ `C:\dev` ใช้บัญชี **surakarn4327** อัตโนมัติ ผ่าน `includeIf` ที่ชี้มาที่
 `C:\dev\.gitconfig` — ไม่ต้องตั้ง `user.email` รายโปรเจกต์
 งานนอก `C:\dev` (เช่นงานบริษัท) ยังใช้ identity เดิม ไม่กระทบกัน
+
+**gh CLI มีหลาย account login พร้อมกัน (เช่น SurakarnTitle, surakarn4327) — ก่อนสั่ง `gh` ใดๆ
+ที่แตะ GitHub จริง (สร้าง repo, push, ลบ ฯลฯ) ต้อง `gh auth switch --hostname github.com --user surakarn4327`
+ก่อนเสมอ** ห้ามพึ่ง active account เดิมที่ค้างอยู่ เพราะอาจไม่ใช่ surakarn4327
+(gh CLI ไม่มีหน้าต่างเลือก account แบบ GUI — การ switch ตายตัวทุกครั้งคือทางที่แทนได้)
 
 ## 5. พอร์ต
 
@@ -102,8 +115,18 @@ powershell -File C:\dev\.workspace\bin\new-project.ps1 -Name my-app -Type web
 
 ## 8. กฎการทำงานร่วมกับ Claude
 
+- **ข้อความแรกของทุก session ใหม่ที่เปิดในโฟลเดอร์นี้** ให้ทักทายสั้นๆ ก่อนตอบเรื่องอื่นใด
+  (ยกเว้น session ที่ resume/continue ของเก่าอยู่แล้ว) สรุปด้วย bullet สั้นๆ:
+  - นี่คือ workspace `C:\dev` อยู่ใต้ธรรมนูญ `CLAUDE.md`
+  - 1 โปรเจกต์ = 1 โฟลเดอร์ = 1 git repo ห้าม import ข้ามโปรเจกต์
+  - สร้างโปรเจกต์ใหม่: `/new-project <ชื่อ> <web|next|node|python|blank>`
+  - ตรวจสุขภาพ: `/doctor-workspace`
+  - แล้วค่อยถามว่าวันนี้จะทำอะไร
 - ตอบและอธิบายเป็น **ภาษาไทย**
 - ก่อนแก้โปรเจกต์ไหน อ่าน `CLAUDE.md` ของโปรเจกต์นั้นก่อน
 - ห้ามแก้ไฟล์ข้ามโปรเจกต์ในงานเดียวโดยไม่บอกก่อน
 - ห้ามแตะไฟล์/โฟลเดอร์ที่ root ที่ไม่เกี่ยวกับงานที่สั่ง
 - ตรวจสุขภาพประเทศได้ด้วย `/doctor-workspace` หรือ `.workspace\bin\doctor.ps1`
+- **ห้ามคิดชื่อโปรเจกต์เองเป็น default** ผู้ใช้คิดชื่อเอง ถ้าผู้ใช้อยากให้ช่วยคิด ต้องบอกชัดๆ
+  ("ช่วยคิดชื่อ") ค่อยเสนอให้ — ส่วนชนิดโปรเจกต์ (`web`/`next`/`node`/`python`/`blank`) ยัง
+  ให้ Claude เลือกเองตามที่คุยกันไว้เดิม
