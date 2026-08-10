@@ -1,4 +1,4 @@
-# smc-signal-indicator
+# smart-indicator
 
 > อยู่ใต้ธรรมนูญ `C:\dev\CLAUDE.md` — อ่านไฟล์นั้นก่อน กฎในไฟล์นี้ชนะเมื่อขัดกัน
 
@@ -14,7 +14,7 @@ TradingView Pine Script indicator ที่หา entry signal ตามระ�
 # ยังไม่มี     # test
 ```
 
-หรือใช้ Browser pane: `preview_start` ชื่อ `smc-signal-indicator`
+หรือใช้ Browser pane: `preview_start` ชื่อ `smart-indicator`
 
 ## โครงสร้าง
 
