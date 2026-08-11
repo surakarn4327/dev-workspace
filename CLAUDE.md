@@ -4,7 +4,7 @@
 
 ## โปรเจกต์นี้คืออะไร
 
-TradingView Pine Script indicator ที่หา entry signal ตามระบบ Smart Money Concept (SMC) ของผู้ใช้ - order block, liquidity, BOS/CHoCH, FVG - plot signal บนกราฟ ไม่ auto-trade
+TradingView Pine Script indicator ที่หา entry signal ตามเทคนิคเทรดของผู้ใช้เอง (ไม่ใช่ SMC) - plot signal บนกราฟ ไม่ auto-trade รายละเอียดเทคนิคจะได้รับจากผู้ใช้ทีละสเต็ป
 
 ## คำสั่งที่ใช้จริง
 
