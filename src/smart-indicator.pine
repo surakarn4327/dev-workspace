@@ -21,6 +21,11 @@ showSuccess = input.bool(true, "สำเร็จ (Success)", tooltip="แส�
 showFailed = input.bool(true, "ล้มเหลว (Failed)", tooltip="แสดงเส้นกรอบ + กากบาท (✗) ข้างตัวอักษร CTH/CTL ฝั่งที่ทะลุจนล้มเหลว", group=grpShow)
 circleColor = input.color(color.new(color.orange, 70), "สีวงกลมจุด Sweep", group=grpShow)
 
+grpDash = "แดชบอร์ดสถิติ"
+showDashboard = input.bool(true, "แสดงแดชบอร์ด", group=grpDash)
+dashPosition = input.string("ขวาบน", "ตำแหน่ง", options=["ซ้ายบน", "ขวาบน", "ซ้ายล่าง", "ขวาล่าง"], group=grpDash)
+dashSize = input.string("กลาง", "ขนาด", options=["เล็ก", "กลาง", "ใหญ่"], group=grpDash)
+
 isNewHtfBar = timeframe.change(htf)
 
 if isNewHtfBar and bar_index > 0 and showHtfDivider
@@ -240,10 +245,36 @@ method processSubBar(CrtState this, float h_, float l_, float c_, bool isBoundar
 
 var CrtState state = CrtState.new()
 
+// === สถิติแดชบอร์ด — สังเกตการเปลี่ยน state จากภายนอก ไม่แตะ processSubBar/adopt/canAdopt เลยแม้บรรทัดเดียว ===
+// Pine ห้าม function ธรรมดาแก้ global var ตรงๆ ต้องห่อตัวนับเป็น type แล้วใช้ method แก้ field ของ this แทน
+type Stats
+    int successLow = 0 // sweep ฝั่ง CTL (control candle แดง) แล้ว resolve สำเร็จ
+    int successHigh = 0 // sweep ฝั่ง CTH (control candle เขียว) แล้ว resolve สำเร็จ
+    int failedLow = 0
+    int failedHigh = 0
+    string lastCountedState = na // กันนับซ้ำ state เดิมที่เคยนับไปแล้ว
+
+method record(Stats this, CrtState st) =>
+    if st.state != this.lastCountedState
+        if st.state == "success"
+            if st.sweptSide == "low"
+                this.successLow += 1
+            else
+                this.successHigh += 1
+        else if st.state == "failed"
+            if st.sweptSide == "low"
+                this.failedLow += 1
+            else
+                this.failedHigh += 1
+        this.lastCountedState := st.state
+
+var Stats stats = Stats.new()
+
 if onHtfChart
     // โหมดชาร์ต HTF: แท่งก่อนหน้า (native) คือแท่งคุมที่เพิ่งปิด ไม่ต้องพึ่ง request.security
     if bar_index > 0 and state.canAdopt()
         state.adopt(high[1], low[1], bar_index - 1, bar_index - 1, close[1] > open[1])
+        stats.lastCountedState := "none"
 
     // ดึงแท่งย่อย (เช่น 5m) ที่ประกอบเป็นแท่ง HTF ปัจจุบัน มาไล่ตรวจ sweep ทีละแท่ง
     [subHigh, subLow, subClose] = request.security_lower_tf(syminfo.tickerid, ltf, [high, low, close])
@@ -256,16 +287,19 @@ if onHtfChart
             isLastSubBar = i == n - 1
             isBoundary = isLastSubBar and barstate.isconfirmed
             state.processSubBar(h_, l_, c_, isBoundary, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
+            stats.record(state)
 else
     if isNewHtfBar and bar_index > 0
         // ยืนยัน sweep/fail ของกรอบเดิมด้วยข้อมูลแท่งสุดท้ายที่เพิ่งปิด (close[1]/low[1]/high[1]) ก่อนพิจารณารับแท่งคุมใหม่
         if not na(state.rangeHigh)
             state.processSubBar(high[1], low[1], close[1], true, bar_index - 1, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
+            stats.record(state)
 
         // เปลี่ยนไปใช้แท่งที่ปิดล่าสุดเป็นแท่งคุมใหม่ ได้ก็ต่อเมื่อกรอบเดิมรู้ผลแล้ว (หรือยังไม่เคย sweep)
         // ถ้ากรอบเดิมยัง "swept" ไม่รู้ผล ไม่แตะแท่งใหม่นี้ เฝ้ากรอบเดิมต่อ
         if state.canAdopt()
             state.adopt(curCandleHigh, curCandleLow, curCandleHighBar, curCandleLowBar, htfClose[1] > htfOpen[1])
+            stats.lastCountedState := "none"
 
         // เริ่มติดตามแท่ง HTF ใหม่ที่กำลังฟอร์มตัว (candidate สำหรับรอบหน้า)
         curCandleHigh := high
@@ -284,3 +318,47 @@ else
     // เช็ค pending/touchOpposite/beyondSweep ของแท่งปัจจุบัน — เขียนครั้งเดียว รันทุกแท่งไม่ว่าจะเป็นแท่งแรกของชั่วโมงหรือไม่
     // (กันบั๊กแบบที่เคยพลาด: แท่งแรกของชั่วโมงไม่ถูกเช็คเพราะ logic ซ้ำกันอยู่คนละที่)
     state.processSubBar(high, low, close, false, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
+    stats.record(state)
+
+// === วาดแดชบอร์ด (มุมจอ + ขนาดปรับได้) — วาดเฉพาะแท่งสุดท้ายพอ ไม่ต้องวาดทุกแท่ง ===
+dashPos = dashPosition == "ซ้ายบน" ? position.top_left : dashPosition == "ขวาบน" ? position.top_right : dashPosition == "ซ้ายล่าง" ? position.bottom_left : position.bottom_right
+dashTextSize = dashSize == "เล็ก" ? size.small : dashSize == "ใหญ่" ? size.large : size.normal
+
+var table dashTable = table.new(position.top_right, 2, 7, border_width=1)
+
+var int firstBarTime = na // เวลาแท่งแรกสุดที่ TradingView โหลดมาให้บนชาร์ตนี้ — ใช้บอกว่าสถิติย้อนหลังไปถึงวันไหน
+if barstate.isfirst
+    firstBarTime := time
+
+if showDashboard and barstate.islast
+    table.set_position(dashTable, dashPos)
+
+    daysSpan = (time - firstBarTime) / (1000 * 60 * 60 * 24)
+    historyText = str.format_time(firstBarTime, "dd-MM-yyyy") + " (" + str.tostring(daysSpan, "#") + " วัน)"
+
+    totalSuccess = stats.successLow + stats.successHigh
+    totalFailed = stats.failedLow + stats.failedHigh
+    total = totalSuccess + totalFailed
+    winRate = total > 0 ? totalSuccess / total * 100 : na
+    ongoingText = state.state == "swept" ? "มี (รอผล)" : "ไม่มี"
+
+    table.cell(dashTable, 0, 0, "CRT Dashboard", text_color=color.white, bgcolor=color.new(color.blue, 20), text_size=dashTextSize)
+    table.merge_cells(dashTable, 0, 0, 1, 0)
+
+    table.cell(dashTable, 0, 1, "สำเร็จ", text_size=dashTextSize)
+    table.cell(dashTable, 1, 1, str.tostring(totalSuccess), text_color=color.green, text_size=dashTextSize)
+
+    table.cell(dashTable, 0, 2, "ล้มเหลว", text_size=dashTextSize)
+    table.cell(dashTable, 1, 2, str.tostring(totalFailed), text_color=color.red, text_size=dashTextSize)
+
+    table.cell(dashTable, 0, 3, "รวม", text_size=dashTextSize)
+    table.cell(dashTable, 1, 3, str.tostring(total), text_size=dashTextSize)
+
+    table.cell(dashTable, 0, 4, "Win rate", text_size=dashTextSize)
+    table.cell(dashTable, 1, 4, na(winRate) ? "-" : str.tostring(winRate, "#.#") + "%", text_size=dashTextSize)
+
+    table.cell(dashTable, 0, 5, "กำลังดำเนินอยู่", text_size=dashTextSize)
+    table.cell(dashTable, 1, 5, ongoingText, text_size=dashTextSize)
+
+    table.cell(dashTable, 0, 6, "ข้อมูลย้อนหลัง", text_size=dashTextSize)
+    table.cell(dashTable, 1, 6, historyText, text_size=dashTextSize)
