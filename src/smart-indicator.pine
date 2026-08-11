@@ -354,7 +354,7 @@ if showDashboard and barstate.islast
     table.cell(dashTable, 0, 3, "รวม", text_size=dashTextSize)
     table.cell(dashTable, 1, 3, str.tostring(total), text_size=dashTextSize)
 
-    table.cell(dashTable, 0, 4, "Win rate", text_size=dashTextSize)
+    table.cell(dashTable, 0, 4, "อัตรา", text_size=dashTextSize)
     table.cell(dashTable, 1, 4, na(winRate) ? "-" : str.tostring(winRate, "#.#") + "%", text_size=dashTextSize)
 
     table.cell(dashTable, 0, 5, "กำลังดำเนินอยู่", text_size=dashTextSize)
