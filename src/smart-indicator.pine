@@ -7,22 +7,19 @@ htf = input.timeframe("60", "ไทม์เฟรมแท่งคุม (Cont
 ltf = input.timeframe("5", "ไทม์เฟรมแท่งย่อย", tooltip="ใช้ตอนเปิดดูชาร์ตไทม์เฟรมใหญ่ (เท่ากับหรือใหญ่กว่าแท่งคุม) — สคริปต์จะดึงแท่งย่อยนี้มาไล่เช็ค sweep แทน", group=grpCrt)
 
 grpHtfLine = "เส้นตรวจสอบ"
-showHtfDivider = input.bool(true, "แสดงเส้น", inline="htfline", tooltip="เส้นแนวตั้งที่ขีดคั่นตอนแท่งคุมแต่ละแท่งปิด", group=grpHtfLine)
-htfLineColor = input.color(color.blue, "สี", inline="htfline", group=grpHtfLine)
+showHtfDivider = input.bool(false, "แสดงเส้น", inline="htfline", tooltip="เส้นแนวตั้งที่ขีดคั่นตอนแท่งคุมแต่ละแท่งปิด", group=grpHtfLine)
+htfLineColor = input.color(color.new(color.blue, 80), "สี", inline="htfline", group=grpHtfLine)
 htfLineWidth = input.int(1, "ความหนา", minval=1, inline="htfline", group=grpHtfLine)
 
 grpRangeLine = "เส้นกรอบ CTH/CTL"
 hlColor = input.color(color.black, "สี", inline="hl", group=grpRangeLine)
 hlWidth = input.int(1, "ความหนา", minval=1, inline="hl", tooltip="เส้นแนวนอนคู่บน-ล่างของกรอบที่กำลังเฝ้าดู sweep", group=grpRangeLine)
 
-grpCircle = "วงกลมจุด Sweep"
-showSweepCircle = input.bool(true, "แสดง", inline="circle", tooltip="วงกลมจางๆ ที่จุด high/low สุดขั้วของ sweep — ค้างไว้ดูย้อนหลังได้แม้ setup จะรู้ผลแล้ว", group=grpCircle)
-circleColor = input.color(color.new(color.orange, 80), "สี", inline="circle", group=grpCircle)
-
 grpShow = "แสดง/ซ่อนผลลัพธ์"
-showOngoing = input.bool(true, "กำลังดำเนินอยู่ (Sweep)", tooltip="แสดงเส้นกรอบระหว่างที่ยังไม่รู้ผลแพ้ชนะ", group=grpShow)
-showSuccess = input.bool(true, "สำเร็จ (Success)", tooltip="แสดงเส้นกรอบ + ป้ายเขียว เมื่อราคาย้อนไปแตะฝั่งตรงข้ามได้สำเร็จ", group=grpShow)
-showFailed = input.bool(true, "ล้มเหลว (Failed)", tooltip="แสดงเส้นกรอบ + ป้ายแดง เมื่อราคาทะลุกรอบซ้ำแล้วปิดออกนอกกรอบ", group=grpShow)
+showOngoing = input.bool(true, "กำลังดำเนินอยู่ (Sweep)", tooltip="แสดงเส้นกรอบ + วงกลมจุดสุดขั้ว ระหว่างที่ยังไม่รู้ผลแพ้ชนะ", group=grpShow)
+showSuccess = input.bool(true, "สำเร็จ (Success)", tooltip="แสดงเส้นกรอบ + ติ๊กถูก (✓) ข้างตัวอักษร CTH/CTL ฝั่งที่วิ่งไปแตะสำเร็จ", group=grpShow)
+showFailed = input.bool(true, "ล้มเหลว (Failed)", tooltip="แสดงเส้นกรอบ + กากบาท (✗) ข้างตัวอักษร CTH/CTL ฝั่งที่ทะลุจนล้มเหลว", group=grpShow)
+circleColor = input.color(color.new(color.orange, 70), "สีวงกลมจุด Sweep", group=grpShow)
 
 isNewHtfBar = timeframe.change(htf)
 
@@ -61,6 +58,8 @@ type CrtState
     label sweepCircle = na // วงกลมส้มจางๆ ที่จุด sweep (high/low สุดขั้ว)
     line cthLine = na
     line ctlLine = na
+    label cthText = na // ตัวอักษร "CTH" กลางเส้น — พื้นหลังกล่องสีเดียวกับพื้นหลังชาร์ต ใช้ "ลบ" เส้นทับตรงกลาง (ขนาดพิกเซลคงที่ ไม่ขึ้นกับ zoom)
+    label ctlText = na // ตัวอักษร "CTL" กลางเส้น
     // ติดตาม "จุดทะลุ" ระหว่างชั่วโมงยังไม่จบ (ยังไม่ยืนยันเป็น sweep จนกว่าแท่งสุดท้ายของชั่วโมงจะปิดกลับเข้ากรอบได้)
     bool pendingSwept = false
     string pendingSide = na
@@ -90,6 +89,8 @@ method adopt(CrtState this, float rHigh, float rLow, int rHighBar, int rLowBar, 
     this.sweepCircle := na
     this.cthLine := na
     this.ctlLine := na
+    this.cthText := na
+    this.ctlText := na
     this.pendingSwept := false
     this.pendingSide := na
     this.pendingPoint := na
@@ -99,18 +100,43 @@ method adopt(CrtState this, float rHigh, float rLow, int rHighBar, int rLowBar, 
     this.rePierceCandidate := na
     this.rePierceCandidateBar := na
 
+// วาดเส้น CTH/CTL ต่อเนื่องเส้นเดียว + ตัวอักษรทับกลางเส้น พื้นหลังกล่อง = สีพื้นหลังชาร์ต (chart.bg_color)
+// กล่อง label มีขนาด "พิกเซลคงที่" ไม่ขึ้นกับ zoom อยู่แล้ว (มันคือเหตุผลที่ตัวอักษรไม่เคยเปลี่ยนขนาดตอน zoom)
+// เอาพื้นหลังกล่องมาทับเส้นตรงกลาง = ลบเส้นเป็นพื้นที่พิกเซลคงที่โดยอัตโนมัติ ไม่ต้องคำนวณ gap เป็นจำนวนแท่งเลย
+method drawRangeLines(CrtState this, int barIdx, color hlColor, int hlWidth) =>
+    cthMidBar = math.round(math.avg(this.rangeHighBar, barIdx))
+    ctlMidBar = math.round(math.avg(this.rangeLowBar, barIdx))
+    if na(this.cthLine)
+        this.cthLine := line.new(this.rangeHighBar, this.rangeHigh, barIdx, this.rangeHigh, color=hlColor, width=hlWidth)
+        this.ctlLine := line.new(this.rangeLowBar, this.rangeLow, barIdx, this.rangeLow, color=hlColor, width=hlWidth)
+        // "𝐶𝑇𝐻"/"𝐶𝑇𝐿" ใช้ตัวอักษร Unicode Mathematical Italic (Pine ไม่มี property เอียงจริง — ใช้ glyph เอียงแทน)
+        this.cthText := label.new(cthMidBar, this.rangeHigh, "𝐶𝑇𝐻", style=label.style_label_center, color=chart.bg_color, textcolor=color.black, size=size.small)
+        this.ctlText := label.new(ctlMidBar, this.rangeLow, "𝐶𝑇𝐿", style=label.style_label_center, color=chart.bg_color, textcolor=color.black, size=size.small)
+    else
+        line.set_x2(this.cthLine, barIdx)
+        line.set_x2(this.ctlLine, barIdx)
+        label.set_x(this.cthText, cthMidBar)
+        label.set_x(this.ctlText, ctlMidBar)
+    true
+
+// ลบเส้น CTH/CTL พร้อมตัวอักษร (ใช้ตอนปิด toggle แสดงผล)
+method deleteRangeLines(CrtState this) =>
+    line.delete(this.cthLine)
+    line.delete(this.ctlLine)
+    label.delete(this.cthText)
+    label.delete(this.ctlText)
+    this.cthLine := na
+    this.ctlLine := na
+    this.cthText := na
+    this.ctlText := na
+
 // ตัวจักรกฎ CRT ตัวเดียว — เรียกทีละ "แท่งย่อย" (h_/l_/c_ ของแท่งย่อยนั้น)
 // isBoundary = true เฉพาะแท่งย่อยสุดท้ายของชั่วโมง (ที่ปิดยืนยันแล้ว) เท่านั้น ถึงจะตัดสิน sweep/fail
 // โหมด HTF-chart เรียกใน for loop ต่อแท่งย่อยจริง, โหมด native เรียก 2 ครั้งต่อแท่ง (boundary ด้วยข้อมูล [1], continuous ด้วยข้อมูลแท่งปัจจุบัน)
-method processSubBar(CrtState this, float h_, float l_, float c_, bool isBoundary, int barIdx, bool showOngoing, bool showSuccess, bool showFailed, color hlColor, int hlWidth, bool showSweepCircle, color circleColor) =>
+method processSubBar(CrtState this, float h_, float l_, float c_, bool isBoundary, int barIdx, bool showOngoing, bool showSuccess, bool showFailed, color hlColor, int hlWidth, color circleColor) =>
     if not na(this.rangeHigh)
         if this.state == "swept" and showOngoing
-            if na(this.cthLine)
-                this.cthLine := line.new(this.rangeHighBar, this.rangeHigh, barIdx, this.rangeHigh, color=hlColor, width=hlWidth)
-                this.ctlLine := line.new(this.rangeLowBar, this.rangeLow, barIdx, this.rangeLow, color=hlColor, width=hlWidth)
-            else
-                line.set_x2(this.cthLine, barIdx)
-                line.set_x2(this.ctlLine, barIdx)
+            this.drawRangeLines(barIdx, hlColor, hlWidth)
 
         if this.state == "none"
             // ไล่หาจุดทะลุระหว่างชั่วโมง (ยังไม่ยืนยัน) — เก็บจุดสุดขั้วไว้ก่อน
@@ -143,7 +169,9 @@ method processSubBar(CrtState this, float h_, float l_, float c_, bool isBoundar
                     this.sweptSide := this.pendingSide
                     this.sweepPoint := this.pendingPoint
                     this.sweepPointBar := this.pendingPointBar
-                    if showSweepCircle
+                    if showOngoing
+                        // สร้างเส้น/ตัวอักษร CTH-CTL ก่อนวงกลมเสมอ — Pine เรียง z-order ตามลำดับสร้าง object (สร้างก่อน = อยู่หลังสุด)
+                        this.drawRangeLines(barIdx, hlColor, hlWidth)
                         this.sweepCircle := label.new(this.pendingPointBar, this.pendingPoint, "", style=label.style_circle, color=circleColor, size=size.small)
                 // ไม่ปิดกลับเข้ากรอบ หรือเคยแตะฝั่งตรงข้ามมาก่อน = ไม่นับเป็น CRT เลย ทิ้ง pending ทิ้ง
                 this.pendingSwept := false
@@ -155,21 +183,19 @@ method processSubBar(CrtState this, float h_, float l_, float c_, bool isBoundar
             touchOpposite = (this.sweptSide == "low" and h_ >= this.rangeHigh) or (this.sweptSide == "high" and l_ <= this.rangeLow)
             if touchOpposite
                 this.state := "success"
-                // ไม่ลบ sweepCircle — ปล่อยค้างไว้เป็นร่องรอย setup อดีต
                 if showSuccess
-                    if na(this.cthLine)
-                        line.new(this.rangeHighBar, this.rangeHigh, barIdx, this.rangeHigh, color=hlColor, width=hlWidth)
-                        line.new(this.rangeLowBar, this.rangeLow, barIdx, this.rangeLow, color=hlColor, width=hlWidth)
-                    else
-                        line.set_x2(this.cthLine, barIdx)
-                        line.set_x2(this.ctlLine, barIdx)
-                else if not na(this.cthLine)
-                    line.delete(this.cthLine)
-                    line.delete(this.ctlLine)
-                    this.cthLine := na
-                    this.ctlLine := na
-                if showSuccess
-                    label.new(barIdx, this.sweptSide == "low" ? this.rangeHigh : this.rangeLow, "Success", style=this.sweptSide == "low" ? label.style_label_down : label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+                    this.drawRangeLines(barIdx, hlColor, hlWidth)
+                    // ติ๊กถูกข้างตัวอักษรฝั่งที่วิ่งไปแตะสำเร็จ (ฝั่งตรงข้ามกับที่ sweep)
+                    label.set_text(this.sweptSide == "low" ? this.cthText : this.ctlText, (this.sweptSide == "low" ? "𝐶𝑇𝐻" : "𝐶𝑇𝐿") + " ✓")
+                    // สืบสถานะวงกลมจาก showOngoing (ตอน sweep) มาเป็นของ showSuccess ต่อ ถ้ายังไม่มีวงกลม (ปิด showOngoing ไว้ตอนนั้น) สร้างใหม่
+                    if na(this.sweepCircle)
+                        this.sweepCircle := label.new(this.sweepPointBar, this.sweepPoint, "", style=label.style_circle, color=circleColor, size=size.small)
+                else
+                    if not na(this.cthLine)
+                        this.deleteRangeLines()
+                    if not na(this.sweepCircle)
+                        label.delete(this.sweepCircle)
+                        this.sweepCircle := na
             else
                 // ทะลุ CTH/CTL ซ้ำระหว่างชั่วโมง — เก็บไว้ก่อน รอแท่งสุดท้ายปิดค่อยตัดสิน fail
                 beyondSweep = (this.sweptSide == "low" and l_ < this.rangeLow) or (this.sweptSide == "high" and h_ > this.rangeHigh)
@@ -198,21 +224,18 @@ method processSubBar(CrtState this, float h_, float l_, float c_, bool isBoundar
                         this.rePierced := false
                         this.rePierceCandidate := na
                         this.rePierceCandidateBar := na
-                        // ไม่ลบ sweepCircle — ปล่อยค้างไว้เป็นร่องรอย setup อดีต
                         if showFailed
-                            if na(this.cthLine)
-                                line.new(this.rangeHighBar, this.rangeHigh, barIdx, this.rangeHigh, color=hlColor, width=hlWidth)
-                                line.new(this.rangeLowBar, this.rangeLow, barIdx, this.rangeLow, color=hlColor, width=hlWidth)
-                            else
-                                line.set_x2(this.cthLine, barIdx)
-                                line.set_x2(this.ctlLine, barIdx)
-                        else if not na(this.cthLine)
-                            line.delete(this.cthLine)
-                            line.delete(this.ctlLine)
-                            this.cthLine := na
-                            this.ctlLine := na
-                        if showFailed
-                            label.new(barIdx, this.sweptSide == "low" ? l_ : h_, "Failed", style=this.sweptSide == "low" ? label.style_label_down : label.style_label_up, color=color.red, textcolor=color.white, size=size.small)
+                            this.drawRangeLines(barIdx, hlColor, hlWidth)
+                            // กากบาทข้างตัวอักษรฝั่งที่ทะลุจนล้มเหลว (ฝั่งเดียวกับที่ sweep)
+                            label.set_text(this.sweptSide == "low" ? this.ctlText : this.cthText, (this.sweptSide == "low" ? "𝐶𝑇𝐿" : "𝐶𝑇𝐻") + " ✗")
+                            if na(this.sweepCircle)
+                                this.sweepCircle := label.new(this.sweepPointBar, this.sweepPoint, "", style=label.style_circle, color=circleColor, size=size.small)
+                        else
+                            if not na(this.cthLine)
+                                this.deleteRangeLines()
+                            if not na(this.sweepCircle)
+                                label.delete(this.sweepCircle)
+                                this.sweepCircle := na
     true
 
 var CrtState state = CrtState.new()
@@ -232,12 +255,12 @@ if onHtfChart
             c_ = array.get(subClose, i)
             isLastSubBar = i == n - 1
             isBoundary = isLastSubBar and barstate.isconfirmed
-            state.processSubBar(h_, l_, c_, isBoundary, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, showSweepCircle, circleColor)
+            state.processSubBar(h_, l_, c_, isBoundary, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
 else
     if isNewHtfBar and bar_index > 0
         // ยืนยัน sweep/fail ของกรอบเดิมด้วยข้อมูลแท่งสุดท้ายที่เพิ่งปิด (close[1]/low[1]/high[1]) ก่อนพิจารณารับแท่งคุมใหม่
         if not na(state.rangeHigh)
-            state.processSubBar(high[1], low[1], close[1], true, bar_index - 1, showOngoing, showSuccess, showFailed, hlColor, hlWidth, showSweepCircle, circleColor)
+            state.processSubBar(high[1], low[1], close[1], true, bar_index - 1, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
 
         // เปลี่ยนไปใช้แท่งที่ปิดล่าสุดเป็นแท่งคุมใหม่ ได้ก็ต่อเมื่อกรอบเดิมรู้ผลแล้ว (หรือยังไม่เคย sweep)
         // ถ้ากรอบเดิมยัง "swept" ไม่รู้ผล ไม่แตะแท่งใหม่นี้ เฝ้ากรอบเดิมต่อ
@@ -260,4 +283,4 @@ else
 
     // เช็ค pending/touchOpposite/beyondSweep ของแท่งปัจจุบัน — เขียนครั้งเดียว รันทุกแท่งไม่ว่าจะเป็นแท่งแรกของชั่วโมงหรือไม่
     // (กันบั๊กแบบที่เคยพลาด: แท่งแรกของชั่วโมงไม่ถูกเช็คเพราะ logic ซ้ำกันอยู่คนละที่)
-    state.processSubBar(high, low, close, false, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, showSweepCircle, circleColor)
+    state.processSubBar(high, low, close, false, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
