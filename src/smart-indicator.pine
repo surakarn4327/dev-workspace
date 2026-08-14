@@ -111,6 +111,7 @@ type CrtState
     float pendingPoint = na
     int pendingPointBar = na // แท่งที่ทำจุด pending สุดขั้วจริง
     bool pendingOppositeTouched = false // ถ้าแตะฝั่งตรงข้ามระหว่าง pending = ไม่เกิด CRT เลย
+    bool disqualified = false // ถ้าแตะฝั่งตรงข้าม (ฝั่งที่ไม่ควร sweep ตามสีแท่งคุม) ก่อนเริ่ม pending ฝั่งที่ถูกต้องเลยสักครั้ง = ตัดสิทธิ์กรอบนี้ถาวร ไม่ยอมให้ sweep เกิดอีกเลยจนกว่าจะมีแท่งคุมใหม่มาแทน
     // ติดตามว่ามีการทะลุ CTH/CTL ซ้ำระหว่างชั่วโมงหลัง sweep ยืนยันแล้ว (รอแท่งสุดท้ายปิดตัดสิน fail เหมือนกัน)
     bool rePierced = false
     // จุดทะลุซ้ำ "ผู้ท้าชิง" — จะมาแทน sweepPoint จริงก็ต่อเมื่อกลับเข้ากรอบได้สำเร็จ (กฎข้อ 6) ถ้าล้มเหลวทิ้งไปเลย ไม่แตะ sweepPoint เดิม
@@ -141,6 +142,7 @@ method adopt(CrtState this, float rHigh, float rLow, int rHighBar, int rLowBar, 
     this.pendingPoint := na
     this.pendingPointBar := na
     this.pendingOppositeTouched := false
+    this.disqualified := false
     this.rePierced := false
     this.rePierceCandidate := na
     this.rePierceCandidateBar := na
@@ -185,8 +187,13 @@ method processSubBar(CrtState this, float h_, float l_, float c_, bool isBoundar
 
         if this.state == "none"
             // ไล่หาจุดทะลุระหว่างชั่วโมง (ยังไม่ยืนยัน) — เก็บจุดสุดขั้วไว้ก่อน
-            if not this.pendingSwept
-                if this.rangeBullish and h_ > this.rangeHigh
+            if not this.pendingSwept and not this.disqualified
+                // แตะฝั่งตรงข้าม (ฝั่งที่ไม่ควร sweep ตามสีแท่งคุม) ก่อนที่จะเริ่ม pending ฝั่งที่ถูกต้องเลยสักครั้ง = ตัดสิทธิ์กรอบนี้ถาวร
+                // (คนละกรณีกับ pendingOppositeTouched ด้านล่าง ซึ่งเป็นการแตะฝั่งตรงข้าม "ระหว่าง" pending ที่เริ่มไปแล้ว)
+                wrongSideTouch = this.rangeBullish ? (l_ <= this.rangeLow) : (h_ >= this.rangeHigh)
+                if wrongSideTouch
+                    this.disqualified := true
+                else if this.rangeBullish and h_ > this.rangeHigh
                     this.pendingSwept := true
                     this.pendingSide := "high"
                     this.pendingPoint := h_
