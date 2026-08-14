@@ -1,15 +1,26 @@
 //@version=5
-indicator("Smart Indicator", overlay=true, max_lines_count=500, max_labels_count=500, dynamic_requests=true)
+indicator("Smart Indicator", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500, dynamic_requests=true)
 
-// === หน้าตั้งค่า (ภาษาไทย) — จัดกลุ่มตาม style.md ===
-grpCrt = "ตั้งค่า CRT หลัก"
-htf = input.timeframe("60", "ไทม์เฟรมแท่งคุม (Control Candle)", tooltip="แท่งใหญ่ที่ใช้กำหนดกรอบบน-ล่าง (CTH/CTL) เช่น 60 = แท่ง 1 ชั่วโมง", group=grpCrt)
-ltf = input.timeframe("5", "ไทม์เฟรมแท่งย่อย", tooltip="ใช้ตอนเปิดดูชาร์ตไทม์เฟรมใหญ่ (เท่ากับหรือใหญ่กว่าแท่งคุม) — สคริปต์จะดึงแท่งย่อยนี้มาไล่เช็ค sweep แทน", group=grpCrt)
+// === หน้าตั้งค่า (ภาษาไทย) — จัดกลุ่มตาม indicator_style.md ===
+// กลุ่ม "เปิด/ปิด" ต้องอยู่บนสุดเสมอ — master toggle ต่อ feature (มาตรฐานถาวร เพิ่ม feature ใหม่ในอนาคตต้องมี checkbox ที่นี่ด้วย ดู indicator_style.md)
+grpMaster = "เปิด/ปิด"
+enableCrt = input.bool(true, "CRT", inline="master", group=grpMaster)
+enableFvg = input.bool(true, "FVG", inline="master", group=grpMaster)
 
 grpHtfLine = "เส้นตรวจสอบ"
 showHtfDivider = input.bool(false, "แสดงเส้น", inline="htfline", tooltip="เส้นแนวตั้งที่ขีดคั่นตอนแท่งคุมแต่ละแท่งปิด", group=grpHtfLine)
 htfLineColor = input.color(color.new(color.blue, 80), "สี", inline="htfline", group=grpHtfLine)
 htfLineWidth = input.int(1, "ความหนา", minval=1, inline="htfline", group=grpHtfLine)
+
+grpCloseLine = "เส้นปิดแท่ง (Broker)"
+showCloseLine = input.bool(false, "แสดงเส้น", inline="closeline", tooltip="เส้นแนวตั้ง ขีดที่แท่งปิดของไทม์เฟรมที่ตั้งไว้ — อิสระจากไทม์เฟรมแท่งคุม CRT ทั้งหมด", group=grpCloseLine)
+closeLineColor = input.color(color.new(color.orange, 50), "สี", inline="closeline", group=grpCloseLine)
+closeLineWidth = input.int(1, "ความหนา", minval=1, inline="closeline", group=grpCloseLine)
+closeLineTf = input.timeframe("D", "ไทม์เฟรม", tooltip="ไทม์เฟรมของแท่งที่จะขีดเส้นตอนปิด (เช่น D = ตามที่กราฟของ broker ปิดแท่งรายวัน)", group=grpCloseLine)
+
+grpCrt = "ตั้งค่า CRT หลัก"
+htf = input.timeframe("60", "ไทม์เฟรมแท่งคุม (Control Candle)", tooltip="แท่งใหญ่ที่ใช้กำหนดกรอบบน-ล่าง (CTH/CTL) เช่น 60 = แท่ง 1 ชั่วโมง", group=grpCrt)
+ltf = input.timeframe("5", "ไทม์เฟรมแท่งย่อย", tooltip="ใช้ตอนเปิดดูชาร์ตไทม์เฟรมใหญ่ (เท่ากับหรือใหญ่กว่าแท่งคุม) — สคริปต์จะดึงแท่งย่อยนี้มาไล่เช็ค sweep แทน", group=grpCrt)
 
 grpRangeLine = "เส้นกรอบ CTH/CTL"
 hlColor = input.color(color.black, "สี", inline="hl", group=grpRangeLine)
@@ -23,14 +34,43 @@ circleColor = input.color(color.new(color.orange, 70), "สีวงกลมจ
 
 grpDash = "แดชบอร์ดสถิติ"
 showDashboard = input.bool(true, "แสดงแดชบอร์ด", group=grpDash)
-dashPosition = input.string("ขวาบน", "ตำแหน่ง", options=["ซ้ายบน", "ขวาบน", "ซ้ายล่าง", "ขวาล่าง"], group=grpDash)
-dashSize = input.string("กลาง", "ขนาด", options=["เล็ก", "กลาง", "ใหญ่"], group=grpDash)
+dashPosition = input.string("ขวาล่าง", "ตำแหน่ง", options=["ซ้ายบน", "ขวาบน", "ซ้ายล่าง", "ขวาล่าง"], group=grpDash)
+dashSize = input.string("เล็ก", "ขนาด", options=["เล็ก", "กลาง", "ใหญ่"], group=grpDash)
+
+// === FVG/iFVG (feature แสดงผลแยก ไม่ผูก logic กับ CRT เลย) — scope ตาม indicator_style.md ===
+// เหลือแค่ 2 ไทม์เฟรม + สี ในหน้าตั้งค่า ที่เหลือ (รอแท่งปิด/ซ่อนซ้อนทับ/FVG-iFVG/ประเภทเติมเต็ม/แท่งย้อนหลัง/
+// กล่อง/ป้ายชื่อ) ล็อกเป็นค่าคงที่ในโค้ดแทนแล้วตามคำขอผู้ใช้ 2026-08-14 (ดู indicator_style.md)
+grpFvgTf = "ไทม์เฟรม FVG"
+fvgOnlyToday = input.bool(false, "แสดงเฉพาะวันนี้", tooltip="ซ่อน FVG ที่เก่ากว่าแท่งปัจจุบันของ 'เส้นปิดแท่ง (Broker)' — นับ 1 วันตามแท่งปิดของ broker (ไทม์เฟรมเดียวกับที่ตั้งไว้ในกลุ่ม เส้นปิดแท่ง) ไม่ใช่เที่ยงคืนตามเวลาเครื่อง", group=grpFvgTf)
+fvgTf1On = input.bool(true, "", inline="fvgtf1", group=grpFvgTf)
+fvgTf1 = input.timeframe("", "ไทม์เฟรม 1", inline="fvgtf1", tooltip="เว้นว่าง = ไทม์เฟรมของชาร์ตปัจจุบัน", group=grpFvgTf)
+fvgTf2On = input.bool(false, "", inline="fvgtf2", group=grpFvgTf)
+fvgTf2 = input.timeframe("15", "ไทม์เฟรม 2", inline="fvgtf2", group=grpFvgTf)
+
+grpFvgColor = "สี FVG/iFVG"
+fvgBullColor = input.color(color.new(color.black, 90), "สี Bullish", inline="fvgcolor", group=grpFvgColor)
+fvgBearColor = input.color(color.new(color.black, 90), "สี Bearish", inline="fvgcolor", group=grpFvgColor)
+
+fvgWaitClose = true
+fvgHideLowerOverlap = true
+fvgShowFvg = true
+fvgShowIfvg = false
+fvgFilledType = "H/L"
+fvgMaxBarsBack = 1000
+fvgDeleteAfterFill = true
+fvgExtendBoxes = false
+fvgBoxLength = 30
 
 isNewHtfBar = timeframe.change(htf)
 
-if isNewHtfBar and bar_index > 0 and showHtfDivider
+if enableCrt and isNewHtfBar and bar_index > 0 and showHtfDivider
     // close ของแท่ง HTF ก่อนหน้า = แท่งก่อนแท่งปัจจุบัน
     line.new(x1=bar_index - 1, y1=high[1], x2=bar_index - 1, y2=low[1], extend=extend.both, color=htfLineColor, width=htfLineWidth)
+
+// เส้นปิดแท่ง — อิสระจาก CRT/FVG ทั้งหมด ไม่ผูกกับ enableCrt/enableFvg (คนละ feature, มี checkbox ปิด/เปิดของตัวเองอยู่แล้ว)
+isNewCloseLineBar = timeframe.change(closeLineTf)
+if isNewCloseLineBar and bar_index > 0 and showCloseLine
+    line.new(x1=bar_index - 1, y1=high[1], x2=bar_index - 1, y2=low[1], extend=extend.both, color=closeLineColor, width=closeLineWidth)
 
 // === Step 2/3: CRT range (CTH/CTL) + sweep detection ===
 // กรอบ (CTH/CTL) จะ "เฝ้าดู sweep" ต่อเนื่องได้ไม่จำกัดเวลา ไม่ reset ทุกแท่ง 1h
@@ -270,55 +310,156 @@ method record(Stats this, CrtState st) =>
 
 var Stats stats = Stats.new()
 
-if onHtfChart
-    // โหมดชาร์ต HTF: แท่งก่อนหน้า (native) คือแท่งคุมที่เพิ่งปิด ไม่ต้องพึ่ง request.security
-    if bar_index > 0 and state.canAdopt()
-        state.adopt(high[1], low[1], bar_index - 1, bar_index - 1, close[1] > open[1])
-        stats.lastCountedState := "none"
-
-    // ดึงแท่งย่อย (เช่น 5m) ที่ประกอบเป็นแท่ง HTF ปัจจุบัน มาไล่ตรวจ sweep ทีละแท่ง
-    [subHigh, subLow, subClose] = request.security_lower_tf(syminfo.tickerid, ltf, [high, low, close])
-    n = array.size(subHigh)
-    if not na(state.rangeHigh) and n > 0
-        for i = 0 to n - 1
-            h_ = array.get(subHigh, i)
-            l_ = array.get(subLow, i)
-            c_ = array.get(subClose, i)
-            isLastSubBar = i == n - 1
-            isBoundary = isLastSubBar and barstate.isconfirmed
-            state.processSubBar(h_, l_, c_, isBoundary, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
-            stats.record(state)
-else
-    if isNewHtfBar and bar_index > 0
-        // ยืนยัน sweep/fail ของกรอบเดิมด้วยข้อมูลแท่งสุดท้ายที่เพิ่งปิด (close[1]/low[1]/high[1]) ก่อนพิจารณารับแท่งคุมใหม่
-        if not na(state.rangeHigh)
-            state.processSubBar(high[1], low[1], close[1], true, bar_index - 1, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
-            stats.record(state)
-
-        // เปลี่ยนไปใช้แท่งที่ปิดล่าสุดเป็นแท่งคุมใหม่ ได้ก็ต่อเมื่อกรอบเดิมรู้ผลแล้ว (หรือยังไม่เคย sweep)
-        // ถ้ากรอบเดิมยัง "swept" ไม่รู้ผล ไม่แตะแท่งใหม่นี้ เฝ้ากรอบเดิมต่อ
-        if state.canAdopt()
-            state.adopt(curCandleHigh, curCandleLow, curCandleHighBar, curCandleLowBar, htfClose[1] > htfOpen[1])
+if enableCrt
+    if onHtfChart
+        // โหมดชาร์ต HTF: แท่งก่อนหน้า (native) คือแท่งคุมที่เพิ่งปิด ไม่ต้องพึ่ง request.security
+        if bar_index > 0 and state.canAdopt()
+            state.adopt(high[1], low[1], bar_index - 1, bar_index - 1, close[1] > open[1])
             stats.lastCountedState := "none"
 
-        // เริ่มติดตามแท่ง HTF ใหม่ที่กำลังฟอร์มตัว (candidate สำหรับรอบหน้า)
-        curCandleHigh := high
-        curCandleHighBar := bar_index
-        curCandleLow := low
-        curCandleLowBar := bar_index
+        // ดึงแท่งย่อย (เช่น 5m) ที่ประกอบเป็นแท่ง HTF ปัจจุบัน มาไล่ตรวจ sweep ทีละแท่ง
+        [subHigh, subLow, subClose] = request.security_lower_tf(syminfo.tickerid, ltf, [high, low, close])
+        n = array.size(subHigh)
+        if not na(state.rangeHigh) and n > 0
+            for i = 0 to n - 1
+                h_ = array.get(subHigh, i)
+                l_ = array.get(subLow, i)
+                c_ = array.get(subClose, i)
+                isLastSubBar = i == n - 1
+                isBoundary = isLastSubBar and barstate.isconfirmed
+                state.processSubBar(h_, l_, c_, isBoundary, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
+                stats.record(state)
     else
-        // อัปเดตตำแหน่ง high/low สุดของแท่ง HTF ที่กำลังฟอร์มตัว
-        if na(curCandleHigh) or high > curCandleHigh
+        if isNewHtfBar and bar_index > 0
+            // ยืนยัน sweep/fail ของกรอบเดิมด้วยข้อมูลแท่งสุดท้ายที่เพิ่งปิด (close[1]/low[1]/high[1]) ก่อนพิจารณารับแท่งคุมใหม่
+            if not na(state.rangeHigh)
+                state.processSubBar(high[1], low[1], close[1], true, bar_index - 1, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
+                stats.record(state)
+
+            // เปลี่ยนไปใช้แท่งที่ปิดล่าสุดเป็นแท่งคุมใหม่ ได้ก็ต่อเมื่อกรอบเดิมรู้ผลแล้ว (หรือยังไม่เคย sweep)
+            // ถ้ากรอบเดิมยัง "swept" ไม่รู้ผล ไม่แตะแท่งใหม่นี้ เฝ้ากรอบเดิมต่อ
+            if state.canAdopt()
+                state.adopt(curCandleHigh, curCandleLow, curCandleHighBar, curCandleLowBar, htfClose[1] > htfOpen[1])
+                stats.lastCountedState := "none"
+
+            // เริ่มติดตามแท่ง HTF ใหม่ที่กำลังฟอร์มตัว (candidate สำหรับรอบหน้า)
             curCandleHigh := high
             curCandleHighBar := bar_index
-        if na(curCandleLow) or low < curCandleLow
             curCandleLow := low
             curCandleLowBar := bar_index
+        else
+            // อัปเดตตำแหน่ง high/low สุดของแท่ง HTF ที่กำลังฟอร์มตัว
+            if na(curCandleHigh) or high > curCandleHigh
+                curCandleHigh := high
+                curCandleHighBar := bar_index
+            if na(curCandleLow) or low < curCandleLow
+                curCandleLow := low
+                curCandleLowBar := bar_index
 
-    // เช็ค pending/touchOpposite/beyondSweep ของแท่งปัจจุบัน — เขียนครั้งเดียว รันทุกแท่งไม่ว่าจะเป็นแท่งแรกของชั่วโมงหรือไม่
-    // (กันบั๊กแบบที่เคยพลาด: แท่งแรกของชั่วโมงไม่ถูกเช็คเพราะ logic ซ้ำกันอยู่คนละที่)
-    state.processSubBar(high, low, close, false, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
-    stats.record(state)
+        // เช็ค pending/touchOpposite/beyondSweep ของแท่งปัจจุบัน — เขียนครั้งเดียว รันทุกแท่งไม่ว่าจะเป็นแท่งแรกของชั่วโมงหรือไม่
+        // (กันบั๊กแบบที่เคยพลาด: แท่งแรกของชั่วโมงไม่ถูกเช็คเพราะ logic ซ้ำกันอยู่คนละที่)
+        state.processSubBar(high, low, close, false, bar_index, showOngoing, showSuccess, showFailed, hlColor, hlWidth, circleColor)
+        stats.record(state)
+
+// === FVG/iFVG engine — คนละก้อนกับ CRT ทั้งหมด ไม่แตะ CrtState/processSubBar/adopt/canAdopt เลย ===
+// วาง box ด้วย xloc.bar_time (อิงเวลาจริง) แทน bar_index เพื่อรองรับหลายไทม์เฟรมพร้อมกันถูกตำแหน่งเป๊ะ
+// A = แท่งเปิดช่องว่าง (เก่าสุด), B = แท่งกลาง (แท่งที่กระชาก), C = แท่งปิดช่องว่าง (ใหม่สุด)
+// bullish FVG: low ของ C > high ของ A (ช่องว่างรองรับราคาด้านล่าง) / bearish: high ของ C < low ของ A
+// วางบล็อกนี้ไว้ "หลัง" CRT engine เสมอ (สร้าง object ก่อน = อยู่หลังสุดตาม z-order ของ Pine ดู indicator_style.md)
+// ผู้ใช้สั่งให้ป้าย/เส้น CRT ถูกวาดก่อนเสมอ = สร้างก่อน = อยู่หลังสุด ยอมให้กล่อง FVG (สร้างทีหลัง) บังทับได้ (ยืนยัน 2026-08-14)
+type FvgZone
+    box b = na
+    bool bullish = na
+    bool isIfvg = false
+    float top = na
+    float bottom = na
+    int tfSeconds = na
+    bool active = true
+    int anchorTime = na // เวลาเปิดของแท่ง B — ใช้กันสร้างซ้ำตอน "ไม่รอแท่งปิด" (สแกนทุกแท่งจนกว่า C จะปิดจริง)
+
+// true ถ้ามีกรอบไทม์เฟรมใหญ่กว่า (mySeconds) ที่ยัง active ครอบช่วงราคา [bottom, top] นี้อยู่เต็มๆ
+method containsRange(array<FvgZone> zones, float top, float bottom, int mySeconds) =>
+    found = false
+    if array.size(zones) > 0
+        for i = 0 to array.size(zones) - 1
+            z = array.get(zones, i)
+            if z.active and z.tfSeconds > mySeconds and z.bottom <= bottom and z.top >= top
+                found := true
+    found
+
+method hasAnchor(array<FvgZone> zones, int anchorTime) =>
+    found = false
+    if array.size(zones) > 0
+        for i = 0 to array.size(zones) - 1
+            if array.get(zones, i).anchorTime == anchorTime
+                found := true
+    found
+
+// ประมวลผล FVG ของไทม์เฟรมเดียว: อัปเดต/ลบของเดิม (fill/invalidate) ทุกแท่ง แล้วค่อยหาใหม่ถ้า enabled
+// off = 1 (รอแท่งปิด) เทียบ high[1]/[2]/[3] เทียบเท่า C/B/A ที่ "เพิ่งปิดแล้ว" ณ ติ๊กแรกของแท่งถัดไป
+// off = 0 (ไม่รอแท่งปิด) เทียบ high[0]/[1]/[2] สด ๆ ทุกแท่ง กันสร้างซ้ำด้วย anchorTime ของแท่ง B
+method manageFvgTf(array<FvgZone> zones, bool enabled, string tf, int off, int maxBarsBack, int boxLength, bool extendBoxes, bool deleteAfterFill, bool showFvg, bool showIfvg, string filledType, color bullColor, color bearColor, array<FvgZone> z1, array<FvgZone> z2, bool hideOverlap, bool onlyToday, int dayStart) =>
+    tfSeconds = timeframe.in_seconds(tf)
+    [hC, lC, hA, lA, tB, tC] = request.security(syminfo.tickerid, tf, [high[off], low[off], high[off + 2], low[off + 2], time[off + 1], time[off]], lookahead=barmerge.lookahead_off)
+
+    // อัปเดต/ลบ zone เดิมก่อนเสมอ ไม่ขึ้นกับ enabled (ปิด checkbox ทีหลังแค่หยุดหาใหม่ ไม่ลบของเก่าทันที)
+    if array.size(zones) > 0
+        for i = array.size(zones) - 1 to 0
+            z = array.get(zones, i)
+            if onlyToday and z.anchorTime < dayStart
+                // แท่งปิด (broker) ขึ้นวันใหม่แล้ว กรอบนี้เก่ากว่าวันนี้ — ลบทิ้งไม่ว่าจะ fill/invalidate หรือยัง
+                box.delete(z.b)
+                array.remove(zones, i)
+            else if z.active
+                filledLevel = filledType == "H/L" ? (z.bullish ? z.bottom : z.top) : math.avg(z.top, z.bottom)
+                filled = z.bullish ? low <= filledLevel : high >= filledLevel
+                invalidated = z.bullish ? close < z.bottom : close > z.top
+                if invalidated and not z.isIfvg
+                    if showIfvg
+                        // ราคาทะลุปิดเลยฝั่งตรงข้าม = กลับขั้วเป็น iFVG ฝั่งตรงข้าม
+                        z.isIfvg := true
+                        z.bullish := not z.bullish
+                        newColor = z.bullish ? bullColor : bearColor
+                        box.set_border_color(z.b, newColor)
+                        box.set_bgcolor(z.b, newColor)
+                    else
+                        box.delete(z.b)
+                        array.remove(zones, i)
+                else if filled
+                    if deleteAfterFill
+                        box.delete(z.b)
+                        array.remove(zones, i)
+                    else
+                        z.active := false // แช่แข็งไว้ ไม่ขยายกล่องต่อ แต่ยังโชว์ค้างบนกราฟ
+                else if extendBoxes
+                    box.set_right(z.b, time)
+
+    if enabled and bar_index >= last_bar_index - maxBarsBack and not na(hA) and not na(hC) and (not onlyToday or tB >= dayStart)
+        canCreate = off == 1 ? ta.change(tC) != 0 : not zones.hasAnchor(tB)
+        if canCreate
+            bullGap = lC > hA
+            bearGap = hC < lA
+            if bullGap or bearGap
+                zTop = bullGap ? lC : lA
+                zBottom = bullGap ? hA : hC
+                hidden = hideOverlap and (z1.containsRange(zTop, zBottom, tfSeconds) or z2.containsRange(zTop, zBottom, tfSeconds))
+                if showFvg and not hidden
+                    rightEdge = extendBoxes ? time : tB + boxLength * tfSeconds * 1000
+                    zColor = bullGap ? bullColor : bearColor
+                    newBox = box.new(tB, zTop, rightEdge, zBottom, border_width=0, bgcolor=zColor, extend=extend.none, xloc=xloc.bar_time)
+                    newZone = FvgZone.new(b=newBox, bullish=bullGap, top=zTop, bottom=zBottom, tfSeconds=tfSeconds, anchorTime=tB)
+                    array.push(zones, newZone)
+    true
+
+var array<FvgZone> fvgZones1 = array.new<FvgZone>()
+var array<FvgZone> fvgZones2 = array.new<FvgZone>()
+
+fvgOff = fvgWaitClose ? 1 : 0
+fvgDayStart = request.security(syminfo.tickerid, closeLineTf, time, lookahead=barmerge.lookahead_off) // เวลาเปิดของแท่งวันนี้ (ตาม TF เดียวกับ "เส้นปิดแท่ง (Broker)") ใช้เป็นขอบเขต "วันนี้" ของ FVG
+
+if enableFvg
+    fvgZones1.manageFvgTf(fvgTf1On, fvgTf1, fvgOff, fvgMaxBarsBack, fvgBoxLength, fvgExtendBoxes, fvgDeleteAfterFill, fvgShowFvg, fvgShowIfvg, fvgFilledType, fvgBullColor, fvgBearColor, fvgZones1, fvgZones2, fvgHideLowerOverlap, fvgOnlyToday, fvgDayStart)
+    fvgZones2.manageFvgTf(fvgTf2On, fvgTf2, fvgOff, fvgMaxBarsBack, fvgBoxLength, fvgExtendBoxes, fvgDeleteAfterFill, fvgShowFvg, fvgShowIfvg, fvgFilledType, fvgBullColor, fvgBearColor, fvgZones1, fvgZones2, fvgHideLowerOverlap, fvgOnlyToday, fvgDayStart)
 
 // === วาดแดชบอร์ด (มุมจอ + ขนาดปรับได้) — วาดเฉพาะแท่งสุดท้ายพอ ไม่ต้องวาดทุกแท่ง ===
 dashPos = dashPosition == "ซ้ายบน" ? position.top_left : dashPosition == "ขวาบน" ? position.top_right : dashPosition == "ซ้ายล่าง" ? position.bottom_left : position.bottom_right
@@ -330,7 +471,7 @@ var int firstBarTime = na // เวลาแท่งแรกสุดที่
 if barstate.isfirst
     firstBarTime := time
 
-if showDashboard and barstate.islast
+if enableCrt and showDashboard and barstate.islast
     table.set_position(dashTable, dashPos)
 
     daysSpan = (time - firstBarTime) / (1000 * 60 * 60 * 24)
