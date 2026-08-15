@@ -4,7 +4,8 @@
 success/failed ของ setup ไม่ใช่ผลแพ้-ชนะของการเทรด (ดูหัวข้อ "CRT ไม่ใช่จุดเข้าเทรด" ด้านล่าง)
 
 โค้ด implement อยู่ที่ `src/smart-indicator.pine` — `type CrtState` + `method`s: `canAdopt`, `adopt`,
-`processSubBar`, `drawRangeLines`, `deleteRangeLines` (ดูบรรทัด 92-291)
+`processSubBar`, `drawRangeLines`, `deleteRangeLines` (เลขบรรทัดขยับได้เรื่อยๆ ตามที่แก้ไฟล์ ให้ `grep`/ค้นชื่อ
+method แทนการอ้างเลขบรรทัดตรงๆ)
 
 ## Setup
 
@@ -73,6 +74,15 @@ Implement ผ่าน field `disqualified` บน `CrtState` (reset ใน `ado
 CRT เป็นแค่ประตูกรองด่านแรก ไม่ใช่สัญญาณเข้าเทรดจริง ห้ามตีความสถิติ resolve ของ CRT ว่าเป็น "win rate"
 ของระบบเทรด (แดชบอร์ดใช้ label "อัตรา" ไม่ใช่ "Win rate") ถ้าคุยเรื่องสถิติต่อจากนี้ต้องแยกให้ชัดว่ากำลังพูดถึง
 "อัตราที่ CRT setup resolve สำเร็จ" (แค่ผ่านด่านแรก) ไม่ใช่ "อัตราทำกำไรจากการเทรดจริง"
+
+## ป้าย CTH/CTL (อัปเดต 2026-08-14 — วนแก้ 5 รอบ)
+
+ตัวหนังสือ "𝑪𝑻𝑯"/"𝑪𝑻𝑳" ใช้ glyph Unicode Mathematical **Bold Italic** (ไม่ใช่แค่ Italic เหมือนตอนแรกแล้ว) ลอย
+**เหนือ/ใต้เส้น** (ไม่ทับเส้นแล้ว แบบเดิมเคยใช้ `chart.bg_color` ลบเส้นทับตรงกลาง) — CTH ใช้
+`label.style_label_down` (body อยู่เหนือ anchor), CTL ใช้ `label.style_label_up` (body อยู่ใต้ anchor — ชื่อ
+สไตล์ทั้งสองตรงข้ามสามัญสำนึก), `size.tiny`, พื้นหลังโปร่งใสสนิท เครื่องหมายติ๊กถูก/กากบาทที่ต่อท้ายตอน resolve
+ก็เปลี่ยนจาก `✓`/`✗` (บาง) เป็น `✔`/`✘` (หนากว่า) ด้วย — ประวัติวนแก้เต็มๆ (ทำไมต้องลองผิดหลายรอบ) อยู่ใน
+`indicator_style.md` และ `bugs.md` **ห้ามแก้จุดนี้อีกโดยไม่ถามก่อน**
 
 ## Sweep-point visual marker
 
