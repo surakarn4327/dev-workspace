@@ -7,6 +7,7 @@ grpMaster = "เปิด/ปิด"
 enableCrt = input.bool(true, "CRT", inline="master", group=grpMaster)
 enableFvg = input.bool(true, "FVG", inline="master", group=grpMaster)
 enableZone = input.bool(true, "DM/SP", inline="master", tooltip="Demand/Supply zone — สลับกับ FVG ไปเรื่อยๆ ตามที่ตรวจพบจริง (ใช้ข้อมูลราคาเดียวกับ FVG แต่ทำงานได้อิสระ ไม่ต้องเปิด FVG ก็ได้)", group=grpMaster)
+enableLot = input.bool(true, "Position", inline="master", tooltip="กล่อง Entry/SL/Lot ข้างกรอบ Demand/Supply — ต้องเปิด DM/SP ด้วยถึงจะแสดง (ปิด DM/SP = กล่องนี้ก็ไม่ขึ้นเลย)", group=grpMaster)
 
 grpCloseLine = "เส้นปิดแท่ง (Broker)"
 showCloseLine = input.bool(false, "แสดงเส้น", inline="closeline", tooltip="เส้นแนวตั้ง ขีดที่แท่งปิดของไทม์เฟรมที่ตั้งไว้ — อิสระจากไทม์เฟรมแท่งคุม CRT ทั้งหมด", group=grpCloseLine)
@@ -38,11 +39,31 @@ showDashboard = input.bool(true, "แสดงแดชบอร์ด", group=g
 dashPosition = input.string("ขวาล่าง", "ตำแหน่ง", options=["ซ้ายบน", "ขวาบน", "ซ้ายล่าง", "ขวาล่าง"], group=grpDash)
 dashSize = input.string("เล็ก", "ขนาด", options=["เล็ก", "กลาง", "ใหญ่"], group=grpDash)
 
+// === ลำดับกลุ่มในหน้าตั้งค่า (คำขอผู้ใช้ 2026-08-16, ล็อกไว้แล้ว ห้ามสลับอีกโดยไม่ถามก่อน): ===
+// เปิด/ปิด (บนสุดเสมอ) -> เส้นปิดแท่ง (Broker) -> ตั้งค่า CRT -> ตั้งค่า Demand/Supply -> ตั้งค่า Entry/SL/Lot
+// -> ตั้งค่า FVG (ล่างสุด)
+
+grpZoneColor = "ตั้งค่า Demand/Supply"
+zoneOnlyToday = input.bool(false, "แสดงเฉพาะวันนี้", tooltip="ซ่อน Demand/Supply ที่เก่ากว่าแท่งปัจจุบันของ 'เส้นปิดแท่ง (Broker)' — แยกจากของ FVG (คนละ toggle) นับ 1 วันตามแท่งปิดของ broker ไม่ใช่เที่ยงคืนตามเวลาเครื่อง", group=grpZoneColor)
+zoneDemandColor = input.color(color.new(color.green, 85), "สี Demand", inline="zonecolor", group=grpZoneColor)
+zoneSupplyColor = input.color(color.new(color.red, 85), "สี Supply", inline="zonecolor", group=grpZoneColor)
+zoneTouchedColor = input.color(color.new(color.gray, 85), "สีถูกแตะ", inline="zonecolor", tooltip="สีตอนราคาแตะเข้ามาในกรอบแค่ขอบใกล้ (ยังไม่ทะลุขอบไกล) — ทะลุขอบไกลจริงยังลบกล่องทิ้งเหมือนเดิม", group=grpZoneColor)
+zoneExtendUntouched = input.bool(false, "ยืดกล่อง", tooltip="ยืดขอบขวาของกล่อง Demand/Supply ที่ยังไม่ถูกแตะไปเรื่อยๆ จนถึงแท่งปัจจุบัน (+ เลยไปอีกตามช่องด้านล่าง) พอถูกแตะ (เปลี่ยนสี) แล้วหยุดยืดทันที ไม่เกี่ยวกับ FVG (FVG ไม่ยืด)", group=grpZoneColor)
+zoneExtendAheadBars = input.int(12, "ยืดเลยแท่งปัจจุบันไปอีก (แท่ง)", minval=0, tooltip="นับเป็นจำนวนแท่งของไทม์เฟรมชาร์ตที่เปิดดูอยู่ (ไม่ใช่ TF ที่ตั้งไว้ให้ FVG/Demand-Supply ตรวจจับ) มีผลเฉพาะตอนเปิด 'ยืดกล่อง' เท่านั้น", group=grpZoneColor)
+zoneShowTouched = input.bool(true, "แสดงกรอบที่ถูกแตะแล้ว", tooltip="ปิด = กรอบที่ถูกแตะ (แค่ overlap ไม่ถึงกับ fill) หายไปเลยทันทีตอนแตะ แทนที่จะเปลี่ยนสีค้างไว้", group=grpZoneColor)
+
+grpLot = "ตั้งค่า Entry/SL/Lot"
+lotBufferPoints = input.int(30, "บัฟเฟอร์ SL (จุด)", minval=0, tooltip="ระยะเผื่อ SL เลยขอบกรอบ (hA/lA ของแท่ง A) ออกไปกี่จุด — 1 จุด = ค่า 'ขนาด 1 จุด' ด้านล่าง", group=grpLot)
+lotPointSize = input.float(0.01, "ขนาด 1 จุด (ราคา)", minval=0.0001, step=0.01, tooltip="ค่าราคาต่อ 1 จุด ใช้แปลงบัฟเฟอร์ SL และคำนวณ Lot — ยืนยันแล้วว่า 0.01 ถูกต้องสำหรับสัญลักษณ์ที่ใช้งานอยู่", group=grpLot)
+lotRiskCapital = input.float(400, "ทุนเสี่ยงต่อเทรด (USD)", minval=0, tooltip="เงินที่ยอมเสี่ยงต่อ 1 เทรด ใช้คำนวณ Lot size", group=grpLot)
+lotGapBars = input.int(2, "ระยะห่างจากกรอบ (แท่ง)", minval=0, tooltip="ช่องว่างระหว่างกรอบ Demand/Supply กับป้าย Entry/SL/Lot นับเป็นจำนวนแท่งของไทม์เฟรมชาร์ตที่เปิดดูอยู่", group=grpLot)
+
 // === FVG/iFVG (feature แสดงผลแยก ไม่ผูก logic กับ CRT เลย) — scope ตาม indicator_style.md ===
 // เหลือแค่ 2 ไทม์เฟรม + สี ในหน้าตั้งค่า ที่เหลือ (รอแท่งปิด/ซ่อนซ้อนทับ/FVG-iFVG/ประเภทเติมเต็ม/แท่งย้อนหลัง/
 // กล่อง/ป้ายชื่อ) ล็อกเป็นค่าคงที่ในโค้ดแทนแล้วตามคำขอผู้ใช้ 2026-08-14 (ดู indicator_style.md)
+// ย้ายกลุ่มนี้ลงมาล่างสุดตามคำขอผู้ใช้ 2026-08-16
 grpFvgTf = "ตั้งค่า FVG"
-fvgOnlyToday = input.bool(false, "แสดงเฉพาะวันนี้", tooltip="ซ่อน FVG/Zone ที่เก่ากว่าแท่งปัจจุบันของ 'เส้นปิดแท่ง (Broker)' — นับ 1 วันตามแท่งปิดของ broker (ไทม์เฟรมเดียวกับที่ตั้งไว้ในกลุ่ม เส้นปิดแท่ง) ไม่ใช่เที่ยงคืนตามเวลาเครื่อง", group=grpFvgTf)
+fvgOnlyToday = input.bool(false, "แสดงเฉพาะวันนี้", tooltip="ซ่อน FVG ที่เก่ากว่าแท่งปัจจุบันของ 'เส้นปิดแท่ง (Broker)' — แยกจากของ Demand/Supply (คนละ toggle ตั้งแต่ 2026-08-16) นับ 1 วันตามแท่งปิดของ broker ไม่ใช่เที่ยงคืนตามเวลาเครื่อง", group=grpFvgTf)
 fvgTf1On = input.bool(true, "", inline="fvgtf1", group=grpFvgTf)
 fvgTf1 = input.timeframe("", "ไทม์เฟรม 1", inline="fvgtf1", tooltip="เว้นว่าง = ไทม์เฟรมของชาร์ตปัจจุบัน", group=grpFvgTf)
 fvgTf2On = input.bool(false, "", inline="fvgtf2", group=grpFvgTf)
@@ -51,13 +72,6 @@ fvgTf2 = input.timeframe("15", "ไทม์เฟรม 2", inline="fvgtf2", gr
 grpFvgColor = "ตั้งค่า FVG"
 fvgBullColor = input.color(color.new(color.black, 90), "สี Bullish", inline="fvgcolor", group=grpFvgColor)
 fvgBearColor = input.color(color.new(color.black, 90), "สี Bearish", inline="fvgcolor", group=grpFvgColor)
-
-grpZoneColor = "ตั้งค่า Demand/Supply"
-zoneDemandColor = input.color(color.new(color.green, 85), "สี Demand", inline="zonecolor", group=grpZoneColor)
-zoneSupplyColor = input.color(color.new(color.red, 85), "สี Supply", inline="zonecolor", group=grpZoneColor)
-zoneTouchedColor = input.color(color.new(color.gray, 85), "สีถูกแตะ", inline="zonecolor", tooltip="สีตอนราคาแตะเข้ามาในกรอบแค่ขอบใกล้ (ยังไม่ทะลุขอบไกล) — ทะลุขอบไกลจริงยังลบกล่องทิ้งเหมือนเดิม", group=grpZoneColor)
-zoneExtendUntouched = input.bool(false, "ยืดกรอบจนถึงปัจจุบัน (เฉพาะที่ยังไม่ถูกแตะ)", tooltip="ยืดขอบขวาของกล่อง Demand/Supply ที่ยังไม่ถูกแตะไปเรื่อยๆ จนถึงแท่งปัจจุบัน พอถูกแตะ (เปลี่ยนสี) แล้วหยุดยืดทันที ไม่เกี่ยวกับ FVG (FVG ไม่ยืด)", group=grpZoneColor)
-zoneShowTouched = input.bool(true, "แสดงกรอบที่ถูกแตะแล้ว", tooltip="ปิด = กรอบที่ถูกแตะ (แค่ overlap ไม่ถึงกับ fill) หายไปเลยทันทีตอนแตะ แทนที่จะเปลี่ยนสีค้างไว้", group=grpZoneColor)
 
 fvgWaitClose = true
 fvgHideLowerOverlap = true
@@ -68,7 +82,6 @@ fvgMaxBarsBack = 1000
 fvgDeleteAfterFill = true
 fvgExtendBoxes = false
 fvgBoxLength = 30
-zoneExtendAheadBars = 60 // ตอน zoneExtendUntouched เปิด ยืดเลยแท่งปัจจุบันไปอีกกี่แท่ง (นับตาม timeframe.period ของชาร์ตที่เปิดดูอยู่) คำขอผู้ใช้ 2026-08-14
 
 isNewHtfBar = timeframe.change(htf)
 
@@ -416,8 +429,18 @@ type ZoneBox
     float bottom = na
     bool active = true
     bool touched = false // เคยถูกราคาแตะเข้ามาในกรอบ (แต่ยังไม่ fill เต็ม) แล้วหรือยัง — เปลี่ยนสีครั้งเดียวตอน true
-    int anchorTime = na // เวลาเปิดของแท่ง A ที่ใช้สร้าง zone นี้ (ขอบซ้ายของกล่อง คงที่ตลอด)
-    int rightTime = na // เวลาขอบขวาปัจจุบันของกล่อง (ขยับได้ตอนยืด) — ใช้คำนวณกึ่งกลางวางตัวอักษรใหม่ทุกครั้งที่ขยับ
+    int anchorTime = na // ตำแหน่งขอบซ้ายของกล่อง (คงที่ตลอด) — หน่วยตรงกับ useBarIndex: เวลาจริง (ms) ถ้า false, จำนวนแท่ง (bar_index) ถ้า true
+    int rightTime = na // ตำแหน่งขอบขวาปัจจุบันของกล่อง (ขยับได้ตอนยืด) หน่วยเดียวกับ anchorTime — ใช้คำนวณกึ่งกลางวางตัวอักษรใหม่ทุกครั้งที่ขยับ
+    int anchorTimeReal = na // เวลาเปิดจริงของแท่ง A เสมอ (ms, ไม่สนโหมดวาด) — ใช้เทียบ dayStart ตอนเช็ค "แสดงเฉพาะวันนี้" เท่านั้น
+    bool useBarIndex = false // true = กล่อง/ป้ายนี้วาดด้วย xloc.bar_index (กันปัญหาเวลาไปตกช่วงตลาดปิดตอนยืด) — ใช้ได้เฉพาะตอน TF ตรวจจับ zone ตรงกับ TF ของชาร์ตที่เปิดดูพอดีเท่านั้น (เพิ่ม 2026-08-16) ไม่ตรง = ยังใช้ xloc.bar_time เหมือนเดิม (ต้องอิงเวลาจริงเพื่อรองรับหลายไทม์เฟรม)
+    label lotLbl = na // ข้อความ "ET : .. SL : .. LT : .." บรรทัดเดียว — label ล้วน ไม่มี box (Pine label กว้าง/สูง fit ข้อความเองเป็น pixel คงที่ ไม่ขึ้นกับซูม ต่างจาก box ที่ขนาดอิงแท่ง/เวลาเสมอ — ยืนยันกับผู้ใช้แล้ว 2026-08-16 ว่ายอมรับไม่มีเส้นขอบเพื่อแลกกับสิ่งนี้)
+
+// เลื่อนป้าย Entry/SL/Lot ให้ตามกรอบ zone เสมอเวลากรอบ zone ยืด (ตำแหน่งอิง z.rightTime ที่ขยับได้ หน่วยตาม useBarIndex)
+method repositionLotBox(ZoneBox this) =>
+    if not na(this.lotLbl)
+        newX = this.useBarIndex ? this.rightTime + lotGapBars : this.rightTime + timeframe.in_seconds(timeframe.period) * lotGapBars * 1000
+        label.set_x(this.lotLbl, newX)
+    true
 
 // สถานะ chain การสลับ demand/supply ต่อ 1 ไทม์เฟรม (คนละก้อนกับ FvgZone/ZoneBox เดิมเลย)
 type ZoneChain
@@ -445,56 +468,78 @@ method hasAnchor(array<FvgZone> zones, int anchorTime) =>
 // ประมวลผล FVG ของไทม์เฟรมเดียว: อัปเดต/ลบของเดิม (fill/invalidate) ทุกแท่ง แล้วค่อยหาใหม่ถ้า enabled
 // off = 1 (รอแท่งปิด) เทียบ high[1]/[2]/[3] เทียบเท่า C/B/A ที่ "เพิ่งปิดแล้ว" ณ ติ๊กแรกของแท่งถัดไป
 // off = 0 (ไม่รอแท่งปิด) เทียบ high[0]/[1]/[2] สด ๆ ทุกแท่ง กันสร้างซ้ำด้วย anchorTime ของแท่ง B
-method manageFvgTf(array<FvgZone> zones, bool enabled, string tf, int off, int maxBarsBack, int boxLength, bool extendBoxes, bool deleteAfterFill, bool showFvg, bool showIfvg, string filledType, color bullColor, color bearColor, array<FvgZone> z1, array<FvgZone> z2, bool hideOverlap, bool onlyToday, int dayStart, array<ZoneBox> zoneZones, bool zoneEnabled, color zoneDemandColor, color zoneSupplyColor, ZoneChain zoneChain, bool fvgEnabled, color zoneTouchedColor, bool zoneExtendUntouched, bool zoneShowTouched) =>
+method manageFvgTf(array<FvgZone> zones, bool enabled, string tf, int off, int maxBarsBack, int boxLength, bool extendBoxes, bool deleteAfterFill, bool showFvg, bool showIfvg, string filledType, color bullColor, color bearColor, array<FvgZone> z1, array<FvgZone> z2, bool hideOverlap, bool fvgOnlyToday, int dayStart, array<ZoneBox> zoneZones, bool zoneEnabled, color zoneDemandColor, color zoneSupplyColor, ZoneChain zoneChain, bool fvgEnabled, color zoneTouchedColor, bool zoneExtendUntouched, bool zoneShowTouched, bool zoneOnlyToday) =>
     tfSeconds = timeframe.in_seconds(tf)
     [hC, lC, hA, lA, tB, tC, tA] = request.security(syminfo.tickerid, tf, [high[off], low[off], high[off + 2], low[off + 2], time[off + 1], time[off], time[off + 2]], lookahead=barmerge.lookahead_off)
+    // ใช้ xloc.bar_index (นับแท่ง) แทน xloc.bar_time (เวลาจริง) ให้กล่อง/ป้าย Demand/Supply ได้ก็ต่อเมื่อ TF ที่ใช้
+    // ตรวจจับ zone ตรงกับ TF ของชาร์ตที่เปิดดูอยู่พอดี (เว้นว่าง = ใช้ TF ชาร์ตอยู่แล้ว) เท่านั้น — เพราะกรณีนี้
+    // tA/tB/tC ที่ได้จาก request.security ตรงกับแท่งจริงบนชาร์ตนี้เป๊ะ แปลงเป็น bar_index ได้ตรงไม่ต้องเดา ถ้า TF
+    // ตรวจจับต่างจาก TF ชาร์ต (multi-TF จริง) ยังต้องใช้ xloc.bar_time เหมือนเดิม (ไม่มีทางแปลงเวลาแท่ง TF อื่นเป็น
+    // bar_index ของชาร์ตนี้ได้ตรงเป๊ะใน Pine) — เพิ่ม 2026-08-16 แก้ปัญหากรอบยืดไปตกช่วงตลาดปิดแล้วโดนตัดสั้น
+    zoneBarIndexMode = tf == "" or tf == timeframe.period
 
     // อัปเดต/ลบ zone เดิมก่อนเสมอ (เหมือน FVG) — เฉพาะตอน zoneEnabled เท่านั้น (ปิด toggle = หยุดทั้งอัปเดตและสร้างใหม่)
     if zoneEnabled and array.size(zoneZones) > 0
         for i = array.size(zoneZones) - 1 to 0
             z = array.get(zoneZones, i)
-            if onlyToday and z.anchorTime < dayStart
+            if zoneOnlyToday and z.anchorTimeReal < dayStart
                 box.delete(z.b)
                 label.delete(z.lbl)
+                if not na(z.lotLbl)
+                    label.delete(z.lotLbl)
                 array.remove(zoneZones, i)
             else if z.active
                 zoneFilled = z.bullish ? low <= z.bottom : high >= z.top
                 if zoneFilled
                     box.delete(z.b)
                     label.delete(z.lbl)
+                    if not na(z.lotLbl)
+                        label.delete(z.lotLbl)
                     array.remove(zoneZones, i)
-                else if not z.touched and high >= z.bottom and low <= z.top
-                    // แตะแค่ขอบใกล้ (ราคาเข้ามาในกรอบ overlap แล้ว แต่ยังไม่ทะลุขอบไกลถึงจะนับ fill ด้านบน)
-                    if zoneShowTouched
-                        z.touched := true
-                        box.set_bgcolor(z.b, zoneTouchedColor)
-                        label.set_text(z.lbl, "𝑿")
-                        if zoneExtendUntouched
-                            // ยืดเลยแท่งที่แตะไปอีก 1 แท่ง (หยุดที่แท่งถัดไป ไม่ใช่หยุดพอดีแท่งที่แตะ)
-                            z.rightTime := time + timeframe.in_seconds(timeframe.period) * 1000
-                            box.set_right(z.b, z.rightTime)
-                            label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
+                else
+                    // ป้าย ET/SL/LT หายก็ต่อเมื่อ "แท่งที่มาแตะกรอบ" ปิดแล้วเท่านั้น (barstate.isconfirmed) — ต่างจาก
+                    // กรอบ zone เอง ที่เปลี่ยนสี/ข้อความทันทีตอนแตะแบบ intrabar (ไม่เปลี่ยนพฤติกรรมเดิมของ zone เลย
+                    // แค่ป้าย lot รอปิดแท่งก่อนค่อยลบ ตามคำขอผู้ใช้ 2026-08-16) เช็คทุกแท่งที่ zone ยัง active/ไม่ fill
+                    if z.touched and barstate.isconfirmed and not na(z.lotLbl)
+                        label.delete(z.lotLbl)
+                        z.lotLbl := na
+                    if not z.touched and high >= z.bottom and low <= z.top
+                        // แตะแค่ขอบใกล้ (ราคาเข้ามาในกรอบ overlap แล้ว แต่ยังไม่ทะลุขอบไกลถึงจะนับ fill ด้านบน)
+                        if zoneShowTouched
+                            z.touched := true
+                            box.set_bgcolor(z.b, zoneTouchedColor)
+                            label.set_text(z.lbl, "𝑿")
+                            if zoneExtendUntouched
+                                // ยืดเลยแท่งที่แตะไปอีก 1 แท่ง (หยุดที่แท่งถัดไป ไม่ใช่หยุดพอดีแท่งที่แตะ)
+                                z.rightTime := z.useBarIndex ? bar_index + 1 : time + timeframe.in_seconds(timeframe.period) * 1000
+                                box.set_right(z.b, z.rightTime)
+                                label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
+                            else
+                                // ไม่ได้ยืด แต่ตัวอักษรอาจไม่ได้อยู่กลางกล่องพอดีถ้าเพิ่งสร้าง (กล่องคงที่แต่กันไว้)
+                                label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
+                            z.repositionLotBox()
                         else
-                            // ไม่ได้ยืด แต่ตัวอักษรอาจไม่ได้อยู่กลางกล่องพอดีถ้าเพิ่งสร้าง (กล่องคงที่แต่กันไว้)
-                            label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
-                    else
-                        box.delete(z.b)
-                        label.delete(z.lbl)
-                        array.remove(zoneZones, i)
-                else if not z.touched and zoneExtendUntouched
-                    // ยืดขอบขวาไปเรื่อยๆ เฉพาะตอนยังไม่ถูกแตะ (คนละ toggle จาก extendBoxes ของ FVG โดยสิ้นเชิง)
-                    // ยืดเลยแท่งปัจจุบันไปอีก 60 แท่งเสมอ (ของไทม์เฟรมชาร์ตที่เปิดดูอยู่ ไม่ใช่ TF ของ FVG/zone เอง)
-                    // ทุกครั้งที่ยืด ขยับตัวอักษรตามไปให้อยู่กึ่งกลางกล่องเสมอ
-                    z.rightTime := time + timeframe.in_seconds(timeframe.period) * zoneExtendAheadBars * 1000
-                    box.set_right(z.b, z.rightTime)
-                    label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
+                            box.delete(z.b)
+                            label.delete(z.lbl)
+                            if not na(z.lotLbl)
+                                label.delete(z.lotLbl)
+                            array.remove(zoneZones, i)
+                    else if not z.touched and zoneExtendUntouched
+                        // ยืดขอบขวาไปเรื่อยๆ เฉพาะตอนยังไม่ถูกแตะ (คนละ toggle จาก extendBoxes ของ FVG โดยสิ้นเชิง)
+                        // ยืดเลยแท่งปัจจุบันไปอีกตาม zoneExtendAheadBars เสมอ (ของไทม์เฟรมชาร์ตที่เปิดดูอยู่ ไม่ใช่ TF
+                        // ของ FVG/zone เอง) — ถ้า z.useBarIndex ใช้จำนวนแท่งตรงๆ (กันตกช่วงตลาดปิด) ไม่ใช้ก็คำนวณเวลาจริงเหมือนเดิม
+                        // ทุกครั้งที่ยืด ขยับตัวอักษรตามไปให้อยู่กึ่งกลางกล่องเสมอ
+                        z.rightTime := z.useBarIndex ? bar_index + zoneExtendAheadBars : time + timeframe.in_seconds(timeframe.period) * zoneExtendAheadBars * 1000
+                        box.set_right(z.b, z.rightTime)
+                        label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
+                        z.repositionLotBox()
 
     // อัปเดต/ลบ FVG เดิมก่อนเสมอ ไม่ขึ้นกับ enabled (ปิด checkbox ทีหลังแค่หยุดหาใหม่ ไม่ลบของเก่าทันที)
     // เฉพาะตอน fvgEnabled เท่านั้น (ปิด FVG master แต่เปิด zone อย่างเดียว = ไม่ต้องยุ่งกับ FvgZone เลย)
     if fvgEnabled and array.size(zones) > 0
         for i = array.size(zones) - 1 to 0
             z = array.get(zones, i)
-            if onlyToday and z.anchorTime < dayStart
+            if fvgOnlyToday and z.anchorTime < dayStart
                 // แท่งปิด (broker) ขึ้นวันใหม่แล้ว กรอบนี้เก่ากว่าวันนี้ — ลบทิ้งไม่ว่าจะ fill/invalidate หรือยัง
                 box.delete(z.b)
                 array.remove(zones, i)
@@ -522,7 +567,7 @@ method manageFvgTf(array<FvgZone> zones, bool enabled, string tf, int off, int m
                 else if extendBoxes
                     box.set_right(z.b, time)
 
-    if enabled and bar_index >= last_bar_index - maxBarsBack and not na(hA) and not na(hC) and (not onlyToday or tB >= dayStart)
+    if enabled and bar_index >= last_bar_index - maxBarsBack and not na(hA) and not na(hC)
         canCreate = off == 1 ? ta.change(tC) != 0 : not zones.hasAnchor(tB)
         if canCreate
             bullGap = lC > hA
@@ -531,7 +576,8 @@ method manageFvgTf(array<FvgZone> zones, bool enabled, string tf, int off, int m
                 // สลับ demand/supply กับ FVG ปกติ: สร้าง zone จากแท่ง A นี้ก็ต่อเมื่อเป็นจังหวะ "ตา" ของ chain
                 // (เริ่มใหม่เพราะทิศเปลี่ยน/ยังไม่เคยเริ่ม หรือแท่ง A ตรงกับแท่ง C ของ zone รอบก่อนพอดี)
                 // สร้างกล่อง zone ก่อนกล่อง FVG เสมอ (สร้างก่อน = อยู่หลังสุดตาม z-order) — zone (กรอบใหญ่กว่า) อยู่หลัง FVG (กรอบเล็กกว่า)
-                if zoneEnabled
+                // "แสดงเฉพาะวันนี้" แยก toggle กันแล้ว (zoneOnlyToday/fvgOnlyToday คนละตัว 2026-08-16) เช็คแยกฝั่งใครฝั่งมัน
+                if zoneEnabled and (not zoneOnlyToday or tB >= dayStart)
                     // reset chain ถ้า: ยังไม่เคยเริ่ม / ทิศเปลี่ยน / แท่งใหม่ "เลย" เวลาที่รอไปแล้ว (expectedA เก่า
                     // ไม่มีวันตรงกับแท่งนี้อีกเลย เพราะเวลาเดินหน้าอย่างเดียว) — กันไม่ให้ chain ค้าง skip ตลอดไป
                     // ตอนมีช่วงพัก/ไม่ต่อเนื่องกันเป๊ะระหว่าง FVG ทิศเดิม (bug พบจริง 2026-08-14)
@@ -541,34 +587,65 @@ method manageFvgTf(array<FvgZone> zones, bool enabled, string tf, int off, int m
                         zoneColor = bullGap ? zoneDemandColor : zoneSupplyColor
                         // ถ้าเปิด "ยืดกรอบจนถึงปัจจุบัน" ให้กรอบที่เพิ่งสร้างยืดเต็มทันที ไม่ต้องรอแท่งถัดไปจับยืดตาม
                         // (bug พบจริง 2026-08-14 — กรอบใหม่แคบกว่ากรอบเก่าเพราะ loop ยืดรันก่อนส่วนสร้างเสมอ)
-                        zoneRightEdge = zoneExtendUntouched ? time + timeframe.in_seconds(timeframe.period) * zoneExtendAheadBars * 1000 : extendBoxes ? time : tB + boxLength * tfSeconds * 1000
-                        newZoneBox = box.new(tA, hA, zoneRightEdge, lA, border_width=1, border_color=color.black, border_style=line.style_dashed, bgcolor=zoneColor, extend=extend.none, xloc=xloc.bar_time)
+                        // xloc.bar_index (นับแท่ง, กันตกช่วงตลาดปิดตอนยืด) เฉพาะตอน zoneBarIndexMode เท่านั้น
+                        // (TF ตรวจจับตรงกับ TF ชาร์ตพอดี) ไม่งั้นยังใช้ xloc.bar_time (เวลาจริง) เหมือนเดิม
+                        zoneXloc = zoneBarIndexMode ? xloc.bar_index : xloc.bar_time
+                        zoneLeftPos = zoneBarIndexMode ? bar_index - (off + 2) : tA
+                        zoneRightEdge = zoneBarIndexMode ? (zoneExtendUntouched ? bar_index + zoneExtendAheadBars : extendBoxes ? bar_index : (bar_index - (off + 1)) + boxLength) : (zoneExtendUntouched ? time + timeframe.in_seconds(timeframe.period) * zoneExtendAheadBars * 1000 : extendBoxes ? time : tB + boxLength * tfSeconds * 1000)
+                        newZoneBox = box.new(zoneLeftPos, hA, zoneRightEdge, lA, border_width=1, border_color=color.black, border_style=line.style_dashed, bgcolor=zoneColor, extend=extend.none, xloc=zoneXloc)
                         // ตัวอักษร "Demand"/"Supply" เอียงหนา (glyph Unicode Mathematical Bold Italic — Pine ไม่มี
                         // property เอียง/หนาจริง ใช้ trick เดียวกับ CTH/CTL) วางกึ่งกลางกรอบเสมอทั้งแนวนอน-แนวตั้ง
                         // (คำนวณกึ่งกลางแนวนอนใหม่ทุกครั้งที่กล่องยืด/หด — ดูจุด label.set_x ด้านบน) เปลี่ยนเป็น
                         // "𝑿" ตอนถูกแตะ (ดูจุด zoneShowTouched ด้านบน)
-                        newZoneLbl = label.new(int(math.round(math.avg(tA, zoneRightEdge))), math.avg(hA, lA), bullGap ? "𝑫𝒆𝒎𝒂𝒏𝒅" : "𝑺𝒖𝒑𝒑𝒍𝒚", xloc=xloc.bar_time, style=label.style_label_center, color=color.new(color.white, 100), textcolor=color.black, size=size.small)
+                        newZoneLbl = label.new(int(math.round(math.avg(zoneLeftPos, zoneRightEdge))), math.avg(hA, lA), bullGap ? "𝑫𝒆𝒎𝒂𝒏𝒅" : "𝑺𝒖𝒑𝒑𝒍𝒚", xloc=zoneXloc, style=label.style_label_center, color=color.new(color.white, 100), textcolor=color.black, size=size.small)
                         // เช็ค fill/แตะทันทีตั้งแต่แท่งที่สร้างเลย (bug พบจริง 2026-08-14) — เพราะ loop
                         // "อัปเดตกรอบเก่า" รันก่อนส่วนสร้างเสมอในทุกแท่ง กรอบที่เพิ่งสร้างในแท่งนี้จะไม่ถูก loop
                         // นั้นเช็คจนกว่าจะถึงแท่งถัดไป — ถ้าแท่งที่สร้าง (ซึ่งอาจไส้ยาวมาแตะโซนตัวเองพอดี) ทะลุ/แตะ
                         // อยู่แล้วตั้งแต่ตอนสร้าง จะไม่มีวันถูกจับได้เลยถ้าราคาขยับหนีไปแท่งถัดไป
                         newZoneFilled = bullGap ? low <= lA : high >= hA
                         newZoneTouched = high >= lA and low <= hA
+
+                        // ป้าย Entry/SL/Lot ข้างกรอบ (ต้องเปิดทั้ง zoneEnabled และ enableLot) — label ล้วน ไม่มี box
+                        // (ยืนยันกับผู้ใช้ 2026-08-16 — label กว้าง/สูง fit ข้อความเองเป็น pixel คงที่ ไม่ขึ้นกับซูม
+                        // ต่างจาก box ที่ขนาดอิงแท่ง/เวลาเสมอ แลกกับไม่มีเส้นขอบประดำแบบกรอบ zone) พื้นหลังใช้สี
+                        // ทิศทางเดียวกับ zone (zoneColor) วางถัดจากขอบขวาของกรอบ zone เว้นระยะตาม lotGapBars เสมอ
+                        // Entry = hA (Demand) / lA (Supply) — ใช้ high/low ของแท่ง A เดิม (เหมือนที่ใช้เป็น top/bottom ของ ZoneBox)
+                        // SL = lA/hA ± บัฟเฟอร์จุด (lotBufferPoints * lotPointSize), Lot = ทุนเสี่ยง ÷ (|Entry-SL| / จุด) ปัด 2 ตำแหน่ง
+                        label newLotLbl = na
+                        if enableLot
+                            pointBuffer = lotBufferPoints * lotPointSize
+                            entryPrice = bullGap ? hA : lA
+                            slPrice = bullGap ? lA - pointBuffer : hA + pointBuffer
+                            lotSize = math.round(lotRiskCapital / (math.abs(entryPrice - slPrice) / lotPointSize) * 100) / 100
+                            lotX = zoneBarIndexMode ? zoneRightEdge + lotGapBars : zoneRightEdge + timeframe.in_seconds(timeframe.period) * lotGapBars * 1000
+                            lotText = "ET : " + str.tostring(entryPrice, format.mintick) + "   SL : " + str.tostring(slPrice, format.mintick) + "   LT : " + str.tostring(lotSize, "#.##")
+                            // ใช้ style_label_left คาดว่าจุดยึดอยู่ขอบ "ซ้าย" ของป้าย ตัวป้ายขยายไปทาง "ขวา" เท่านั้น
+                            // (ตามชื่อ = ทิศทางลูกศรชี้ ไม่ใช่ทิศทางที่ตัวป้ายขยาย — เหมือน style_label_up/down ที่
+                            // เจอมาก่อน ดู bugs.md) เคยลอง style_label_center แล้วป้ายยาวเกินครึ่งซ้ายย้อนกลับไปทับ
+                            // กรอบ zone (2026-08-16) เปลี่ยนมาใช้ style ที่ยึดขอบแทน **ยังไม่ได้ยืนยันจากชาร์ตจริง
+                            // ว่า style_label_left ให้ผลตามที่คาด — ถ้าเปิดชาร์ตแล้วป้ายยังขยายผิดทาง (ทับกรอบเหมือนเดิม
+                            // หรือขยายซ้ายแทน) ให้สลับเป็น style_label_right แทน**
+                            newLotLbl := label.new(lotX, math.avg(hA, lA), lotText, xloc=zoneXloc, style=label.style_label_left, color=zoneColor, textcolor=color.black, size=size.small)
+
                         if newZoneFilled
                             box.delete(newZoneBox)
                             label.delete(newZoneLbl)
+                            if not na(newLotLbl)
+                                label.delete(newLotLbl)
                         else if newZoneTouched and not zoneShowTouched
                             box.delete(newZoneBox)
                             label.delete(newZoneLbl)
+                            if not na(newLotLbl)
+                                label.delete(newLotLbl)
                         else
                             if newZoneTouched
                                 box.set_bgcolor(newZoneBox, zoneTouchedColor)
                                 label.set_text(newZoneLbl, "𝑿")
-                            array.push(zoneZones, ZoneBox.new(b=newZoneBox, lbl=newZoneLbl, bullish=bullGap, top=hA, bottom=lA, anchorTime=tA, rightTime=zoneRightEdge, touched=newZoneTouched))
+                            array.push(zoneZones, ZoneBox.new(b=newZoneBox, lbl=newZoneLbl, bullish=bullGap, top=hA, bottom=lA, anchorTime=zoneLeftPos, rightTime=zoneRightEdge, touched=newZoneTouched, lotLbl=newLotLbl, anchorTimeReal=tA, useBarIndex=zoneBarIndexMode))
                         zoneChain.expectedA := tC
                     zoneChain.lastBullish := bullGap
 
-                if fvgEnabled
+                if fvgEnabled and (not fvgOnlyToday or tB >= dayStart)
                     zTop = bullGap ? lC : lA
                     zBottom = bullGap ? hA : hC
                     hidden = hideOverlap and (z1.containsRange(zTop, zBottom, tfSeconds) or z2.containsRange(zTop, zBottom, tfSeconds))
@@ -615,8 +692,8 @@ fvgDayStart = request.security(syminfo.tickerid, closeLineTf, time, lookahead=ba
 // zone ทำงานได้อิสระจาก enableFvg แล้ว (คำขอผู้ใช้ 2026-08-14) — เรียก manageFvgTf ทุกครั้งที่ feature ใดใน 2 อันเปิดอยู่
 // fvgEnabled (แยกจาก enableZone) คุมเฉพาะส่วน FvgZone/กล่อง FVG เท่านั้นภายในฟังก์ชัน ไม่กระทบ zone เลย
 if enableFvg or enableZone
-    fvgZones1.manageFvgTf(fvgTf1On, fvgTf1, fvgOff, fvgMaxBarsBack, fvgBoxLength, fvgExtendBoxes, fvgDeleteAfterFill, fvgShowFvg, fvgShowIfvg, fvgFilledType, fvgBullColor, fvgBearColor, fvgZones1, fvgZones2, fvgHideLowerOverlap, fvgOnlyToday, fvgDayStart, zoneZones1, enableZone, zoneDemandColor, zoneSupplyColor, zoneChain1, enableFvg, zoneTouchedColor, zoneExtendUntouched, zoneShowTouched)
-    fvgZones2.manageFvgTf(fvgTf2On, fvgTf2, fvgOff, fvgMaxBarsBack, fvgBoxLength, fvgExtendBoxes, fvgDeleteAfterFill, fvgShowFvg, fvgShowIfvg, fvgFilledType, fvgBullColor, fvgBearColor, fvgZones1, fvgZones2, fvgHideLowerOverlap, fvgOnlyToday, fvgDayStart, zoneZones2, enableZone, zoneDemandColor, zoneSupplyColor, zoneChain2, enableFvg, zoneTouchedColor, zoneExtendUntouched, zoneShowTouched)
+    fvgZones1.manageFvgTf(fvgTf1On, fvgTf1, fvgOff, fvgMaxBarsBack, fvgBoxLength, fvgExtendBoxes, fvgDeleteAfterFill, fvgShowFvg, fvgShowIfvg, fvgFilledType, fvgBullColor, fvgBearColor, fvgZones1, fvgZones2, fvgHideLowerOverlap, fvgOnlyToday, fvgDayStart, zoneZones1, enableZone, zoneDemandColor, zoneSupplyColor, zoneChain1, enableFvg, zoneTouchedColor, zoneExtendUntouched, zoneShowTouched, zoneOnlyToday)
+    fvgZones2.manageFvgTf(fvgTf2On, fvgTf2, fvgOff, fvgMaxBarsBack, fvgBoxLength, fvgExtendBoxes, fvgDeleteAfterFill, fvgShowFvg, fvgShowIfvg, fvgFilledType, fvgBullColor, fvgBearColor, fvgZones1, fvgZones2, fvgHideLowerOverlap, fvgOnlyToday, fvgDayStart, zoneZones2, enableZone, zoneDemandColor, zoneSupplyColor, zoneChain2, enableFvg, zoneTouchedColor, zoneExtendUntouched, zoneShowTouched, zoneOnlyToday)
 
 // === วาดแดชบอร์ด (มุมจอ + ขนาดปรับได้) — วาดเฉพาะแท่งสุดท้ายพอ ไม่ต้องวาดทุกแท่ง ===
 dashPos = dashPosition == "ซ้ายบน" ? position.top_left : dashPosition == "ขวาบน" ? position.top_right : dashPosition == "ซ้ายล่าง" ? position.bottom_left : position.bottom_right
