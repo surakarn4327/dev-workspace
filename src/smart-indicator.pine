@@ -428,7 +428,9 @@ type ZoneBox
     float top = na
     float bottom = na
     bool active = true
-    bool touched = false // เคยถูกราคาแตะเข้ามาในกรอบ (แต่ยังไม่ fill เต็ม) แล้วหรือยัง — เปลี่ยนสีครั้งเดียวตอน true
+    bool touched = false // "ถูกแตะแล้ว" แบบจบสถานะจริง (เทา+X หรือลบทิ้งตาม zoneShowTouched) — เกิดตอนมีกรอบอื่นโดนแตะ (justTouched) ใหม่เท่านั้น ไม่ใช่ตอนแตะครั้งแรก (เพิ่ม 2026-08-16)
+    bool justTouched = false // "พึ่งแตะ" — โดนแตะครั้งแรกแล้ว แต่ยังไม่จบสถานะ หน้าตาเหมือนกรอบปกติทุกอย่าง (ไม่เปลี่ยนสี/ข้อความ) แค่หยุดยืด+แช่แข็งขอบขวาที่แท่งที่แตะ+2 แท่ง (เพิ่ม 2026-08-16 ตามคำขอผู้ใช้)
+    int justTouchedBar = na // bar_index ตอนกลายเป็น justTouched — กันไม่ให้ finalizeJustTouched จบสถานะกรอบที่พึ่ง justTouched ในแท่งเดียวกันทันที (ต้องรอกรอบอื่นแตะในแท่งถัดไปเป็นต้นไป)
     int anchorTime = na // ตำแหน่งขอบซ้ายของกล่อง (คงที่ตลอด) — หน่วยตรงกับ useBarIndex: เวลาจริง (ms) ถ้า false, จำนวนแท่ง (bar_index) ถ้า true
     int rightTime = na // ตำแหน่งขอบขวาปัจจุบันของกล่อง (ขยับได้ตอนยืด) หน่วยเดียวกับ anchorTime — ใช้คำนวณกึ่งกลางวางตัวอักษรใหม่ทุกครั้งที่ขยับ
     int anchorTimeReal = na // เวลาเปิดจริงของแท่ง A เสมอ (ms, ไม่สนโหมดวาด) — ใช้เทียบ dayStart ตอนเช็ค "แสดงเฉพาะวันนี้" เท่านั้น
@@ -440,6 +442,35 @@ method repositionLotBox(ZoneBox this) =>
     if not na(this.lotLbl)
         newX = this.useBarIndex ? this.rightTime + lotGapBars : this.rightTime + timeframe.in_seconds(timeframe.period) * lotGapBars * 1000
         label.set_x(this.lotLbl, newX)
+    true
+
+// จบสถานะกรอบที่ "พึ่งแตะ" (justTouched) ให้กลายเป็น "ถูกแตะแล้ว" จริง (touched) — เรียกทุกครั้งที่มีกรอบไหน (ใน
+// ไทม์เฟรมเดียวกัน) กลายเป็น justTouched ใหม่ (ทั้งจากกรอบเก่าที่แตะในลูปอัปเดต และกรอบใหม่ที่พึ่งสร้างแล้วโดนแตะ
+// ทันที) — ข้าม (ไม่จบสถานะ) เฉพาะกรอบที่เพิ่งกลายเป็น justTouched ใน "แท่งเดียวกัน" นี้เอง (กันจบสถานะตัวเองทันที
+// ตั้งแต่แท่งที่พึ่งแตะ) — ตอนจบสถานะถึงจะหยุดยืด+แช่แข็งขอบขวาที่แท่งนี้ (แท่ง finalize ไม่ใช่แท่งที่แตะครั้งแรก)
+// +2 แท่งเสมอ (ถ้าเปิด zoneExtendUntouched) และป้าย ET/SL/LT ถึงจะหายไปตรงนี้ (แก้ไข 2026-08-17 ตามคำขอผู้ใช้ —
+// เดิมแช่แข็ง/ซ่อนป้ายตั้งแต่ตอนพึ่งแตะ ตอนนี้ระหว่างพึ่งแตะให้เหมือนกรอบปกติทุกอย่าง ยืดได้ ป้ายไม่หาย)
+method finalizeJustTouched(array<ZoneBox> zoneZones, bool zoneShowTouched, color zoneTouchedColor, bool zoneExtendUntouched) =>
+    if array.size(zoneZones) > 0
+        for i = array.size(zoneZones) - 1 to 0
+            z = array.get(zoneZones, i)
+            if z.justTouched and z.justTouchedBar != bar_index
+                z.justTouched := false
+                z.touched := true
+                if zoneExtendUntouched
+                    z.rightTime := z.useBarIndex ? bar_index + 2 : time + timeframe.in_seconds(timeframe.period) * 2 * 1000
+                    box.set_right(z.b, z.rightTime)
+                    label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
+                if not na(z.lotLbl)
+                    label.delete(z.lotLbl)
+                    z.lotLbl := na
+                if zoneShowTouched
+                    box.set_bgcolor(z.b, zoneTouchedColor)
+                    label.set_text(z.lbl, "𝑿")
+                else
+                    box.delete(z.b)
+                    label.delete(z.lbl)
+                    array.remove(zoneZones, i)
     true
 
 // สถานะ chain การสลับ demand/supply ต่อ 1 ไทม์เฟรม (คนละก้อนกับ FvgZone/ZoneBox เดิมเลย)
@@ -479,6 +510,7 @@ method manageFvgTf(array<FvgZone> zones, bool enabled, string tf, int off, int m
     zoneBarIndexMode = tf == "" or tf == timeframe.period
 
     // อัปเดต/ลบ zone เดิมก่อนเสมอ (เหมือน FVG) — เฉพาะตอน zoneEnabled เท่านั้น (ปิด toggle = หยุดทั้งอัปเดตและสร้างใหม่)
+    anyNewJustTouch = false // true ถ้ามีกรอบไหนกลายเป็น justTouched ใหม่ในลูปนี้ — ใช้ตัดสินว่าต้องเรียก finalizeJustTouched จบสถานะกรอบอื่นมั้ย (เพิ่ม 2026-08-16)
     if zoneEnabled and array.size(zoneZones) > 0
         for i = array.size(zoneZones) - 1 to 0
             z = array.get(zoneZones, i)
@@ -497,42 +529,36 @@ method manageFvgTf(array<FvgZone> zones, bool enabled, string tf, int off, int m
                         label.delete(z.lotLbl)
                     array.remove(zoneZones, i)
                 else
-                    // ป้าย ET/SL/LT หายก็ต่อเมื่อ "แท่งที่มาแตะกรอบ" ปิดแล้วเท่านั้น (barstate.isconfirmed) — ต่างจาก
-                    // กรอบ zone เอง ที่เปลี่ยนสี/ข้อความทันทีตอนแตะแบบ intrabar (ไม่เปลี่ยนพฤติกรรมเดิมของ zone เลย
-                    // แค่ป้าย lot รอปิดแท่งก่อนค่อยลบ ตามคำขอผู้ใช้ 2026-08-16) เช็คทุกแท่งที่ zone ยัง active/ไม่ fill
-                    if z.touched and barstate.isconfirmed and not na(z.lotLbl)
-                        label.delete(z.lotLbl)
-                        z.lotLbl := na
-                    if not z.touched and high >= z.bottom and low <= z.top
-                        // แตะแค่ขอบใกล้ (ราคาเข้ามาในกรอบ overlap แล้ว แต่ยังไม่ทะลุขอบไกลถึงจะนับ fill ด้านบน)
-                        if zoneShowTouched
-                            z.touched := true
-                            box.set_bgcolor(z.b, zoneTouchedColor)
-                            label.set_text(z.lbl, "𝑿")
-                            if zoneExtendUntouched
-                                // ยืดเลยแท่งที่แตะไปอีก 1 แท่ง (หยุดที่แท่งถัดไป ไม่ใช่หยุดพอดีแท่งที่แตะ)
-                                z.rightTime := z.useBarIndex ? bar_index + 1 : time + timeframe.in_seconds(timeframe.period) * 1000
-                                box.set_right(z.b, z.rightTime)
-                                label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
-                            else
-                                // ไม่ได้ยืด แต่ตัวอักษรอาจไม่ได้อยู่กลางกล่องพอดีถ้าเพิ่งสร้าง (กล่องคงที่แต่กันไว้)
-                                label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
-                            z.repositionLotBox()
-                        else
-                            box.delete(z.b)
-                            label.delete(z.lbl)
-                            if not na(z.lotLbl)
-                                label.delete(z.lotLbl)
-                            array.remove(zoneZones, i)
-                    else if not z.touched and zoneExtendUntouched
-                        // ยืดขอบขวาไปเรื่อยๆ เฉพาะตอนยังไม่ถูกแตะ (คนละ toggle จาก extendBoxes ของ FVG โดยสิ้นเชิง)
-                        // ยืดเลยแท่งปัจจุบันไปอีกตาม zoneExtendAheadBars เสมอ (ของไทม์เฟรมชาร์ตที่เปิดดูอยู่ ไม่ใช่ TF
-                        // ของ FVG/zone เอง) — ถ้า z.useBarIndex ใช้จำนวนแท่งตรงๆ (กันตกช่วงตลาดปิด) ไม่ใช้ก็คำนวณเวลาจริงเหมือนเดิม
-                        // ทุกครั้งที่ยืด ขยับตัวอักษรตามไปให้อยู่กึ่งกลางกล่องเสมอ
+                    // ระหว่าง "พึ่งแตะ" (justTouched) ให้เหมือนกรอบปกติทุกอย่าง (ยืดต่อได้ถ้าเปิด zoneExtendUntouched,
+                    // ป้าย ET/SL/LT ไม่หาย) — แค่ "นับ" ว่าเคยถูกแตะแล้วเป็นข้อมูลภายใน ไม่โชว์อะไรผิดปกติเลย จนกว่าจะ
+                    // จบสถานะ (ดู finalizeJustTouched — ตอนนั้นถึงจะหยุดยืด/ซ่อนป้าย/เปลี่ยนสี) แก้ไข 2026-08-17
+                    // ตามคำขอผู้ใช้ (เดิมแช่แข็ง+ซ่อนป้ายตั้งแต่ตอนพึ่งแตะเลย)
+                    if not z.touched and not z.justTouched and high >= z.bottom and low <= z.top
+                        // แตะแค่ขอบใกล้ (ราคาเข้ามาในกรอบ overlap แล้ว แต่ยังไม่ทะลุขอบไกลถึงจะนับ fill ด้านบน) —
+                        // โดนแตะครั้งแรก = เข้าสถานะ "พึ่งแตะ" (justTouched) ไม่เปลี่ยนสี/ลบ/หยุดยืดเลย แค่แต่งข้อความ
+                        // เพิ่มติ๊กถูก "✔" ต่อท้าย "Demand"/"Supply" (เพิ่ม 2026-08-17 ตามคำขอผู้ใช้ — ใช้ glyph
+                        // เดียวกับติ๊กถูก CTH/CTL คือ ✔ U+2714 HEAVY CHECK MARK ให้สอดคล้องกันทั้งไฟล์) จะจบสถานะจริง
+                        // (หยุดยืด+เทา+X หรือลบ ตาม zoneShowTouched) ก็ต่อเมื่อมีกรอบอื่นโดนแตะใหม่ (ดู
+                        // finalizeJustTouched ท้าย manageFvgTf)
+                        z.justTouched := true
+                        z.justTouchedBar := bar_index
+                        label.set_text(z.lbl, (z.bullish ? "𝑫𝒆𝒎𝒂𝒏𝒅" : "𝑺𝒖𝒑𝒑𝒍𝒚") + " ✔")
+                        anyNewJustTouch := true
+                    if not z.touched and zoneExtendUntouched
+                        // ยืดขอบขวาไปเรื่อยๆ ทั้งกรอบที่ยังไม่ถูกแตะและกรอบที่ "พึ่งแตะ" (justTouched) เหมือนกัน
+                        // (หยุดยืดก็ต่อเมื่อจบสถานะเป็น touched จริงแล้วเท่านั้น) คนละ toggle จาก extendBoxes ของ FVG
+                        // โดยสิ้นเชิง — ยืดเลยแท่งปัจจุบันไปอีกตาม zoneExtendAheadBars เสมอ (ของไทม์เฟรมชาร์ตที่เปิด
+                        // ดูอยู่ ไม่ใช่ TF ของ FVG/zone เอง) — ถ้า z.useBarIndex ใช้จำนวนแท่งตรงๆ (กันตกช่วงตลาดปิด)
+                        // ไม่ใช้ก็คำนวณเวลาจริงเหมือนเดิม ทุกครั้งที่ยืด ขยับตัวอักษรตามไปให้อยู่กึ่งกลางกล่องเสมอ
                         z.rightTime := z.useBarIndex ? bar_index + zoneExtendAheadBars : time + timeframe.in_seconds(timeframe.period) * zoneExtendAheadBars * 1000
                         box.set_right(z.b, z.rightTime)
                         label.set_x(z.lbl, int(math.round(math.avg(z.anchorTime, z.rightTime))))
                         z.repositionLotBox()
+
+    // มีกรอบไหนกลายเป็น justTouched ใหม่ในลูปด้านบน (= "แตะกล่องอื่น") ให้จบสถานะกรอบ justTouched เดิมที่เหลือ
+    // ทั้งหมด (ยกเว้นตัวที่พึ่ง justTouched ในแท่งนี้เอง กันด้วย justTouchedBar ในตัว method) เพิ่ม 2026-08-16
+    if anyNewJustTouch
+        zoneZones.finalizeJustTouched(zoneShowTouched, zoneTouchedColor, zoneExtendUntouched)
 
     // อัปเดต/ลบ FVG เดิมก่อนเสมอ ไม่ขึ้นกับ enabled (ปิด checkbox ทีหลังแค่หยุดหาใหม่ ไม่ลบของเก่าทันที)
     // เฉพาะตอน fvgEnabled เท่านั้น (ปิด FVG master แต่เปิด zone อย่างเดียว = ไม่ต้องยุ่งกับ FvgZone เลย)
@@ -632,16 +658,19 @@ method manageFvgTf(array<FvgZone> zones, bool enabled, string tf, int off, int m
                             label.delete(newZoneLbl)
                             if not na(newLotLbl)
                                 label.delete(newLotLbl)
-                        else if newZoneTouched and not zoneShowTouched
-                            box.delete(newZoneBox)
-                            label.delete(newZoneLbl)
-                            if not na(newLotLbl)
-                                label.delete(newLotLbl)
                         else
+                            // พึ่งสร้างแล้วดันโดนแตะตั้งแต่แท่งที่เกิดเลย (ไส้ยาวมาแตะโซนตัวเองพอดี) — ถือเป็น
+                            // "พึ่งแตะ" (justTouched) เหมือนกัน ไม่ใช่ touched จบสถานะทันที หน้าตาเหมือนกรอบปกติ
+                            // ทุกอย่าง ยืดต่อได้ตามปกติ (แก้ไข 2026-08-17 ตามคำขอผู้ใช้ — ไม่ต้องแช่แข็งตั้งแต่ตอนนี้
+                            // แล้ว รอจบสถานะค่อยแช่แข็งใน finalizeJustTouched แทน) แค่แต่งข้อความเพิ่มติ๊กถูก "✔"
+                            // ต่อท้ายเหมือนกับที่ทำในลูปอัปเดตด้านบน
                             if newZoneTouched
-                                box.set_bgcolor(newZoneBox, zoneTouchedColor)
-                                label.set_text(newZoneLbl, "𝑿")
-                            array.push(zoneZones, ZoneBox.new(b=newZoneBox, lbl=newZoneLbl, bullish=bullGap, top=hA, bottom=lA, anchorTime=zoneLeftPos, rightTime=zoneRightEdge, touched=newZoneTouched, lotLbl=newLotLbl, anchorTimeReal=tA, useBarIndex=zoneBarIndexMode))
+                                label.set_text(newZoneLbl, (bullGap ? "𝑫𝒆𝒎𝒂𝒏𝒅" : "𝑺𝒖𝒑𝒑𝒍𝒚") + " ✔")
+                            array.push(zoneZones, ZoneBox.new(b=newZoneBox, lbl=newZoneLbl, bullish=bullGap, top=hA, bottom=lA, anchorTime=zoneLeftPos, rightTime=zoneRightEdge, touched=false, justTouched=newZoneTouched, justTouchedBar=bar_index, lotLbl=newLotLbl, anchorTimeReal=tA, useBarIndex=zoneBarIndexMode))
+                            // กรอบใหม่นี้ "โดนแตะ" ก็นับเป็น "แตะกล่องอื่น" ด้วย (คำขอผู้ใช้ 2026-08-16) — จบสถานะ
+                            // กรอบ justTouched เดิมที่เหลืออยู่ทั้งหมด (ไม่รวมตัวเองเพราะ justTouchedBar ตรงกับ bar_index ปัจจุบันพอดี)
+                            if newZoneTouched
+                                zoneZones.finalizeJustTouched(zoneShowTouched, zoneTouchedColor, zoneExtendUntouched)
                         zoneChain.expectedA := tC
                     zoneChain.lastBullish := bullGap
 
