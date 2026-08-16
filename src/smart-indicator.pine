@@ -1,5 +1,5 @@
 //@version=5
-indicator("Smart Indicator", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500, dynamic_requests=true)
+indicator("Smart Indicator", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500, max_bars_back=5000, dynamic_requests=true)
 
 // === หน้าตั้งค่า (ภาษาไทย) — จัดกลุ่มตาม indicator_style.md ===
 // กลุ่ม "เปิด/ปิด" ต้องอยู่บนสุดเสมอ — master toggle ต่อ feature (มาตรฐานถาวร เพิ่ม feature ใหม่ในอนาคตต้องมี checkbox ที่นี่ด้วย ดู indicator_style.md)
