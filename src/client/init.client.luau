@@ -45,7 +45,7 @@ createTitle.BackgroundTransparency = 1
 createTitle.TextColor3 = Color3.new(1, 1, 1)
 createTitle.Font = Enum.Font.GothamBold
 createTitle.TextSize = 18
-createTitle.Text = "สร้างเกม"
+createTitle.Text = "Create Game"
 createTitle.Parent = createPanel
 
 local genreLabel = Instance.new("TextLabel")
@@ -83,7 +83,7 @@ genreCycleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 genreCycleButton.TextColor3 = Color3.new(1, 1, 1)
 genreCycleButton.Font = Enum.Font.Gotham
 genreCycleButton.TextSize = 14
-genreCycleButton.Text = "เปลี่ยน genre"
+genreCycleButton.Text = "Change genre"
 genreCycleButton.Parent = genreButtonRow
 genreCycleButton.MouseButton1Click:Connect(cycleGenre)
 
@@ -95,12 +95,12 @@ minutesLabel.TextColor3 = Color3.new(1, 1, 1)
 minutesLabel.Font = Enum.Font.Gotham
 minutesLabel.TextSize = 14
 minutesLabel.TextXAlignment = Enum.TextXAlignment.Left
-minutesLabel.Text = "เวลาที่ใช้ทำ: " .. selectedMinutes .. " นาที"
+minutesLabel.Text = "Time spent: " .. selectedMinutes .. " min"
 minutesLabel.Parent = createPanel
 
 local function updateMinutes(delta)
 	selectedMinutes = math.clamp(selectedMinutes + delta, Config.GameQuality.MinMinutes, Config.GameQuality.MaxMinutes)
-	minutesLabel.Text = "เวลาที่ใช้ทำ: " .. selectedMinutes .. " นาที"
+	minutesLabel.Text = "Time spent: " .. selectedMinutes .. " min"
 end
 
 local minutesButtonRow = Instance.new("Frame")
@@ -145,7 +145,7 @@ createButton.BackgroundColor3 = Color3.fromRGB(40, 130, 60)
 createButton.TextColor3 = Color3.new(1, 1, 1)
 createButton.Font = Enum.Font.GothamBold
 createButton.TextSize = 16
-createButton.Text = "สร้างเกม"
+createButton.Text = "Create Game"
 createButton.Parent = createPanel
 createButton.MouseButton1Click:Connect(function()
 	createGameRemote:FireServer(selectedGenre, selectedMinutes)
@@ -165,7 +165,7 @@ listTitle.BackgroundTransparency = 1
 listTitle.TextColor3 = Color3.new(1, 1, 1)
 listTitle.Font = Enum.Font.GothamBold
 listTitle.TextSize = 18
-listTitle.Text = "เกมของฉัน"
+listTitle.Text = "My Games"
 listTitle.Parent = listPanel
 
 local scrollFrame = Instance.new("ScrollingFrame")
@@ -198,8 +198,8 @@ local function renderGames(games)
 		info.TextSize = 14
 		info.TextXAlignment = Enum.TextXAlignment.Left
 		info.TextWrapped = true
-		local status = gameEntry.sold and "ขายแล้ว" or "ยังไม่ขาย"
-		info.Text = string.format("#%d %s\nคุณภาพ %d — %s", gameEntry.id, gameEntry.genre, gameEntry.quality, status)
+		local status = gameEntry.sold and "Sold" or "Not sold"
+		info.Text = string.format("#%d %s\nQuality %d — %s", gameEntry.id, gameEntry.genre, gameEntry.quality, status)
 		info.Parent = row
 
 		local sellButton = Instance.new("TextButton")
@@ -209,7 +209,7 @@ local function renderGames(games)
 		sellButton.TextColor3 = Color3.new(1, 1, 1)
 		sellButton.Font = Enum.Font.GothamBold
 		sellButton.TextSize = 14
-		sellButton.Text = gameEntry.sold and "ขายแล้ว" or "ขาย"
+		sellButton.Text = gameEntry.sold and "Sold" or "Sell"
 		sellButton.AutoButtonColor = not gameEntry.sold
 		sellButton.Parent = row
 
