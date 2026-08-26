@@ -39,7 +39,27 @@ local function defaultData()
 	return {
 		cash = Config.StartingCash,
 		games = {}, -- { {id, genre, quality, sold} }
+		ideas = {}, -- { {id, genre, theme, twist, potential} }
+		nextIdeaId = 1,
+		aiLevel = 1,
+		aiQueriesUsed = 0,
+		aiQueryResetAt = os.time() + Config.AI.QueryResetSeconds,
+		subscriptionActive = false,
+		subscriptionNextChargeAt = nil,
+		gearTier = 1,
+		focus = Config.Focus.Max,
 	}
+end
+
+-- เติม field ที่ขาด (เซฟเก่าจากก่อนเพิ่มระบบ AI/gear/focus) กัน nil error
+local function withDefaults(data)
+	local defaults = defaultData()
+	for key, value in defaults do
+		if data[key] == nil then
+			data[key] = value
+		end
+	end
+	return data
 end
 
 function PlayerData.Load(player)
@@ -54,7 +74,7 @@ function PlayerData.Load(player)
 		return playerStore:GetAsync(key)
 	end)
 
-	local data = (ok and result) or defaultData()
+	local data = withDefaults((ok and result) or defaultData())
 	cache[player.UserId] = data
 	PlayerData.Push(player)
 	return data
@@ -71,9 +91,26 @@ function PlayerData.Push(player)
 		return
 	end
 
+	local queryLimit = Config.AI.FreeQueriesPerCycle + (data.subscriptionActive and Config.AI.SubscriptionQueryBonus or 0)
+
+	local unsoldCount = 0
+	for _, gameEntry in data.games do
+		if not gameEntry.sold then
+			unsoldCount += 1
+		end
+	end
+
 	Remotes.Get("PlayerDataUpdated"):FireClient(player, {
 		cash = data.cash,
 		games = data.games,
+		unsoldGames = unsoldCount,
+		maxUnsoldGames = Config.Storage.MaxUnsoldGames,
+		ideas = data.ideas,
+		aiLevel = data.aiLevel,
+		aiQueriesLeft = math.max(0, queryLimit - data.aiQueriesUsed),
+		subscriptionActive = data.subscriptionActive,
+		gearTier = data.gearTier,
+		focus = data.focus,
 	})
 end
 
@@ -93,6 +130,19 @@ end
 function PlayerData.Release(player)
 	PlayerData.Save(player)
 	cache[player.UserId] = nil
+end
+
+-- client ยิงขอ state เองตอน start กัน race condition (server push เร็วกว่า client ต่อ listener ทัน)
+function PlayerData.InitRequestHandler()
+	Remotes.Get("RequestState").OnServerEvent:Connect(function(player)
+		for _ = 1, 20 do
+			if cache[player.UserId] then
+				PlayerData.Push(player)
+				return
+			end
+			task.wait(0.25)
+		end
+	end)
 end
 
 return PlayerData
