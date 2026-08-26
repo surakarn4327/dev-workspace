@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local REMOTE_NAMES = {
 	"CreateGame",
 	"SellGame",
+	"PlayerDataUpdated",
 }
 
 local Remotes = {}

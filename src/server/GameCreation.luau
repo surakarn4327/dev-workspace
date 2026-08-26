@@ -51,6 +51,7 @@ function GameCreation.Init()
 			sold = false,
 		})
 
+		PlayerData.Push(player)
 		print(string.format("[GameCreation] %s created game #%d (%s, quality %d)", player.Name, #data.games, genre, quality))
 	end)
 end

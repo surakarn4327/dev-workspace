@@ -2,7 +2,9 @@
 -- ทุกเรียก DataStore ต้อง pcall+retry ตามกฎ CLAUDE.md เพราะ DataStore ล้มเหลวเป็นระยะได้
 local DataStoreService = game:GetService("DataStoreService")
 
-local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 -- place ที่ไม่เคย publish ขึ้น Roblox เรียก GetDataStore ไม่ได้เลย (ไม่ใช่แค่ GetAsync/SetAsync)
 -- guard ไว้เพื่อให้ทดสอบใน Studio ได้โดยไม่ต้อง publish จริง (fallback เป็นไม่เซฟถาวร)
@@ -54,11 +56,25 @@ function PlayerData.Load(player)
 
 	local data = (ok and result) or defaultData()
 	cache[player.UserId] = data
+	PlayerData.Push(player)
 	return data
 end
 
 function PlayerData.Get(player)
 	return cache[player.UserId]
+end
+
+-- ส่ง state ปัจจุบัน (เงิน, เกม) ไปให้ client render UI — เรียกทุกครั้งที่ data เปลี่ยน
+function PlayerData.Push(player)
+	local data = cache[player.UserId]
+	if not data then
+		return
+	end
+
+	Remotes.Get("PlayerDataUpdated"):FireClient(player, {
+		cash = data.cash,
+		games = data.games,
+	})
 end
 
 function PlayerData.Save(player)

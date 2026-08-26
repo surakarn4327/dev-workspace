@@ -42,6 +42,7 @@ function GameSelling.Init()
 		local price = computePrice(gameEntry.quality)
 		data.cash += price
 
+		PlayerData.Push(player)
 		print(string.format("[GameSelling] %s sold game #%d for %d cash (total cash: %d)", player.Name, gameEntry.id, price, data.cash))
 	end)
 end
