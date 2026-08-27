@@ -157,35 +157,18 @@ local cashLabel = makeLabel({
 addCorner(cashLabel, 10)
 addStroke(cashLabel)
 
--- ===== computer panel (ซ่อนไว้ก่อน เปิดตอนเข้าใกล้ Computer) =====
-local computerPanel = makeFrame({
-	Name = "ComputerPanel",
-	Size = UDim2.new(0, 380, 0, 460),
-	Position = UDim2.new(0.5, -190, 0.5, -230),
-	BackgroundColor3 = Theme.PanelBackground,
-	Visible = false,
-	Parent = screenGui,
-})
-addStroke(computerPanel, Theme.Accent, 1.5)
+-- ===== computer panel เต็มจอ (ซ่อนไว้ก่อน เปิดตอนนั่งเก้าอี้) =====
+-- เต็มจอทั้งหมด เพื่อให้รู้สึกเหมือนกำลังจ้องหน้าจอมอนิเตอร์จริงๆ ไม่เห็นโลก 3D รอบๆ ระหว่างใช้คอม
+local computerPanel = Instance.new("Frame")
+computerPanel.Name = "ComputerPanel"
+computerPanel.Size = UDim2.new(1, 0, 1, 0)
+computerPanel.Position = UDim2.new(0, 0, 0, 0)
+computerPanel.BackgroundColor3 = Color3.fromRGB(30, 80, 140) -- สีพื้นหลัง desktop แบบ Windows
+computerPanel.BorderSizePixel = 0
+computerPanel.Visible = false
+computerPanel.Parent = screenGui
 
-makeLabel({
-	Size = UDim2.new(1, 0, 0, 34),
-	TextXAlignment = Enum.TextXAlignment.Center,
-	Font = Enum.Font.GothamBold,
-	TextSize = 16,
-	TextColor3 = Theme.TextDim,
-	Text = "My Computer",
-	Parent = computerPanel,
-})
-
-
--- ===== "หน้าจอ" คอม (desktop สไตล์ Windows: ไอคอน + หน้าต่างแอป) =====
-local screenArea = makeFrame({
-	Size = UDim2.new(1, -20, 1, -50),
-	Position = UDim2.new(0, 10, 0, 40),
-	BackgroundColor3 = Color3.fromRGB(30, 80, 140), -- สีพื้นหลัง desktop แบบ Windows
-	Parent = computerPanel,
-})
+local screenArea = computerPanel
 
 -- ไอคอนบน desktop
 local desktopIcons = makeFrame({
@@ -250,7 +233,8 @@ end)
 
 -- ===== AI chat window (ปิดไว้ก่อน, เปิดเมื่อกดไอคอน) =====
 local aiWindow = makeFrame({
-	Size = UDim2.new(1, 0, 1, 0),
+	Size = UDim2.new(1, -120, 1, -126),
+	Position = UDim2.new(0, 60, 0, 30),
 	BackgroundColor3 = Theme.PanelBackground,
 	Visible = false,
 	Parent = screenArea,
@@ -343,7 +327,8 @@ end
 
 -- ===== My Files window (ปิดไว้ก่อน, เปิดเมื่อกดไอคอน) =====
 local filesWindow = makeFrame({
-	Size = UDim2.new(1, 0, 1, 0),
+	Size = UDim2.new(1, -120, 1, -126),
+	Position = UDim2.new(0, 60, 0, 30),
 	BackgroundColor3 = Theme.PanelBackground,
 	Visible = false,
 	Parent = screenArea,
@@ -549,6 +534,38 @@ local function renderIdeaPicker(ideas)
 	end
 end
 
+-- ===== taskbar ล่างจอ (ปุ่ม home กลับ desktop + นาฬิกา) =====
+local taskbar = makeFrame({
+	Size = UDim2.new(1, 0, 0, 40),
+	Position = UDim2.new(0, 0, 1, -40),
+	BackgroundColor3 = Color3.fromRGB(13, 26, 43),
+	Parent = screenArea,
+})
+
+local homeButton = makeButton({
+	Size = UDim2.new(0, 26, 0, 26),
+	Position = UDim2.new(0, 8, 0.5, -13),
+	BackgroundColor3 = Theme.Accent,
+	Text = "",
+	Parent = taskbar,
+})
+
+local clockLabel = makeLabel({
+	Size = UDim2.new(0, 80, 1, 0),
+	Position = UDim2.new(1, -90, 0, 0),
+	TextXAlignment = Enum.TextXAlignment.Right,
+	TextColor3 = Theme.TextDim,
+	Text = "00:00",
+	Parent = taskbar,
+})
+
+task.spawn(function()
+	while true do
+		clockLabel.Text = os.date("%H:%M")
+		task.wait(15)
+	end
+end)
+
 -- ===== เปิด/ปิดหน้าต่างแอป (กดไอคอน = เปิด, กด X = กลับ desktop) =====
 local function goToDesktop()
 	aiWindow.Visible = false
@@ -573,6 +590,7 @@ aiIconButton.MouseButton1Click:Connect(openAiWindow)
 filesIconButton.MouseButton1Click:Connect(openFilesWindow)
 aiWindowCloseButton.MouseButton1Click:Connect(goToDesktop)
 filesWindowCloseButton.MouseButton1Click:Connect(goToDesktop)
+homeButton.MouseButton1Click:Connect(goToDesktop)
 
 goToDesktop()
 
