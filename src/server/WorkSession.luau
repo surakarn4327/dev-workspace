@@ -12,17 +12,24 @@ local DESK_NAME = "Computer"
 local WorkSession = {}
 local sessions = {} -- [userId] = sessionState
 
+-- มีหลายสถานีคอม (เล็ก/กลาง/ใหญ่) กระจายอยู่ใน Folder คนละอัน ต้องเช็คทุกอัน ไม่ใช่แค่ตัวแรกที่เจอ
 local function isNearDesk(player)
 	local character = player.Character
-	local desk = workspace:FindFirstChild(DESK_NAME)
-	if not character or not desk then
+	if not character then
 		return false
 	end
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root then
 		return false
 	end
-	return (root.Position - desk.Position).Magnitude <= Config.WorkSession.MaxDeskDistance
+	for _, obj in workspace:GetDescendants() do
+		if obj.Name == DESK_NAME and obj:IsA("BasePart") then
+			if (root.Position - obj.Position).Magnitude <= Config.WorkSession.MaxDeskDistance then
+				return true
+			end
+		end
+	end
+	return false
 end
 
 local function countUnsoldGames(data)

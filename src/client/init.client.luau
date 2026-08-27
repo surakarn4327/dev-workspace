@@ -3,6 +3,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local GuiService = game:GetService("GuiService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -82,7 +83,7 @@ local function makeLabel(props)
 	label.BackgroundTransparency = 1
 	label.TextColor3 = Theme.Text
 	label.Font = Enum.Font.Gotham
-	label.TextSize = 14
+	label.TextSize = 26
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	for key, value in props do
 		label[key] = value
@@ -96,7 +97,7 @@ local function makeButton(props)
 	button.BackgroundColor3 = Color3.fromRGB(60, 64, 72)
 	button.TextColor3 = Theme.Text
 	button.Font = Enum.Font.GothamBold
-	button.TextSize = 14
+	button.TextSize = 26
 	button.AutoButtonColor = false
 	for key, value in props do
 		button[key] = value
@@ -152,23 +153,27 @@ local cashLabel = makeLabel({
 	TextSize = 22,
 	TextXAlignment = Enum.TextXAlignment.Center,
 	Text = "Cash: 0",
+	Visible = false, -- ซ่อนไว้ก่อนตามคำขอ
 	Parent = screenGui,
 })
 addCorner(cashLabel, 10)
 addStroke(cashLabel)
 
--- ===== computer panel เต็มจอ (ซ่อนไว้ก่อน เปิดตอนนั่งเก้าอี้) =====
--- เต็มจอทั้งหมด เพื่อให้รู้สึกเหมือนกำลังจ้องหน้าจอมอนิเตอร์จริงๆ ไม่เห็นโลก 3D รอบๆ ระหว่างใช้คอม
-local computerPanel = Instance.new("Frame")
-computerPanel.Name = "ComputerPanel"
-computerPanel.Size = UDim2.new(1, 0, 1, 0)
-computerPanel.Position = UDim2.new(0, 0, 0, 0)
-computerPanel.BackgroundColor3 = Color3.fromRGB(30, 80, 140) -- สีพื้นหลัง desktop แบบ Windows
-computerPanel.BorderSizePixel = 0
-computerPanel.Visible = false
-computerPanel.Parent = screenGui
+-- ===== จอคอมจริงในโลก 3D = SurfaceGui ติดบน MonitorScreen ตรงๆ (ตามหลัก UI ต้องผูกกับวัตถุจริง) =====
+-- ไม่ใช่ ScreenGui ลอยหน้าจอผู้เล่นอีกต่อไป — จอมี "ตัวตน" อยู่ในโลกเกม กล้องจะขยับเข้าไปมองใกล้ๆ ตอนนั่งแทน
+-- มีหลายสถานีคอม (เล็ก/กลาง/ใหญ่) ได้ SurfaceGui ตัวเดียวจะย้าย Parent ไปเกาะจอที่นั่งอยู่ตอนนั้นแทน
+local computerSurfaceGui = Instance.new("SurfaceGui")
+computerSurfaceGui.Name = "ComputerScreenGui"
+computerSurfaceGui.Face = Enum.NormalId.Back -- ด้านที่หันเข้าหาเก้าอี้
+computerSurfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+computerSurfaceGui.PixelsPerStud = 300
+computerSurfaceGui.Parent = ReplicatedStorage -- ยังไม่เกาะจอไหน จนกว่าจะนั่งเก้าอี้ครั้งแรก
 
-local screenArea = computerPanel
+local screenArea = makeFrame({
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundColor3 = Color3.fromRGB(30, 80, 140), -- สีพื้นหลัง desktop แบบ Windows
+	Parent = computerSurfaceGui,
+})
 
 -- ไอคอนบน desktop
 local desktopIcons = makeFrame({
@@ -179,7 +184,7 @@ local desktopIcons = makeFrame({
 
 local function makeDesktopIcon(position, label, iconBuilder)
 	local iconButton = makeButton({
-		Size = UDim2.new(0, 74, 0, 74),
+		Size = UDim2.new(0, 150, 0, 150),
 		Position = position,
 		BackgroundTransparency = 1,
 		AutoButtonColor = false,
@@ -188,17 +193,17 @@ local function makeDesktopIcon(position, label, iconBuilder)
 	})
 
 	local iconArt = makeFrame({
-		Size = UDim2.new(0, 48, 0, 48),
-		Position = UDim2.new(0.5, -24, 0, 2),
+		Size = UDim2.new(0, 100, 0, 100),
+		Position = UDim2.new(0.5, -50, 0, 2),
 		Parent = iconButton,
 	})
 	iconBuilder(iconArt)
 
 	makeLabel({
-		Size = UDim2.new(1, 0, 0, 18),
-		Position = UDim2.new(0, 0, 0, 54),
+		Size = UDim2.new(1, 0, 0, 32),
+		Position = UDim2.new(0, 0, 0, 106),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		TextSize = 12,
+		TextSize = 22,
 		TextColor3 = Color3.new(1, 1, 1),
 		Text = label,
 		Parent = iconButton,
@@ -207,20 +212,20 @@ local function makeDesktopIcon(position, label, iconBuilder)
 	return iconButton
 end
 
-local aiIconButton = makeDesktopIcon(UDim2.new(0, 14, 0, 10), "AI Chat", function(art)
+local aiIconButton = makeDesktopIcon(UDim2.new(0, 20, 0, 16), "AI Chat", function(art)
 	art.BackgroundColor3 = Theme.Accent
 	makeLabel({
 		Size = UDim2.new(1, 0, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Font = Enum.Font.GothamBold,
-		TextSize = 20,
+		TextSize = 40,
 		TextColor3 = Color3.new(1, 1, 1),
 		Text = "AI",
 		Parent = art,
 	})
 end)
 
-local filesIconButton = makeDesktopIcon(UDim2.new(0, 14, 0, 96), "My Files", function(art)
+local filesIconButton = makeDesktopIcon(UDim2.new(0, 20, 0, 190), "My Files", function(art)
 	art.BackgroundColor3 = Color3.fromRGB(230, 190, 60) -- โฟลเดอร์เหลือง
 	local tab = Instance.new("Frame")
 	tab.Size = UDim2.new(0.5, 0, 0.28, 0)
@@ -253,7 +258,7 @@ local aiWindowCloseButton = makeButton({
 	Size = UDim2.new(0, 26, 0, 22),
 	Position = UDim2.new(1, -32, 0, 4),
 	BackgroundColor3 = Theme.Danger,
-	TextSize = 14,
+	TextSize = 20,
 	Text = "X",
 	Parent = aiTitleBar,
 })
@@ -318,7 +323,7 @@ local function renderIdeaSummaries(ideas)
 			Size = UDim2.new(1, -12, 1, 0),
 			Position = UDim2.new(0, 6, 0, 0),
 			TextWrapped = true,
-			TextSize = 13,
+			TextSize = 18,
 			Text = string.format("%s — %s %s (pot. %d)", idea.genre, idea.theme, idea.twist, idea.potential),
 			Parent = row,
 		})
@@ -347,7 +352,7 @@ local filesWindowCloseButton = makeButton({
 	Size = UDim2.new(0, 26, 0, 22),
 	Position = UDim2.new(1, -32, 0, 4),
 	BackgroundColor3 = Theme.Danger,
-	TextSize = 14,
+	TextSize = 20,
 	Text = "X",
 	Parent = filesTitleBar,
 })
@@ -435,7 +440,7 @@ local buyGearButton = makeButton({
 	Size = UDim2.new(1, 0, 0, 28),
 	Position = UDim2.new(0, 0, 0, 208),
 	BackgroundColor3 = Theme.Positive,
-	TextSize = 13,
+	TextSize = 18,
 	Text = "Upgrade gear",
 	Parent = filesContent,
 })
@@ -496,7 +501,6 @@ local startWorkButton = makeButton({
 startWorkButton.MouseButton1Click:Connect(function()
 	if selectedIdeaId then
 		startWorkRemote:FireServer(selectedIdeaId, selectedMinutes)
-		setPanelVisible(computerPanel, false)
 	end
 end)
 
@@ -523,7 +527,7 @@ local function renderIdeaPicker(ideas)
 			Size = UDim2.new(1, 0, 0, 30),
 			BackgroundColor3 = (idea.id == selectedIdeaId) and Theme.Positive or Color3.fromRGB(55, 58, 66),
 			Text = string.format("%s — %s %s (pot. %d)", idea.genre, idea.theme, idea.twist, idea.potential),
-			TextSize = 12,
+			TextSize = 17,
 			TextWrapped = true,
 			Parent = ideaPickerScroll,
 		})
@@ -605,11 +609,11 @@ local workHud = makeFrame({
 })
 addStroke(workHud)
 
-makeLabel({ Size = UDim2.new(1, -20, 0, 16), Position = UDim2.new(0, 10, 0, 6), TextSize = 12, TextColor3 = Theme.TextDim, Text = "Progress", Parent = workHud })
+makeLabel({ Size = UDim2.new(1, -20, 0, 16), Position = UDim2.new(0, 10, 0, 6), TextSize = 16, TextColor3 = Theme.TextDim, Text = "Progress", Parent = workHud })
 local progressBarBg = makeFrame({ Size = UDim2.new(1, -20, 0, 18), Position = UDim2.new(0, 10, 0, 24), BackgroundColor3 = Color3.fromRGB(50, 52, 58), Parent = workHud })
 local progressBarFill = makeFrame({ Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Theme.Accent, Parent = progressBarBg })
 
-makeLabel({ Size = UDim2.new(1, -20, 0, 16), Position = UDim2.new(0, 10, 0, 46), TextSize = 12, TextColor3 = Theme.TextDim, Text = "Focus", Parent = workHud })
+makeLabel({ Size = UDim2.new(1, -20, 0, 16), Position = UDim2.new(0, 10, 0, 46), TextSize = 16, TextColor3 = Theme.TextDim, Text = "Focus", Parent = workHud })
 local focusBarBg = makeFrame({ Size = UDim2.new(1, -20, 0, 18), Position = UDim2.new(0, 10, 0, 64), BackgroundColor3 = Color3.fromRGB(50, 52, 58), Parent = workHud })
 local focusBarFill = makeFrame({ Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Theme.Warning, Parent = focusBarBg })
 
@@ -640,7 +644,7 @@ local decisionPromptLabel = makeLabel({
 	Position = UDim2.new(0, 10, 0, 10),
 	TextWrapped = true,
 	Font = Enum.Font.GothamBold,
-	TextSize = 16,
+	TextSize = 22,
 	Text = "",
 	Parent = decisionPopup,
 })
@@ -669,15 +673,73 @@ local function showDecision(event)
 	setPanelVisible(decisionPopup, true)
 end
 
--- ===== นั่งเก้าอี้ = เปิดคอม, กระโดดลุก = ปิดคอม (built-in Seat mechanic) =====
+-- ===== นั่งเก้าอี้ = กล้องขยับเข้าไปมองจอใกล้ๆ, กระโดดลุก = กล้องกลับปกติ (built-in Seat mechanic) =====
+-- คำนวณระยะกล้องจาก FOV + ขนาดจอจริงของผู้เล่นแต่ละคน แทน hardcode ระยะตายตัว
+-- กันปัญหาจอมอนิเตอร์ล้น/เล็กเกินไปตอนขนาดหน้าจอ/สัดส่วนจอผู้เล่นไม่เท่ากัน (desktop/มือถือ/แท็บเล็ต)
+local SCREEN_MARGIN = 1.1 -- เผื่อขอบ 10% กันจอมอนิเตอร์ชนขอบจอผู้เล่นพอดี
+
+local function lookAtScreen(screenPart)
+	local camera = workspace.CurrentCamera
+
+	-- เผื่อพื้นที่ด้านบนไว้ให้แถบเมนู Roblox เสมอ (ไม่ให้จอมอนิเตอร์โผล่ไปโดนบัง) ไม่ว่าจอจะใหญ่ขึ้นแค่ไหนในอนาคต
+	local topInset = 36
+	local ok, guiInset = pcall(function()
+		return GuiService:GetGuiInset()
+	end)
+	if ok and guiInset then
+		topInset = math.clamp(guiInset.Y, 0, 120) -- กันค่าประหลาดถ้า API คืนค่าไม่ตรงคาด
+	end
+
+	local screenWidth = screenPart.Size.X
+	local screenHeight = screenPart.Size.Y
+
+	local viewportSize = camera.ViewportSize
+	local aspectRatio = viewportSize.X / viewportSize.Y
+	local verticalFov = math.rad(camera.FieldOfView)
+	-- จอถูกจัดกึ่งกลางแบบสมมาตร (บน-ล่างเท่ากัน) เผื่อ topInset ครั้งเดียวจะเหลือระยะเผื่อจริงแค่ครึ่งเดียว ต้องคูณ 2
+	local safeViewportHeight = math.max(1, viewportSize.Y - topInset * 2)
+
+	local distanceForHeight = (screenHeight / 2) / math.tan(verticalFov / 2) * (viewportSize.Y / safeViewportHeight)
+	local horizontalFov = 2 * math.atan(math.tan(verticalFov / 2) * aspectRatio)
+	local distanceForWidth = (screenWidth / 2) / math.tan(horizontalFov / 2)
+
+	local distance = math.max(distanceForHeight, distanceForWidth) * SCREEN_MARGIN
+
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.CFrame = CFrame.new(screenPart.Position + Vector3.new(0, 0, distance), screenPart.Position)
+end
+
+local function releaseCamera()
+	local camera = workspace.CurrentCamera
+	camera.CameraType = Enum.CameraType.Custom
+end
+
+-- ทำตัวละครโปร่งใสฝั่งเราเห็นเท่านั้น (คนอื่นในเซิร์ฟเวอร์ยังเห็นเราปกติ) กันตัวเองบังจอตอนกล้องมองใกล้ๆ
+-- แก้ปัญหาถาวรไม่ว่าจอจะใหญ่แค่ไหน แทนที่จะคอยขยับเก้าอี้/คำนวณระยะหลบตัวละคร
+local function setCharacterLocalVisible(character, visible)
+	local transparency = visible and 0 or 1
+	for _, part in character:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.LocalTransparencyModifier = transparency
+		end
+	end
+end
+
 local function onCharacterAdded(character)
 	local humanoid = character:WaitForChild("Humanoid")
 	humanoid.Seated:Connect(function(active, seatPart)
 		if active and seatPart and seatPart.Name == "ComputerChair" then
-			renderIdeaPicker(latestState.ideas)
-			setPanelVisible(computerPanel, true)
+			local station = seatPart.Parent
+			local screenPart = station and station:FindFirstChild("MonitorScreen")
+			if screenPart then
+				computerSurfaceGui.Parent = screenPart
+				renderIdeaPicker(latestState.ideas)
+				setCharacterLocalVisible(character, false)
+				lookAtScreen(screenPart)
+			end
 		elseif not active then
-			setPanelVisible(computerPanel, false)
+			setCharacterLocalVisible(character, true)
+			releaseCamera()
 		end
 	end)
 end
