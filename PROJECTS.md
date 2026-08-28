@@ -5,7 +5,8 @@
 | โปรเจกต์ | ชนิด | พอร์ต | เกิดเมื่อ | คำอธิบาย |
 |---|---|---|---|---|
 <!-- PROJECTS:START -->
-| [smart-indicator](smart-indicator/) | blank | - | 2026-08-10 | TradingView Pine Script indicator ที่หา entry signal ตามระบบ Smart Money Concept (SMC) ของผู้ใช้ - order block, liquidity, BOS/CHoCH, FVG - plot signal บนกราฟ ไม่ auto-trade |
+| [game-dev-simulator](game-dev-simulator/) | blank | - | 2026-08-26 | Roblox tycoon: เด็กธรรมดาผันตัวเป็น dev ไต่จากศูนย์ สร้างเกม ตระเวนขายตามคุณภาพ ปั้นทุนซื้อบริษัท จ้างพนักงาน แข่งขันกับสตูดิโออื่น |
+| [smart-indicator](smart-indicator/) | blank | - | 2026-08-10 | TradingView Pine Script indicator ที่หา entry signal ตามเทคนิคเทรดของผู้ใช้เอง (ไม่ใช่ SMC) - plot signal บนกราฟ ไม่ auto-trade |
 <!-- PROJECTS:END -->
 
 ## ช่วงพอร์ตที่กันไว้

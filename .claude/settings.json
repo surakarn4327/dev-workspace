@@ -26,5 +26,17 @@
   },
   "env": {
     "WORKSPACE_ROOT": "C:\\dev"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/nvm4w/nodejs/node.exe C:/dev/.claude/hooks/session-start-welcome.cjs"
+          }
+        ]
+      }
+    ]
   }
 }
