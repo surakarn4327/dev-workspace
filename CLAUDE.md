@@ -23,18 +23,23 @@ C:\dev\
 ├── .workspace\
 │   ├── bin\           ← สคริปต์ประจำรัฐ (new-project.ps1, doctor.ps1)
 │   └── templates\     ← ไฟล์ที่โปรเจกต์เกิดใหม่ทุกคนได้รับ
-├── _docs\             ← เอกสาร/สเปรดชีตที่ไม่ผูกกับโปรเจกต์ใด
-└── <ชื่อโปรเจกต์>\     ← พลเมือง: git repo อิสระ 1 repo ต่อ 1 โปรเจกต์
+├── _docs\             ← เอกสาร/สเปรดชีตที่ไม่ผูกกับโปรเจกต์ใด (ไม่เข้า git)
+└── <ชื่อโปรเจกต์>\     ← พลเมือง: แค่โฟลเดอร์ ไม่มี .git ของตัวเอง (ดูด้านล่าง)
 ```
 
 **ทุกงาน แม้เป็นไฟล์เดียว (เช่น script เดี่ยว, ไฟล์ config, indicator เดี่ยวๆ) ต้อง scaffold เป็น
 project folder เต็มรูปแบบผ่าน `new-project.ps1` เสมอ** ห้ามวางไฟล์เดี่ยวๆ ลอยๆ ไว้ที่ root
-หรือที่ไหนใน `C:\dev` โดยไม่มี CLAUDE.md/README.md/git repo ของตัวเอง เผื่ออนาคตต้องขยาย
+หรือที่ไหนใน `C:\dev` โดยไม่มี CLAUDE.md/README.md ของตัวเอง เผื่ออนาคตต้องขยาย
 
-**หนึ่งโปรเจกต์ = หนึ่งโฟลเดอร์ = หนึ่ง git repo** ไม่มี monorepo ไม่มี nested repo
+**ทั้งประเทศคือ 1 git repo เดียว (`dev-workspace`) — monorepo** โปรเจกต์คือแค่โฟลเดอร์ย่อยในนั้น
+ไม่มี `.git` ซ้อนในโฟลเดอร์โปรเจกต์ **ห้าม `git init` เองในโฟลเดอร์โปรเจกต์เด็ดขาด**
+clone `dev-workspace` ครั้งเดียวได้ทุกโปรเจกต์ครบ ไม่ต้องไล่ clone แยกทีละตัว
 โปรเจกต์คุยกันผ่าน HTTP หรือไฟล์ที่ export เท่านั้น — ห้าม `import` ข้ามโฟลเดอร์โปรเจกต์
 (`../money-app/src/...` คือสิ่งต้องห้าม) ถ้าโค้ดต้องใช้ร่วมกันจริง ให้ทำเป็นแพ็กเกจแยก
 ตามขั้นตอนใน [`.workspace/shared-packages.md`](.workspace/shared-packages.md)
+
+(เปลี่ยนจาก "1 repo ต่อ 1 โปรเจกต์" มาเป็น monorepo — 2026-08-28 ตามคำขอผู้ใช้ เหตุผล: อยาก
+clone เครื่องใหม่ทีเดียวได้ทุกโปรเจกต์ ไม่ต้องคอยไล่ดึงแยกทีละ repo)
 
 ## 2. การเกิดของโปรเจกต์ใหม่
 
@@ -45,8 +50,8 @@ powershell -File C:\dev\.workspace\bin\new-project.ps1 -Name my-app -Type web
 ```
 
 หรือใน Claude Code: `/new-project my-app web`
-สคริปต์จะ scaffold, ใส่ไฟล์ตามกฎ, `git init` + commit แรก, จองพอร์ต และลงทะเบียนใน
-`PROJECTS.md` กับ `.claude\launch.json` ให้ครบ
+สคริปต์จะ scaffold, ใส่ไฟล์ตามกฎ, commit เข้า `dev-workspace` repo เดิม (ไม่ `git init` แยก),
+จองพอร์ต และลงทะเบียนใน `PROJECTS.md` กับ `.claude\launch.json` ให้ครบ
 
 ชนิดที่รองรับ: `web` (Vite+TS), `next` (Next.js), `node` (CLI/API), `python`, `blank`
 
@@ -58,8 +63,19 @@ powershell -File C:\dev\.workspace\bin\new-project.ps1 -Name my-app -Type web
 | `CLAUDE.md` | กฎเฉพาะของโปรเจกต์ + คำสั่ง build/test/lint ที่ใช้จริง |
 | `.gitignore` | ต้อง ignore `node_modules`, `dist`, `.env*` (ยกเว้น `.env.example`) |
 | `.editorconfig` | UTF-8, LF, indent 2 (Python 4) |
+| `bugs.md` | log บั๊กที่เจอ+แก้จริงทุกครั้ง (ดูกฎด้านล่าง) |
 
 ชื่อโฟลเดอร์เป็น **kebab-case ภาษาอังกฤษ** เสมอ (`smart-drive-map` ไม่ใช่ `SmartDriveMap`)
+
+**ทุกครั้งที่แก้บั๊กจริง (ไม่ใช่แค่ปรับ scope/feature ใหม่) ต้องจดลง `bugs.md` ของโปรเจกต์นั้นเสมอ** (เพิ่ม
+2026-08-14 ตามคำขอผู้ใช้ — มาตรฐานถาวรทุกโปรเจกต์) ต่อ 1 บั๊ก บันทึกอย่างน้อย 3 อย่าง:
+1. **ชื่อ/อาการบั๊ก** — สั้นๆ ว่าเจออะไรผิดปกติ (ผู้ใช้เห็น/รายงานว่าอะไร)
+2. **สาเหตุ** — root cause จริงๆ ไม่ใช่แค่ "แก้ตรงไหน" (จะได้รู้ว่าโค้ด pattern แบบไหนเสี่ยงพังซ้ำ)
+3. **วิธีแก้** — แก้ยังไง อ้างไฟล์/บรรทัด/commit ถ้ามี
+
+เป้าหมายคือให้ **ไม่ต้องเจอบั๊กเดิมซ้ำ** เพราะรู้ล่วงหน้าว่าโค้ดแบบไหนทำแล้วจะพัง (เช่น pattern ที่เคยพลาด,
+ค่า transparency ที่ TradingView UI แสดงกลับด้าน, ประเภทข้อมูลที่ Pine ต้องการเป๊ะๆ ฯลฯ) — ก่อนแก้โค้ดจุดที่
+เคยมีปัญหา ให้เปิด `bugs.md` ดูก่อนว่ามีบันทึกเกี่ยวข้องมั้ย
 
 ## 4. ความปลอดภัยและการสำรองข้อมูล (ข้อนี้ห้ามละเมิด)
 
@@ -67,10 +83,8 @@ powershell -File C:\dev\.workspace\bin\new-project.ps1 -Name my-app -Type web
   ให้ commit เฉพาะ `.env.example` ที่ใส่ค่าหลอก
 - ห้ามใส่ secret ลงในโค้ดฝั่ง client (อะไรที่ bundle ไป browser คือสาธารณะ)
 - `.env` / `.env.local` อยู่ในเครื่องเท่านั้น
-- **ทุกโปรเจกต์ต้องมี git remote** — ไม่มี remote = ดิสก์พังแล้วหายหมด
-  `new-project.ps1` สร้าง GitHub repo เป็น **private** ให้อัตโนมัติ
-  ถ้าจะทำ public ต้องสั่ง `-Public` เอง และตรวจ history ให้แน่ใจก่อนว่าไม่มี secret หลุด
-- ตัว workspace เองก็อยู่ใน git → `github.com/surakarn4327/dev-workspace` (private)
+- **ทุกโปรเจกต์อยู่ใน remote เดียวกัน** → `github.com/surakarn4327/dev-workspace` (private)
+  ไม่มี GitHub repo แยกต่อโปรเจกต์อีกต่อไป ไม่มี remote = ดิสก์พังแล้วหายหมด
 - **ทุกบริการ/API/hosting ที่ใช้ในทุกโปรเจกต์ ต้องฟรี และห้ามผูกบัตร (no card verification)**
   แม้ tier ฟรีจะไม่มีค่าใช้จ่ายจริง ถ้าขั้นตอน sign up ต้องกรอกบัตร ถือว่าใช้ไม่ได้
   ห้ามเสนอ Oracle Cloud / AWS / GCP / TradingView Pro หรือบริการอื่นที่ต้องผูกบัตรแม้จะฟรี
@@ -118,7 +132,7 @@ powershell -File C:\dev\.workspace\bin\new-project.ps1 -Name my-app -Type web
 - **ข้อความแรกของทุก session ใหม่ที่เปิดในโฟลเดอร์นี้** ให้ทักทายสั้นๆ ก่อนตอบเรื่องอื่นใด
   (ยกเว้น session ที่ resume/continue ของเก่าอยู่แล้ว) สรุปด้วย bullet สั้นๆ:
   - นี่คือ workspace `C:\dev` อยู่ใต้ธรรมนูญ `CLAUDE.md`
-  - 1 โปรเจกต์ = 1 โฟลเดอร์ = 1 git repo ห้าม import ข้ามโปรเจกต์
+  - `dev-workspace` เป็น monorepo เดียว 1 โปรเจกต์ = 1 โฟลเดอร์ (ไม่มี `.git` ซ้อน) ห้าม import ข้ามโปรเจกต์
   - สร้างโปรเจกต์ใหม่: `/new-project <ชื่อ> <web|next|node|python|blank>`
   - ตรวจสุขภาพ: `/doctor-workspace`
   - แล้วค่อยถามว่าวันนี้จะทำอะไร

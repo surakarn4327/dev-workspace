@@ -18,13 +18,7 @@ param(
     [string]$Description = '',
 
     # ข้าม npm install / create-* (สร้างแค่โครงไฟล์)
-    [switch]$NoInstall,
-
-    # ไม่ต้องสร้าง repo บน GitHub (ปกติสร้างให้เป็น private อัตโนมัติ)
-    [switch]$NoRemote,
-
-    # สร้าง repo เป็น public แทน private -- คิดให้ดีก่อนใช้
-    [switch]$Public
+    [switch]$NoInstall
 )
 
 $ErrorActionPreference = 'Stop'
@@ -251,53 +245,19 @@ $reg = $reg.Replace('<!-- PROJECTS:START -->', "<!-- PROJECTS:START -->`n$row")
 Write-Utf8 $RegPath $reg
 Ok "ลงทะเบียนใน PROJECTS.md"
 
-# ---------- 7. git init + commit แรก ----------
+# ---------- 7. commit เข้า dev-workspace repo เดิม ----------
+# dev-workspace เป็น monorepo เดียว ไม่ git init แยกต่อโปรเจกต์ (ธรรมนูญข้อ 1)
 # identity มาจาก C:\dev\.gitconfig ผ่าน includeIf อัตโนมัติ ไม่ต้องตั้งตรงนี้
 
-$RepoUrl = $null
-Push-Location $ProjectDir
+Push-Location $Root
 try {
-    if (-not (Test-Path '.git')) { & git init -q -b main }
-    & git add -A
-    & git commit -q -m "init $Name ($Type project)"
-    if ($?) { Ok "git commit แรกเรียบร้อย" }
-
-    # ---------- 8. สร้าง repo บน GitHub ----------
-
-    if ($NoRemote) {
-        Write-Host "  - ข้าม GitHub (-NoRemote)" -ForegroundColor DarkGray
-    }
-    elseif (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        Write-Host "  ! ไม่พบ gh CLI -- ยังไม่มี remote ตั้ง backup เองด้วย" -ForegroundColor Yellow
-    }
-    else {
-        & gh auth switch --hostname github.com --user surakarn4327 2>$null
-        $owner = (& gh api user --jq '.login') 2>$null
-        if ($owner -ne 'surakarn4327') {
-            Write-Host "  ! gh ไม่ได้ login เป็น surakarn4327 (ได้ '$owner') -- ยังไม่มี remote, ตั้งเองภายหลัง" -ForegroundColor Yellow
-            $owner = $null
-        }
-        if (-not $owner) {
-            Write-Host "  ! ยังไม่มี remote" -ForegroundColor Yellow
-        }
-        else {
-            $vis = if ($Public) { '--public' } else { '--private' }
-            Step "สร้าง GitHub repo $owner/$Name ($($vis.TrimStart('-')))"
-            & gh repo create "$owner/$Name" $vis --source=. --remote=origin --push
-            if ($LASTEXITCODE -eq 0) {
-                $RepoUrl = "https://github.com/$owner/$Name"
-                Ok "push ขึ้น $RepoUrl"
-            }
-            else {
-                Write-Host "  ! สร้าง repo ไม่สำเร็จ -- โค้ดยังอยู่ในเครื่อง ตั้ง remote เองภายหลังได้" -ForegroundColor Yellow
-            }
-        }
-    }
+    & git add -- $Name
+    & git commit -q -m "add $Name ($Type project)"
+    if ($?) { Ok "commit เข้า dev-workspace เรียบร้อย" }
 }
 finally { Pop-Location }
 
 Write-Host ""
 Write-Host "  พลเมืองใหม่: $ProjectDir" -ForegroundColor Green
 if ($Port) { Write-Host "  พอร์ต $Port  ->  preview_start ชื่อ '$Name'" -ForegroundColor Green }
-if ($RepoUrl) { Write-Host "  remote: $RepoUrl" -ForegroundColor Green }
-Write-Host "  ต่อไป: แก้ $Name\CLAUDE.md ให้บอกว่าโปรเจกต์นี้ทำอะไร" -ForegroundColor DarkGray
+Write-Host "  ต่อไป: แก้ $Name\CLAUDE.md ให้บอกว่าโปรเจกต์นี้ทำอะไร แล้ว push dev-workspace" -ForegroundColor DarkGray

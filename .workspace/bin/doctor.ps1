@@ -37,8 +37,8 @@ foreach ($p in $projects) {
         if (-not (Test-Path (Join-Path $dir $f))) { Problem $n "ไม่มี $f" }
     }
 
-    if (-not (Test-Path (Join-Path $dir '.git'))) {
-        Problem $n 'ยังไม่เป็น git repo (ธรรมนูญข้อ 1)'
+    if (Test-Path (Join-Path $dir '.git')) {
+        Problem $n 'มี .git ซ้อนในโฟลเดอร์โปรเจกต์ -- dev-workspace เป็น monorepo ห้ามมี repo ซ้อน (ธรรมนูญข้อ 1)'
     }
 
     $isNode = Test-Path (Join-Path $dir 'package.json')
@@ -63,31 +63,30 @@ foreach ($p in $projects) {
         }
     }
 
-    # secret หลุดเข้า git หรือยัง + มี remote ไหม
-    if (Test-Path (Join-Path $dir '.git')) {
-        Push-Location $dir
-        $prevEAP = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        $tracked = & git ls-files 2>$null
-        $remote = & git remote 2>$null
-        $unpushed = if ($remote) { & git log '@{u}..' --oneline 2>$null } else { $null }
-        $ErrorActionPreference = $prevEAP
-        Pop-Location
-
-        if (-not $remote) {
-            Problem $n 'ไม่มี git remote -- ดิสก์พังคือหายหมด (ธรรมนูญข้อ 4)'
-        }
-        elseif ($unpushed) {
-            Problem $n "มี $(@($unpushed).Count) commit ที่ยังไม่ push"
-        }
-        $leaked = @($tracked | Where-Object { $_ -match '(^|/)\.env($|\.)' -and $_ -notmatch '\.example$' })
-        foreach ($l in $leaked) { Problem $n "!! ไฟล์ secret ถูก track ใน git: $l" }
-    }
-
     if ($registry -notmatch [regex]::Escape("| [$n]")) {
         Problem $n 'ยังไม่ได้ลงทะเบียนใน PROJECTS.md'
     }
 }
+
+# ---------- dev-workspace repo เดียว: remote / unpushed / secret ----------
+
+Push-Location $Root
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+$tracked = & git ls-files 2>$null
+$remote = & git remote 2>$null
+$unpushed = if ($remote) { & git log '@{u}..' --oneline 2>$null } else { $null }
+$ErrorActionPreference = $prevEAP
+Pop-Location
+
+if (-not $remote) {
+    Problem '(dev-workspace)' 'ไม่มี git remote -- ดิสก์พังคือหายหมด (ธรรมนูญข้อ 4)'
+}
+elseif ($unpushed) {
+    Problem '(dev-workspace)' "มี $(@($unpushed).Count) commit ที่ยังไม่ push"
+}
+$leaked = @($tracked | Where-Object { $_ -match '(^|/)\.env($|\.)' -and $_ -notmatch '\.example$' })
+foreach ($l in $leaked) { Problem '(dev-workspace)' "!! ไฟล์ secret ถูก track ใน git: $l" }
 
 # ---------- รายงาน ----------
 
