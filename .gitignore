@@ -1,22 +1,15 @@
-# repo นี้เก็บเฉพาะ "กฎหมาย" ไม่เก็บ "พลเมือง"
-# แต่ละโปรเจกต์เป็น git repo อิสระของตัวเอง (ธรรมนูญข้อ 1)
-# จึงต้อง ignore ทุกอย่างก่อน แล้วค่อยเปิดเฉพาะไฟล์ของรัฐ
-
-/*
-
-!/.claude/
-!/.workspace/
-!/CLAUDE.md
-!/PROJECTS.md
-!/.nvmrc
-!/.editorconfig
-!/.gitignore
-!/.gitattributes
-!/.gitconfig
-
-# _docs/ ไม่เข้า git — อาจมีเอกสาร/สเปรดชีตงานจริงที่ไม่ควรขึ้น remote
+# dev-workspace เป็น monorepo — ทุกโปรเจกต์อยู่ในนี้เป็นโฟลเดอร์
+# _docs/ ไม่เข้า git โดยตั้งใจ — อาจมีเอกสาร/สเปรดชีตงานจริงที่ไม่ควรขึ้น remote
+/_docs/
 
 .claude/settings.local.json
 .env
 .env.*
 !.env.example
+
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
