@@ -5,7 +5,7 @@
 | โปรเจกต์ | ชนิด | พอร์ต | เกิดเมื่อ | คำอธิบาย |
 |---|---|---|---|---|
 <!-- PROJECTS:START -->
-| [game-dev-simulator](game-dev-simulator/) | blank | - | 2026-08-26 | Roblox tycoon: เด็กธรรมดาผันตัวเป็น dev ไต่จากศูนย์ สร้างเกม ตระเวนขายตามคุณภาพ ปั้นทุนซื้อบริษัท จ้างพนักงาน แข่งขันกับสตูดิโออื่น |
+| [game-dev-simulator](game-dev-simulator/) | blank | - | 2026-08-28 | Roblox tycoon: dev ผันตัวจากศูนย์ - สร้างเกม, ขาย, ปั้นทุน, ซื้อบริษัท, จ้างคน, แข่งกับสตูดิโออื่น (ใช้ Studio built-in MCP แทน Rojo-only) |
 | [smart-indicator](smart-indicator/) | blank | - | 2026-08-10 | TradingView Pine Script indicator ที่หา entry signal ตามเทคนิคเทรดของผู้ใช้เอง (ไม่ใช่ SMC) - plot signal บนกราฟ ไม่ auto-trade |
 <!-- PROJECTS:END -->
 
