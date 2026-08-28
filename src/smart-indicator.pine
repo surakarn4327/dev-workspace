@@ -770,3 +770,6 @@ if enableCrt and showDashboard and barstate.islast
 
     table.cell(dashTable, 0, 6, "ข้อมูลย้อนหลัง", text_size=dashTextSize)
     table.cell(dashTable, 1, 6, historyText, text_size=dashTextSize)
+
+// === ทดสอบวัด delay ของแจ้งเตือน — ยิงทุกแท่งปิด (ลบทิ้งได้หลังทดสอบเสร็จ) ===
+alertcondition(true, title="ทดสอบแท่งปิด", message="แท่งปิด {{ticker}} {{interval}} เวลา {{time}}")
