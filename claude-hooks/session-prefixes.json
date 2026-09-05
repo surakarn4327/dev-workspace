@@ -3,6 +3,8 @@
   "winShowPcPlanning": "showPlanning",
   "Cosmo-PC-Type-E-UpdatePlaning": "CosmoUpd",
   "dev": "DEV",
+  "dev-workspace": "DEV",
   "learn-godot": "GODOT",
-  "smart-ea": "smart-ea"
+  "smart-ea": "smart-ea",
+  "trade-lab": "LAB"
 }
