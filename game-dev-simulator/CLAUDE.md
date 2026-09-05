@@ -50,8 +50,20 @@ Roblox tycoon — ผู้เล่นเริ่มจากเด็กธ�
   อ่าน console, คุม playtest ผ่าน MCP โดยตรง ไม่ต้องพึ่ง Rojo sync ไฟล์แบบโปรเจกต์เดิม
   - ต้องเปิด Roblox Studio ค้างไว้เสมอตอนให้ Claude ทำงานกับโปรเจกต์นี้ (MCP เป็น session-based)
   - โค้ดที่ Claude เขียน/แก้ผ่าน MCP จะอยู่ใน place file (`.rbxl`) ไม่ใช่ไฟล์ `.luau` แยกบนดิสก์เหมือน Rojo
-    — ถ้าต้องการ version control ของ script ต้อง export/copy กลับมาเก็บใน `src/` เป็นระยะเอง (ยังไม่มี
-    workflow อัตโนมัติ ต้องคิดเพิ่มทีหลังถ้าจะทำ)
+  - **ทุกครั้งที่ Claude สร้าง/แก้ script ของโปรเจกต์เอง (ไม่ใช่ script ของ asset pack ที่ import มา) ผ่าน MCP
+    ต้อง sync กลับมาเขียนไฟล์ใน `src/` ให้ตรงกับ Source ล่าสุดเสมอ โดยไม่ต้องรอผู้ใช้สั่ง** (เพิ่ม 2026-08-29
+    ตามคำขอผู้ใช้ ให้เป็น default ทุก session ไม่ใช่ต้องขอทีละครั้ง) — path map ตาม `src/server|client|shared`
+    ปกติ, ชื่อไฟล์ตรงกับชื่อ instance, นามสกุลตาม script type (`.server.luau` / `.client.luau` /
+    `.luau` สำหรับ ModuleScript)
+    - **ต้องอ่าน Source จาก `datamodel_type: "Edit"` เท่านั้น** ห้าม sync จาก Server/Client datamodel ตอน
+      Play mode เด็ดขาด เพราะนั่นคือ runtime clone ชั่วคราว — แก้ `.Source` ใน datamodel นั้นแล้วกด Stop
+      จะหายหมด ไม่ persist กลับ place file จริง (เจอเคสนี้มาแล้ว 2026-08-29: แก้บั๊ก apartment door,
+      สั่ง `s.Source = ...` ใน Server datamodel ตอน Play คิดว่าเซฟแล้ว แต่พอ Stop กลับไปโค้ดเก่า ต้องแก้ซ้ำใน
+      Edit datamodel ถึงเซฟจริง)
+    - เฟอร์นิเจอร์/Part ที่สร้างผ่าน `execute_luau` ก็เช่นกัน — สร้างตอน Play มันจะหายตอน Stop เหมือนกัน
+      (ไม่ใช่แค่ script) ถ้าต้องการให้ของถาวรอยู่ในโลกเกมจริง ต้องสร้างตอน `datamodel_type: "Edit"` เท่านั้น
+    - asset pack ที่ import มา (vehicle kit, `PlayerModule`, `RealisticDoorPack`, click-sit ของม้านั่ง/เก้าอี้
+      จาก endorsed models ฯลฯ) **ไม่ต้อง** sync ลง `src/` — เป็นของ vendor ไม่ใช่โค้ดที่ Claude เขียนเอง
 
 ## โครงสร้าง
 
@@ -61,6 +73,34 @@ src/            # สำเนาโค้ด Luau ไว้ track ใน git (s
 ├── client/     # UI, input, effect ฝั่งผู้เล่น
 └── shared/     # ค่าคงที่/type ที่ทั้งสองฝั่งใช้ร่วมกัน (ReplicatedStorage)
 ```
+
+## ตัวละครผู้เล่น (fixed avatar — ใช้เป็นตัวอ้างอิงขนาดเฟอร์นิเจอร์)
+
+ทุกคนสปอนด้วยตัวละครขนาด/รูปร่างเดียวกันเป๊ะ ล็อกด้วย `src/server/FixedAvatarController.server.luau`
+(ปิด `Players.CharacterAutoLoads` แล้ว **clone** จาก `ServerStorage.PlayerCharacterTemplate` เองทุกครั้งที่
+spawn/respawn — ผู้เล่นปรับแต่ง avatar เองไม่ได้ผลอะไร เพราะโดน override ทับทุกรอบ) เหตุผล: งานปรับขนาด
+furniture ต่อๆ ไปจะใช้ขนาดตัวละครนี้เป็น reference ในการคำนวณสัดส่วน (ตามกฎ "ห้าม hardcode ค่าตำแหน่ง/สัดส่วน"
+ด้านล่าง) ถ้าตัวละครขนาดไม่คงที่ค่าที่คำนวณไว้จะพัง
+
+**ทำไมใช้วิธี clone ไม่ใช่ `HumanoidDescription`**: ลองแบบ `player:LoadCharacterWithHumanoidDescription`
+พร้อม `BodyTypeScale = 0` ก่อน (2026-08-29) หวังว่าจะได้ตัวเรียบๆ สีเทา แต่ระบบ body-type blending ของ
+Roblox ไม่เสถียร — ตั้ง `BodyTypeScale = 0` แต่ humanoid จริงกลับมาเป็น `0.3` แล้วได้ mesh ชุด "noob"
+บล็อกเหลี่ยมสีเหลือง/น้ำเงินมาตรฐานแทน (ไม่ใช่ตัวเทาเรียบที่ต้องการเลย) แก้โดยเอา Rig ที่ผู้ใช้เลือกเอง
+(R15 เรียบๆ สีเทาเดียวกันทั้งตัว ไม่มีหน้า) มาเก็บไว้ที่ `ServerStorage.PlayerCharacterTemplate` แล้ว
+`:Clone()` ตรงๆ ทุก spawn — รับประกันเหมือนต้นแบบเป๊ะ ไม่ผ่านระบบ blending ที่ไม่เสถียรเลย
+**ถ้าจะเปลี่ยนหน้าตาตัวละครทีหลัง ให้แก้ที่ตัว template instance นี้โดยตรง** ไม่ใช่กลับไปเล่นกับ
+`HumanoidDescription`
+
+**ค่าที่วัดได้จริงจาก fixed avatar (R15, ทุก scale = 1, วัดตอน Play จริง 2026-08-29):**
+- `Humanoid.RigType` = `R15`
+- `Humanoid.HipHeight` = `2`
+- `HumanoidRootPart.Size` = `2, 2, 1`
+- `Head.Size` ≈ `1.196, 1.203, 1.198`
+- ความสูงรวมทั้งตัว (bounding box) ≈ `5.12` studs (กว้าง ≈ `4.24`, ลึก ≈ `1.53` — ท่ายืนปกติ แขนกางเล็กน้อย)
+
+ถ้าจะคำนวณความสูงโต๊ะ/เก้าอี้/ระยะเอื้อมของผู้เล่น ให้ query ค่าพวกนี้จาก character จริงในโค้ด (เช่น
+`character.Humanoid.HipHeight`, `character:GetExtentsSize()`) ไม่ใช่จำตัวเลขด้านบนไปเขียนเป็นค่าคงที่ในโค้ด
+โดยตรง (เผื่อวันหลังปรับ `FIXED_DESCRIPTION` เปลี่ยน scale — โค้ดที่ query สดจะยังถูกต้องอัตโนมัติ)
 
 ## กฎเฉพาะของโปรเจกต์นี้
 
