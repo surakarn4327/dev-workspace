@@ -1,0 +1,221 @@
+//@version=6
+indicator(title="1m-SAR review", shorttitle="SAR-review", overlay=true, max_lines_count=500, max_labels_count=500)
+
+start1     = input.float(0.02, "Start", group="SAR 1")
+increment1 = input.float(0.02, "Increment", group="SAR 1")
+maximum1   = input.float(0.2, "Max value", group="SAR 1")
+tf1        = input.timeframe("1", "SAR timeframe", group="SAR 1")
+
+start2     = input.float(0.02, "Start", group="SAR 2")
+increment2 = input.float(0.02, "Increment", group="SAR 2")
+maximum2   = input.float(0.2, "Max value", group="SAR 2")
+tf2        = input.timeframe("5", "SAR timeframe", group="SAR 2")
+showLine2  = input.bool(true, "แสดงเส้นราคาปิดตอน flip", group="SAR 2")
+
+lineBars = input.int(10, "ความยาวเส้น (จำนวนแท่ง)", minval=1)
+
+slPoints       = input.int(500, "SL (จุด)", group="Winrate stats (ใช้ SAR 1 เป็น entry)")
+showStatsLines = input.bool(true, "แสดงเส้น SL/TP1-5", group="Winrate stats (ใช้ SAR 1 เป็น entry)")
+tradingSession = input.session("0800-0000", "ช่วงเวลาเทรด", group="Winrate stats (ใช้ SAR 1 เป็น entry)")
+tradingTz      = input.string("Asia/Bangkok", "Timezone ของช่วงเวลาเทรด", group="Winrate stats (ใช้ SAR 1 เป็น entry)")
+
+inSession = not na(time(timeframe.period, tradingSession, tradingTz))
+
+// ยืนยันกับผู้ใช้แล้ว (2026-09-05): 1 จุดของ XAUUSD บน feed นี้ = 0.01 ราคา
+// (entry 4500 / SL 4495 = 500 จุด) ตรงกับ RiskPointUnit ที่ใช้ใน SmartEA_XAUUSD.mq5 อยู่แล้ว
+pointSize = 0.01
+slDist    = slPoints * pointSize
+
+sar1     = request.security(syminfo.tickerid, tf1, ta.sar(start1, increment1, maximum1), lookahead=barmerge.lookahead_off)
+tf1Close = request.security(syminfo.tickerid, tf1, close, lookahead=barmerge.lookahead_off)
+sar2     = request.security(syminfo.tickerid, tf2, ta.sar(start2, increment2, maximum2), lookahead=barmerge.lookahead_off)
+tf2Close = request.security(syminfo.tickerid, tf2, close, lookahead=barmerge.lookahead_off)
+
+// sar จะซ้ำค่าเดิมทุกแท่งของ TF ปัจจุบันจนกว่าแท่ง TF ที่เลือกจะปิด (เช่นเลือก 5m บนกราฟ 1m ค่าจะซ้ำ 5 แท่ง)
+// โชว์แค่แท่งแรกที่ค่าเปลี่ยน ไม่ให้ซ้ำเป็นเส้นยาว
+sar1FirstPoint = sar1 != sar1[1] ? sar1 : na
+sar2FirstPoint = sar2 != sar2[1] ? sar2 : na
+
+plot(sar1FirstPoint, "ParabolicSAR 1", style=plot.style_cross, color=#2962FF)
+plot(sar2FirstPoint, "ParabolicSAR 2", style=plot.style_cross, color=#FF6D00)
+
+side1 = sar1 < tf1Close ? 1 : -1
+side2 = sar2 < tf2Close ? 1 : -1
+
+flip1 = side1 != side1[1]
+flip2 = side2 != side2[1]
+
+flipToLong1  = side1 == 1  and side1[1] == -1
+flipToShort1 = side1 == -1 and side1[1] == 1
+
+if showLine2 and flip2
+    line.new(bar_index, tf2Close, bar_index + lineBars, tf2Close, color=#FF6D00, width=1)
+
+// ===== Winrate stats: entry = flip ของ SAR 1, SL คงที่ตามจุดที่ตั้ง, เช็คว่า TP1-5 (RR 1-5) โดนก่อน SL มั้ย =====
+var array<bool>  pIsBuy = array.new_bool()
+var array<float> pEntry = array.new_float()
+var array<float> pSL    = array.new_float()
+var array<bool>  pRes1  = array.new_bool()
+var array<bool>  pRes2  = array.new_bool()
+var array<bool>  pRes3  = array.new_bool()
+var array<bool>  pRes4  = array.new_bool()
+var array<bool>  pRes5  = array.new_bool()
+
+var int buyWin1 = 0
+var int buyWin2 = 0
+var int buyWin3 = 0
+var int buyWin4 = 0
+var int buyWin5 = 0
+var int buyLoss1 = 0
+var int buyLoss2 = 0
+var int buyLoss3 = 0
+var int buyLoss4 = 0
+var int buyLoss5 = 0
+var int sellWin1 = 0
+var int sellWin2 = 0
+var int sellWin3 = 0
+var int sellWin4 = 0
+var int sellWin5 = 0
+var int sellLoss1 = 0
+var int sellLoss2 = 0
+var int sellLoss3 = 0
+var int sellLoss4 = 0
+var int sellLoss5 = 0
+
+if array.size(pEntry) > 0
+    for i = array.size(pEntry) - 1 to 0
+        isBuy  = array.get(pIsBuy, i)
+        ePrice = array.get(pEntry, i)
+        sPrice = array.get(pSL, i)
+        slHit  = isBuy ? low <= sPrice : high >= sPrice
+        if slHit
+            if not array.get(pRes1, i)
+                if isBuy
+                    buyLoss1 += 1
+                else
+                    sellLoss1 += 1
+            if not array.get(pRes2, i)
+                if isBuy
+                    buyLoss2 += 1
+                else
+                    sellLoss2 += 1
+            if not array.get(pRes3, i)
+                if isBuy
+                    buyLoss3 += 1
+                else
+                    sellLoss3 += 1
+            if not array.get(pRes4, i)
+                if isBuy
+                    buyLoss4 += 1
+                else
+                    sellLoss4 += 1
+            if not array.get(pRes5, i)
+                if isBuy
+                    buyLoss5 += 1
+                else
+                    sellLoss5 += 1
+            array.remove(pIsBuy, i)
+            array.remove(pEntry, i)
+            array.remove(pSL, i)
+            array.remove(pRes1, i)
+            array.remove(pRes2, i)
+            array.remove(pRes3, i)
+            array.remove(pRes4, i)
+            array.remove(pRes5, i)
+        else
+            tp1 = isBuy ? ePrice + 1 * slDist : ePrice - 1 * slDist
+            tp2 = isBuy ? ePrice + 2 * slDist : ePrice - 2 * slDist
+            tp3 = isBuy ? ePrice + 3 * slDist : ePrice - 3 * slDist
+            tp4 = isBuy ? ePrice + 4 * slDist : ePrice - 4 * slDist
+            tp5 = isBuy ? ePrice + 5 * slDist : ePrice - 5 * slDist
+            if (isBuy ? high >= tp1 : low <= tp1) and not array.get(pRes1, i)
+                array.set(pRes1, i, true)
+                if isBuy
+                    buyWin1 += 1
+                else
+                    sellWin1 += 1
+            if (isBuy ? high >= tp2 : low <= tp2) and not array.get(pRes2, i)
+                array.set(pRes2, i, true)
+                if isBuy
+                    buyWin2 += 1
+                else
+                    sellWin2 += 1
+            if (isBuy ? high >= tp3 : low <= tp3) and not array.get(pRes3, i)
+                array.set(pRes3, i, true)
+                if isBuy
+                    buyWin3 += 1
+                else
+                    sellWin3 += 1
+            if (isBuy ? high >= tp4 : low <= tp4) and not array.get(pRes4, i)
+                array.set(pRes4, i, true)
+                if isBuy
+                    buyWin4 += 1
+                else
+                    sellWin4 += 1
+            if (isBuy ? high >= tp5 : low <= tp5) and not array.get(pRes5, i)
+                array.set(pRes5, i, true)
+                if isBuy
+                    buyWin5 += 1
+                else
+                    sellWin5 += 1
+            if array.get(pRes1, i) and array.get(pRes2, i) and array.get(pRes3, i) and array.get(pRes4, i) and array.get(pRes5, i)
+                array.remove(pIsBuy, i)
+                array.remove(pEntry, i)
+                array.remove(pSL, i)
+                array.remove(pRes1, i)
+                array.remove(pRes2, i)
+                array.remove(pRes3, i)
+                array.remove(pRes4, i)
+                array.remove(pRes5, i)
+
+// filter: SAR2 อยู่ใต้ราคา (side2==1, ขาขึ้น) ให้ Buy เท่านั้น / SAR2 อยู่เหนือราคา (side2==-1, ขาลง) ให้ Sell เท่านั้น
+// และต้องอยู่ในช่วงเวลาเทรดที่ตั้งไว้เท่านั้น
+entryLongOK  = flipToLong1  and side2 == 1  and inSession
+entryShortOK = flipToShort1 and side2 == -1 and inSession
+
+if entryLongOK or entryShortOK
+    newIsBuy = entryLongOK
+    newEntry = tf1Close
+    newSL    = newIsBuy ? newEntry - slDist : newEntry + slDist
+    array.push(pIsBuy, newIsBuy)
+    array.push(pEntry, newEntry)
+    array.push(pSL, newSL)
+    array.push(pRes1, false)
+    array.push(pRes2, false)
+    array.push(pRes3, false)
+    array.push(pRes4, false)
+    array.push(pRes5, false)
+    if showStatsLines
+        line.new(bar_index, newEntry, bar_index + lineBars, newEntry, color=#2962FF, width=1)
+        label.new(bar_index + lineBars, newEntry, "Entry", style=label.style_label_left, textcolor=color.white, color=color.new(#2962FF, 0), size=size.tiny)
+        line.new(bar_index, newSL, bar_index + lineBars, newSL, color=color.new(color.red, 0), width=1)
+        label.new(bar_index + lineBars, newSL, "SL", style=label.style_label_left, textcolor=color.white, color=color.new(color.red, 0), size=size.tiny)
+        for n = 1 to 5
+            tpLevel = newIsBuy ? newEntry + n * slDist : newEntry - n * slDist
+            line.new(bar_index, tpLevel, bar_index + lineBars, tpLevel, color=color.new(color.teal, 0), width=1)
+            label.new(bar_index + lineBars, tpLevel, "TP" + str.tostring(n), style=label.style_label_left, textcolor=color.white, color=color.new(color.teal, 0), size=size.tiny)
+
+winrateStr(w, l) =>
+    total = w + l
+    total == 0 ? "n/a" : str.tostring(math.round(w / total * 100)) + "% (" + str.tostring(w) + "W/" + str.tostring(l) + "L)"
+
+var table statsTable = table.new(position.bottom_right, 3, 6)
+if barstate.islast
+    table.cell(statsTable, 0, 0, "RR", text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 1, 0, "Buy", text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 2, 0, "Sell", text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 0, 1, "1", text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 1, 1, winrateStr(buyWin1, buyLoss1), text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 2, 1, winrateStr(sellWin1, sellLoss1), text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 0, 2, "2", text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 1, 2, winrateStr(buyWin2, buyLoss2), text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 2, 2, winrateStr(sellWin2, sellLoss2), text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 0, 3, "3", text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 1, 3, winrateStr(buyWin3, buyLoss3), text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 2, 3, winrateStr(sellWin3, sellLoss3), text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 0, 4, "4", text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 1, 4, winrateStr(buyWin4, buyLoss4), text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 2, 4, winrateStr(sellWin4, sellLoss4), text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 0, 5, "5", text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 1, 5, winrateStr(buyWin5, buyLoss5), text_color=color.white, bgcolor=color.new(color.gray, 0))
+    table.cell(statsTable, 2, 5, winrateStr(sellWin5, sellLoss5), text_color=color.white, bgcolor=color.new(color.gray, 0))
