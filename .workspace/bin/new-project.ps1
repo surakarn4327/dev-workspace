@@ -22,7 +22,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Root = 'C:\dev'
+# หา root จากที่อยู่ของสคริปต์เอง (<root>\.workspace\bin\) — อย่า hardcode path
+# เพราะ workspace ย้ายที่ได้ (เคยอยู่ C:\dev ตอนนี้อยู่ใต้ OneDrive)
+$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $Templates = Join-Path $Root '.workspace\templates\common'
 
 # ---------- helpers ----------

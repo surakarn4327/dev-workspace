@@ -8,7 +8,8 @@ param([switch]$Quiet)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-$Root = 'C:\dev'
+# หา root จากที่อยู่ของสคริปต์เอง (<root>\.workspace\bin\) — อย่า hardcode path
+$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $issues = @()
 
 function Problem($project, $msg) {
