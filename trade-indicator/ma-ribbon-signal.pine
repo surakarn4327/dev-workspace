@@ -1,0 +1,313 @@
+// MA Ribbon Signal Indicator — Pine port of MA_Ribbon_Signal_Indicator.ex5 (MT5)
+//
+// Ribbon = band between the short EMA cluster and the long EMA cluster.
+// A signal fires when the short cluster crosses the long cluster.
+// Each signal produces Entry / SL / TP1..TP3; the script then walks the trade
+// forward bar by bar and records which levels were reached before the SL.
+// The dashboard reports the hit rate of every level over the loaded history.
+//
+// Ambiguity rule: when one bar's range touches both SL and a TP, SL wins.
+// Intrabar order is unknowable from OHLC, so the pessimistic branch is taken —
+// the reported rates are a floor, not an optimistic estimate.
+
+//@version=6
+indicator("MA Ribbon Signal + Stats", shorttitle = "MA Ribbon", overlay = true, max_lines_count = 500)
+
+// ─── Inputs: MA Ribbon ──────────────────────────────────────────────────────
+gRibbon = "MA Ribbon"
+maMethod = input.string("EMA", "MA Method", options = ["EMA", "SMA", "WMA", "RMA"], group = gRibbon)
+
+s1 = input.int(5,  "Short 1", minval = 1, group = gRibbon, inline = "s1")
+s2 = input.int(8,  "2",       minval = 1, group = gRibbon, inline = "s1")
+s3 = input.int(11, "3",       minval = 1, group = gRibbon, inline = "s1")
+s4 = input.int(14, "Short 4", minval = 1, group = gRibbon, inline = "s2")
+s5 = input.int(17, "5",       minval = 1, group = gRibbon, inline = "s2")
+s6 = input.int(20, "6",       minval = 1, group = gRibbon, inline = "s2")
+
+l1 = input.int(30, "Long 1", minval = 1, group = gRibbon, inline = "l1")
+l2 = input.int(35, "2",      minval = 1, group = gRibbon, inline = "l1")
+l3 = input.int(40, "3",      minval = 1, group = gRibbon, inline = "l1")
+l4 = input.int(45, "4",      minval = 1, group = gRibbon, inline = "l1")
+l5 = input.int(50, "Long 5", minval = 1, group = gRibbon, inline = "l2")
+l6 = input.int(55, "6",      minval = 1, group = gRibbon, inline = "l2")
+l7 = input.int(60, "7",      minval = 1, group = gRibbon, inline = "l2")
+
+showLines = input.bool(false, "Show individual MA lines", group = gRibbon)
+
+// ─── Inputs: Stop Loss ─────────────────────────────────────────────────────
+gSL = "Stop Loss"
+useAtrSL   = input.bool(true, "Use ATR-based SL", group = gSL)
+atrPeriod  = input.int(14,    "ATR Period", minval = 1, group = gSL)
+atrMult    = input.float(1.5, "ATR Multiplier", minval = 0.1, step = 0.1, group = gSL)
+swingBars  = input.int(10,    "Swing Bars Lookback (if not ATR)", minval = 1, group = gSL)
+slBufPoint = input.float(50,  "SL Buffer (in points)", minval = 0, group = gSL)
+
+// ─── Inputs: Take Profit ───────────────────────────────────────────────────
+gTP = "Take Profit"
+rr1 = input.float(2.0, "TP1 Risk:Reward", minval = 0.1, step = 0.1, group = gTP)
+rr2 = input.float(3.0, "TP2 Risk:Reward", minval = 0.1, step = 0.1, group = gTP)
+rr3 = input.float(4.0, "TP3 Risk:Reward", minval = 0.1, step = 0.1, group = gTP)
+
+// ─── Inputs: Visuals ───────────────────────────────────────────────────────
+gVis = "Visuals"
+bullFill = input.color(color.new(color.lime, 65), "Ribbon Bull", group = gVis, inline = "rib")
+bearFill = input.color(color.new(color.red, 65),  "Bear",        group = gVis, inline = "rib")
+cEntry   = input.color(#1E90FF, "Entry", group = gVis, inline = "lv1")
+cSL      = input.color(#FF4500, "SL",    group = gVis, inline = "lv1")
+cTP1     = input.color(#32CD32, "TP1",   group = gVis, inline = "lv2")
+cTP2     = input.color(#2E8B57, "TP2",   group = gVis, inline = "lv2")
+cTP3     = input.color(#00A000, "TP3",   group = gVis, inline = "lv2")
+lineWidth  = input.int(1, "Line Width", minval = 1, maxval = 4, group = gVis)
+drawLevels = input.bool(true, "Draw level lines for the open trade", group = gVis)
+
+// ─── Inputs: Dashboard ─────────────────────────────────────────────────────
+gDash = "Dashboard"
+showDash  = input.bool(true, "Show Dashboard", group = gDash)
+dashPos   = input.string("top_left", "Position", options = ["top_left", "top_right", "bottom_left", "bottom_right"], group = gDash)
+dashSize  = input.string("small", "Text Size", options = ["tiny", "small", "normal", "large"], group = gDash)
+statsFrom = input.int(0, "Count trades from bar index (0 = all)", minval = 0, group = gDash)
+
+// ─── Inputs: Alerts ────────────────────────────────────────────────────────
+alertOnSignal = input.bool(true, "Alert on new signal", group = "Alerts")
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+ma(simple int len) =>
+    switch maMethod
+        "EMA" => ta.ema(close, len)
+        "SMA" => ta.sma(close, len)
+        "WMA" => ta.wma(close, len)
+        => ta.rma(close, len)
+
+pct(int hit, int total) =>
+    total == 0 ? "—" : str.tostring(hit * 100.0 / total, "#.0") + "%"
+
+// ─── Ribbon ────────────────────────────────────────────────────────────────
+sma1 = ma(s1)
+sma2 = ma(s2)
+sma3 = ma(s3)
+sma4 = ma(s4)
+sma5 = ma(s5)
+sma6 = ma(s6)
+lma1 = ma(l1)
+lma2 = ma(l2)
+lma3 = ma(l3)
+lma4 = ma(l4)
+lma5 = ma(l5)
+lma6 = ma(l6)
+lma7 = ma(l7)
+
+shortAvg = math.avg(sma1, sma2, sma3, sma4, sma5, sma6)
+longAvg  = math.avg(lma1, lma2, lma3, lma4, lma5, lma6, lma7)
+
+// Band edges: fastest short vs slowest long — matches the wide MT5 ribbon.
+bandFast = sma1
+bandSlow = lma7
+
+isBull      = shortAvg > longAvg
+ribbonColor = isBull ? bullFill : bearFill
+
+pFast = plot(bandFast, "Ribbon Fast", color = color.new(color.gray, 100))
+pSlow = plot(bandSlow, "Ribbon Slow", color = color.new(color.gray, 100))
+fill(pFast, pSlow, color = ribbonColor, title = "Ribbon")
+
+plot(showLines ? sma1 : na, "S1", color.new(color.aqua, 40))
+plot(showLines ? sma3 : na, "S3", color.new(color.aqua, 40))
+plot(showLines ? sma6 : na, "S6", color.new(color.aqua, 40))
+plot(showLines ? lma1 : na, "L1", color.new(color.orange, 40))
+plot(showLines ? lma4 : na, "L4", color.new(color.orange, 40))
+plot(showLines ? lma7 : na, "L7", color.new(color.orange, 40))
+
+// ─── Signal ────────────────────────────────────────────────────────────────
+buySignal  = ta.crossover(shortAvg, longAvg)
+sellSignal = ta.crossunder(shortAvg, longAvg)
+
+plotshape(buySignal,  "Buy",  shape.triangleup,   location.belowbar, color.lime, size = size.small)
+plotshape(sellSignal, "Sell", shape.triangledown, location.abovebar, color.red,  size = size.small)
+
+// ─── Level calculation ─────────────────────────────────────────────────────
+atrVal  = ta.atr(atrPeriod)
+swingLo = ta.lowest(low, swingBars)
+swingHi = ta.highest(high, swingBars)
+slBuf   = slBufPoint * syminfo.mintick
+
+calcSL(bool long) =>
+    raw = useAtrSL ? (long ? close - atrVal * atrMult : close + atrVal * atrMult) : (long ? swingLo : swingHi)
+    long ? raw - slBuf : raw + slBuf
+
+// ─── Trade state ───────────────────────────────────────────────────────────
+var int   tDir   = 0          // 0 = flat, 1 = long, -1 = short
+var float tEntry = na
+var float tSL    = na
+var float tTP1   = na
+var float tTP2   = na
+var float tTP3   = na
+var bool  got1   = false
+var bool  got2   = false
+var bool  got3   = false
+
+var int nClosed = 0
+var int nTP1    = 0
+var int nTP2    = 0
+var int nTP3    = 0
+var int nSL     = 0
+var int nFlat   = 0           // closed by an opposite signal without touching SL or TP1
+
+var line lnE = na
+var line lnS = na
+var line ln1 = na
+var line ln2 = na
+var line ln3 = na
+
+counting = bar_index >= statsFrom
+
+// 1. Walk the open trade forward on this bar, before considering a new signal.
+if tDir != 0
+    hitSL = tDir == 1 ? low <= tSL : high >= tSL
+    if hitSL
+        if counting
+            nClosed += 1
+            nSL     += 1
+            if got1
+                nTP1 += 1
+            if got2
+                nTP2 += 1
+        tDir := 0
+        line.delete(lnE)
+        line.delete(lnS)
+        line.delete(ln1)
+        line.delete(ln2)
+        line.delete(ln3)
+    else
+        if tDir == 1
+            got1 := got1 or high >= tTP1
+            got2 := got2 or high >= tTP2
+            got3 := got3 or high >= tTP3
+        else
+            got1 := got1 or low <= tTP1
+            got2 := got2 or low <= tTP2
+            got3 := got3 or low <= tTP3
+        if got3
+            if counting
+                nClosed += 1
+                nTP1    += 1
+                nTP2    += 1
+                nTP3    += 1
+            tDir := 0
+            line.delete(lnE)
+            line.delete(lnS)
+            line.delete(ln1)
+            line.delete(ln2)
+            line.delete(ln3)
+
+// 2. A fresh signal books whatever is still open, then opens a new trade.
+if buySignal or sellSignal
+    if tDir != 0
+        if counting
+            nClosed += 1
+            if got1
+                nTP1 += 1
+            if got2
+                nTP2 += 1
+            if not got1
+                nFlat += 1
+        line.delete(lnE)
+        line.delete(lnS)
+        line.delete(ln1)
+        line.delete(ln2)
+        line.delete(ln3)
+
+    tDir   := buySignal ? 1 : -1
+    tEntry := close
+    tSL    := calcSL(buySignal)
+    risk   = math.abs(tEntry - tSL)
+    tTP1   := buySignal ? tEntry + risk * rr1 : tEntry - risk * rr1
+    tTP2   := buySignal ? tEntry + risk * rr2 : tEntry - risk * rr2
+    tTP3   := buySignal ? tEntry + risk * rr3 : tEntry - risk * rr3
+    got1   := false
+    got2   := false
+    got3   := false
+
+    if drawLevels
+        lnE := line.new(bar_index, tEntry, bar_index + 1, tEntry, color = cEntry, style = line.style_dashed, width = lineWidth, extend = extend.right)
+        lnS := line.new(bar_index, tSL,    bar_index + 1, tSL,    color = cSL,    style = line.style_dashed, width = lineWidth, extend = extend.right)
+        ln1 := line.new(bar_index, tTP1,   bar_index + 1, tTP1,   color = cTP1,   style = line.style_dashed, width = lineWidth, extend = extend.right)
+        ln2 := line.new(bar_index, tTP2,   bar_index + 1, tTP2,   color = cTP2,   style = line.style_dashed, width = lineWidth, extend = extend.right)
+        ln3 := line.new(bar_index, tTP3,   bar_index + 1, tTP3,   color = cTP3,   style = line.style_dashed, width = lineWidth, extend = extend.right)
+
+    if alertOnSignal
+        alert((buySignal ? "BUY " : "SELL ") + syminfo.ticker + " " + timeframe.period + " @ " + str.tostring(tEntry, format.mintick) + " | SL " + str.tostring(tSL, format.mintick) + " | TP1 " + str.tostring(tTP1, format.mintick) + " | TP2 " + str.tostring(tTP2, format.mintick) + " | TP3 " + str.tostring(tTP3, format.mintick), alert.freq_once_per_bar_close)
+
+// ─── Dashboard ─────────────────────────────────────────────────────────────
+// Expectancy in R: exit at the best level reached, -1R on an SL, 0R on a flat exit.
+only1 = nTP1 - nTP2
+only2 = nTP2 - nTP3
+grossR = only1 * rr1 + only2 * rr2 + nTP3 * rr3 - nSL * 1.0
+expR   = nClosed == 0 ? float(na) : grossR / nClosed
+
+dashPosition = switch dashPos
+    "top_left"    => position.top_left
+    "top_right"   => position.top_right
+    "bottom_left" => position.bottom_left
+    => position.bottom_right
+
+dashTextSize = switch dashSize
+    "tiny"   => size.tiny
+    "small"  => size.small
+    "normal" => size.normal
+    => size.large
+
+var table dash = table.new(dashPosition, 3, 12, bgcolor = color.new(color.black, 10), border_color = color.new(color.gray, 40), border_width = 1, frame_color = color.new(color.gray, 20), frame_width = 1)
+
+if showDash and barstate.islast
+    hdrBg = color.new(color.gray, 65)
+
+    sigTxt = tDir == 1 ? "BUY open" : tDir == -1 ? "SELL open" : isBull ? "bull, no trade" : "bear, no trade"
+    sigCol = tDir == 1 ? color.lime : tDir == -1 ? color.red : color.silver
+
+    table.cell(dash, 0, 0, syminfo.ticker + "  " + timeframe.period, text_color = color.white, bgcolor = hdrBg, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 0, "", bgcolor = hdrBg)
+    table.cell(dash, 2, 0, str.tostring(close, format.mintick), text_color = color.white, bgcolor = hdrBg, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 1, "Signal", text_color = color.white, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 1, "")
+    table.cell(dash, 2, 1, sigTxt, text_color = sigCol, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 2, "Entry", text_color = color.white, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 2, "")
+    table.cell(dash, 2, 2, tDir == 0 ? "—" : str.tostring(tEntry, format.mintick), text_color = cEntry, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 3, "Level", text_color = color.white, bgcolor = hdrBg, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 3, "Hit",   text_color = color.white, bgcolor = hdrBg, text_size = dashTextSize, text_halign = text.align_right)
+    table.cell(dash, 2, 3, "Rate",  text_color = color.white, bgcolor = hdrBg, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 4, "SL", text_color = cSL, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 4, str.tostring(nSL), text_color = color.white, text_size = dashTextSize, text_halign = text.align_right)
+    table.cell(dash, 2, 4, pct(nSL, nClosed), text_color = cSL, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 5, "TP1  " + str.tostring(rr1, "#.#") + "R", text_color = cTP1, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 5, str.tostring(nTP1), text_color = color.white, text_size = dashTextSize, text_halign = text.align_right)
+    table.cell(dash, 2, 5, pct(nTP1, nClosed), text_color = cTP1, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 6, "TP2  " + str.tostring(rr2, "#.#") + "R", text_color = cTP2, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 6, str.tostring(nTP2), text_color = color.white, text_size = dashTextSize, text_halign = text.align_right)
+    table.cell(dash, 2, 6, pct(nTP2, nClosed), text_color = cTP2, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 7, "TP3  " + str.tostring(rr3, "#.#") + "R", text_color = cTP3, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 7, str.tostring(nTP3), text_color = color.white, text_size = dashTextSize, text_halign = text.align_right)
+    table.cell(dash, 2, 7, pct(nTP3, nClosed), text_color = cTP3, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 8, "Flat exit", text_color = color.silver, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 8, str.tostring(nFlat), text_color = color.silver, text_size = dashTextSize, text_halign = text.align_right)
+    table.cell(dash, 2, 8, pct(nFlat, nClosed), text_color = color.silver, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 9, "Trades closed", text_color = color.white, bgcolor = hdrBg, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 9, "", bgcolor = hdrBg)
+    table.cell(dash, 2, 9, str.tostring(nClosed), text_color = color.white, bgcolor = hdrBg, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 10, "Expectancy / trade", text_color = color.white, text_size = dashTextSize, text_halign = text.align_left)
+    table.cell(dash, 1, 10, "")
+    table.cell(dash, 2, 10, na(expR) ? "—" : str.tostring(expR, "#.00") + " R", text_color = na(expR) ? color.white : expR > 0 ? color.lime : color.red, text_size = dashTextSize, text_halign = text.align_right)
+
+    table.cell(dash, 0, 11, "SL " + (useAtrSL ? "ATR" + str.tostring(atrPeriod) + "×" + str.tostring(atrMult, "#.#") : "swing" + str.tostring(swingBars)) + " +" + str.tostring(slBufPoint, "#") + "pt", text_color = color.silver, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(dash, 1, 11, "")
+    table.cell(dash, 2, 11, maMethod, text_color = color.silver, text_size = size.tiny, text_halign = text.align_right)
