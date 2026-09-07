@@ -1,4 +1,4 @@
-# trade-indicator
+# ma-ribbon
 
 TradingView Pine Script indicator ที่พอร์ตมาจาก `MA_Ribbon_Signal_Indicator.ex5` (MT5)
 พร้อม **dashboard สถิติ** ที่บอกว่า SL / TP1 / TP2 / TP3 โดนกันคนละกี่เปอร์เซ็นต์
