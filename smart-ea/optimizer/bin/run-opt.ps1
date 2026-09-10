@@ -25,6 +25,7 @@ param(
   [string]$Model = '1',                              # 0=every tick 1=1 min OHLC 2=open prices 4=real ticks
   [string]$ExecutionMode = '37',                     # หน่วง ms จำลอง slippage — 0 = ได้ราคาดีเกินจริง
   [string]$Deposit = '10000',                        # เงินฝากตั้งต้น — ต้องเท่ากันทุกรอบถึงเทียบกันได้
+  [string]$DumpDir = 'ribbon_opt',                    # โฟลเดอร์ที่ OnTester() ของ EA นั้นเขียนผลลง
   [switch]$SkipPreflight                             # ข้ามด่านตรวจค่าใน GUI
 )
 
@@ -41,7 +42,7 @@ if (-not $DataDir) {
 }
 if (-not $DataDir) { throw "หาโฟลเดอร์ terminal ไม่เจอ — deploy EA ก่อน (ดู README.md)" }
 
-$dump = "$env:APPDATA\MetaQuotes\Terminal\Common\Files\ribbon_opt"
+$dump = "$env:APPDATA\MetaQuotes\Terminal\Common\Files\$DumpDir"
 $out  = Join-Path $root "results\$OutName.csv"
 
 # .set ต้องอยู่ใน Profiles\Tester ของ terminal ถึงจะถูกโหลด
