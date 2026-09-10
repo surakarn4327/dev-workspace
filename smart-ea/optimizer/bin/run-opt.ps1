@@ -121,6 +121,14 @@ $files = Get-ChildItem "$dump\*.csv" -ErrorAction SilentlyContinue
 if (-not $files) { throw "ไม่มีไฟล์ผลออกมาเลย — เช็คว่าตั้งค่าใน GUI ครบตาม README.md แล้วหรือยัง" }
 
 Get-Content $files.FullName | Set-Content $out -Encoding UTF8
+
+# รอบรันเดี่ยว EA เขียนกำไรรายเดือนไว้ในโฟลเดอร์ย่อย monthly\ ด้วย
+# (ตอน optimize ไม่เขียน) เก็บออกมาไว้ข้างผลหลัก แล้วล้างเหมือนกัน
+$mon = Get-ChildItem "$dump\monthly\*.csv" -ErrorAction SilentlyContinue
+if ($mon) {
+  Get-Content $mon.FullName | Set-Content (Join-Path $root "results\$($OutName)_monthly.csv") -Encoding UTF8
+  Remove-Item "$dump\monthly\*.csv" -Force -ErrorAction SilentlyContinue
+}
 # ล้างทิ้งหลังเก็บด้วย ไม่ใช่แค่ตอนเริ่ม — เคยพลาด 2026-09-10 รอบถัดไปที่ไม่ได้รันจริง
 # ไปหยิบไฟล์ค้างของรอบก่อนมาเป็นผลตัวเอง แล้วดูเหมือนสำเร็จทั้งที่ไม่มีอะไรรัน
 Remove-Item "$dump\*.csv" -Force -ErrorAction SilentlyContinue

@@ -812,6 +812,8 @@ void DumpPass(const double score)
    if(h == INVALID_HANDLE)
       return;
 
+   WriteMonthlySeries("ribbon_opt\\monthly\\" + stem + ".csv");
+
    FileWrite(h, StringFormat("%s;%s;%d;%.2f;%d;%.1f;%.1f;%.1f;%d;%d;%d;%d;%d;%d;",
              _Symbol, tf,
              (int)InpUseAtrSL, InpAtrMult, (int)InpTPMode,

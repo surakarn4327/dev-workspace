@@ -33,6 +33,13 @@ double gStWorstMonth  = 0;
 double gStMedianMonth = 0;
 int    gStMaxConsecLoss = 0;
 
+// กำไรรายเดือนเรียงตามเวลา + เดือนแรก (ปี*12+เดือน) ที่ดัชนี 0 หมายถึง
+// เก็บไว้ให้ WriteMonthlySeries() เขียนออกไฟล์ ตัวเลขรวมทั้งช่วงบอกไม่ได้ว่า
+// เดือนไหนขาดทุน และการรวมพอร์ตหลาย EA ต้องบวกกันเป็นเดือนต่อเดือน
+double gStMonthly[];
+int    gStMonthlyTrades[];
+int    gStMonthFirst = 0;
+
 //+------------------------------------------------------------------+
 void CollectTradeStats()
 {
@@ -113,6 +120,11 @@ void CollectTradeStats()
    double msum[];
    ArrayResize(msum, months);
    ArrayInitialize(msum, 0.0);
+   gStMonthFirst = minIdx;
+   ArrayResize(gStMonthly, months);
+   ArrayResize(gStMonthlyTrades, months);
+   ArrayInitialize(gStMonthly, 0.0);
+   ArrayInitialize(gStMonthlyTrades, 0);
 
    double totalHold = 0;
    int consec = 0;
@@ -137,7 +149,10 @@ void CollectTradeStats()
 
       MqlDateTime dtm;
       TimeToStruct(closes[k], dtm);
-      msum[dtm.year * 12 + dtm.mon - minIdx] += nets[k];
+      int slotM = dtm.year * 12 + dtm.mon - minIdx;
+      msum[slotM] += nets[k];
+      gStMonthly[slotM] += nets[k];
+      gStMonthlyTrades[slotM]++;
    }
 
    gStWinrate  = (double)gStWins / (double)gStTrades;
@@ -201,6 +216,37 @@ double ConsistencyScore(const int minTrades, const double minProfit)
 //| ท้ายบรรทัด CSV — คอลัมน์ตัวชี้วัด 16 ช่อง เรียงเหมือนกันทุกกลยุทธ์      |
 //| (เงินฝากตั้งต้นอยู่ช่องแรก เพราะช่องนั้นสั่งจาก ini ไม่ได้เสมอ ถ้าเลข   |
 //|  ไม่ตรงกับที่ตั้งใจ แปลว่าผลรอบนั้นเทียบกับรอบอื่นไม่ได้)              |
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| เขียนกำไรรายเดือนออกเป็นไฟล์ — เรียกได้เฉพาะรอบรันเดี่ยว              |
+//|                                                                    |
+//| ตอน optimize ไม่เขียน เพราะจะได้ไฟล์เท่าจำนวน pass เปล่าๆ ตรวจด้วย    |
+//| MQL_OPTIMIZATION ให้แล้วในนี้ ผู้เรียกไม่ต้องเช็คเอง                  |
+//|                                                                    |
+//| ต้องมีไฟล์นี้เพราะสองอย่าง: ดูได้ว่าเดือนไหนขาดทุน (ตัวเลขรวมทั้งช่วง  |
+//| ปิดเรื่องนี้ไว้) และเอาไปบวกกันข้าม EA เพื่อดูว่าพอร์ตรวมนิ่งขึ้นไหม     |
+//+------------------------------------------------------------------+
+void WriteMonthlySeries(const string path)
+{
+   if(MQLInfoInteger(MQL_OPTIMIZATION))
+      return;
+   int months = ArraySize(gStMonthly);
+   if(months <= 0)
+      return;
+
+   int h = FileOpen(path, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
+   if(h == INVALID_HANDLE)
+      return;
+   for(int m = 0; m < months; m++)
+   {
+      int idx  = gStMonthFirst + m;
+      int year = (idx - 1) / 12;
+      int mon  = idx - year * 12;
+      FileWrite(h, StringFormat("%04d-%02d;%.2f;%d", year, mon, gStMonthly[m], gStMonthlyTrades[m]));
+   }
+   FileClose(h);
+}
+
 //+------------------------------------------------------------------+
 string MetricsCsvTail(const double score)
 {

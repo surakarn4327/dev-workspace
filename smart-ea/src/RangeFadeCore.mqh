@@ -335,6 +335,8 @@ void DumpPass(const double score)
    if(h == INVALID_HANDLE)
       return;
 
+   WriteMonthlySeries("rangefade_opt\\monthly\\" + stem + ".csv");
+
    FileWrite(h, StringFormat("%s;%s;%d;%.1f;%.2f;%d;%.2f;%.2f;%d;%d;%d;%d;%d;%d;%d;%d;",
              _Symbol, tf, InpBandPeriod, InpBandDev, InpZEntry,
              (int)InpTPMode, InpTPMult, InpAtrSLMult, InpMaxBars,
