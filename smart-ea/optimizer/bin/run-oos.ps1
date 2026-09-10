@@ -13,7 +13,8 @@ param(
   [Parameter(Mandatory = $true)][string]$OutPrefix,
   [Parameter(Mandatory = $true)][string]$Period,
   [string]$Expert = 'MARibbonEA',
-  [string]$DumpDir = 'ribbon_opt'
+  [string]$DumpDir = 'ribbon_opt',
+  [string]$Model = '1'   # ส่งต่อให้ run-opt.ps1 — ต้องตรงกับโมเดลที่ใช้ตอนจูนถึงเทียบกันได้
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,5 +33,5 @@ $years = @(
 foreach ($y in $years) {
   & (Join-Path $PSScriptRoot 'run-opt.ps1') -Period $Period -SetName $SetName `
     -OutName "$($OutPrefix)_$($y.n)" -Expert $Expert -DumpDir $DumpDir `
-    -Optimization 0 -From $y.from -To $y.to
+    -Optimization 0 -From $y.from -To $y.to -Model $Model
 }
