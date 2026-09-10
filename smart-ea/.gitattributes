@@ -1,6 +1,10 @@
 * text=auto eol=lf
 *.ps1 text eol=crlf
 *.bat text eol=crlf
+# MetaTrader อ่านไฟล์ .set/.mq5 ที่เป็น CRLF เท่านั้นอย่างแน่นอน — บังคับไว้กัน checkout เพี้ยน
+*.set text eol=crlf
+*.mq5 text eol=crlf
+*.mqh text eol=crlf
 *.png binary
 *.jpg binary
 *.pdf binary

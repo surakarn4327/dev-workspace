@@ -15,3 +15,7 @@ Thumbs.db
 *.log
 .cache/
 .vite/
+
+# MQL compiled output
+*.ex5
+*.ex4
