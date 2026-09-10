@@ -14,7 +14,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$OutName,
   [int]$Top = 20,
-  [ValidateSet('auto', 'ribbon', 'rangefade')][string]$Layout = 'auto',
+  [ValidateSet('auto', 'ribbon', 'rangefade', 'rangefade15')][string]$Layout = 'auto',
   [switch]$All,          # คืนทุกแถวเป็นออบเจกต์ ไม่จัดตาราง (เอาไปกรองต่อเอง)
   [switch]$Raw           # ไม่กรองแถวคะแนน 0 ออก
 )
@@ -31,11 +31,15 @@ $layouts = @{
                 'shift', 'ma', 'swing', 'closeOpp', 'beLock') + $tail
   rangefade = @('symbol', 'tf', 'bandPeriod', 'bandDev', 'zEntry', 'tpMode', 'tpMult',
                 'slMult', 'maxBars', 'trendMode', 'trendPeriod', 'useRSI', 'rsiLow',
+                'rsiHigh', 'needTurn', 'cooldown', 'hourFrom', 'hourTo') + $tail
+  rangefade15 = @('symbol', 'tf', 'bandPeriod', 'bandDev', 'zEntry', 'tpMode', 'tpMult',
+                'slMult', 'maxBars', 'trendMode', 'trendPeriod', 'useRSI', 'rsiLow',
                 'rsiHigh', 'needTurn', 'cooldown') + $tail
 }
 $shown = @{
   ribbon    = @('atrSL', 'atrMult', 'tpMode', 'rr1', 'rr3', 'be', 'beLock', 'shift', 'ma', 'swing', 'closeOpp')
-  rangefade = @('bandPeriod', 'zEntry', 'tpMode', 'tpMult', 'slMult', 'maxBars', 'trendMode', 'useRSI', 'needTurn', 'cooldown')
+  rangefade = @('bandPeriod', 'zEntry', 'tpMult', 'slMult', 'maxBars', 'trendMode', 'useRSI', 'rsiLow', 'rsiHigh', 'needTurn', 'hourFrom', 'hourTo')
+  rangefade15 = @('bandPeriod', 'zEntry', 'tpMode', 'tpMult', 'slMult', 'maxBars', 'trendMode', 'useRSI', 'needTurn', 'cooldown')
 }
 
 $path = Join-Path (Split-Path -Parent $PSScriptRoot) "results\$OutName.csv"

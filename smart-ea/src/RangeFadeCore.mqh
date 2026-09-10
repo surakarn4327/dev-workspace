@@ -323,12 +323,14 @@ void DumpPass(const double score)
 {
    string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)Period()), 7);
 
-   string stem = StringFormat("%s_%s_%d_%.1f_%.2f_%d_%.2f_%.2f_%d_%d_%d_%d_%d_%d_%d_%d",
+   // ชื่อไฟล์ต้องมี "ทุก" พารามิเตอร์ที่ไล่หาได้ ไม่งั้นชุดที่ต่างกันจะเขียนทับกัน
+   // แล้วรอบนั้นเหลือผลชุดเดียวโดยไม่มีอะไรฟ้อง — เคยพลาดกับช่วงเวลา 2026-09-11
+   string stem = StringFormat("%s_%s_%d_%.1f_%.2f_%d_%.2f_%.2f_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d",
                               _Symbol, tf, InpBandPeriod, InpBandDev, InpZEntry,
                               (int)InpTPMode, InpTPMult, InpAtrSLMult, InpMaxBars,
                               (int)InpTrendMode, InpTrendPeriod, (int)InpUseRSI,
                               (int)InpRSILow, (int)InpRSIHigh, (int)InpNeedTurn,
-                              InpCooldownBars);
+                              InpCooldownBars, InpHourFrom, InpHourTo);
    string path = "rangefade_opt\\" + stem + ".csv";
 
    int h = FileOpen(path, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
@@ -337,11 +339,12 @@ void DumpPass(const double score)
 
    WriteMonthlySeries("rangefade_opt\\monthly\\" + stem + ".csv");
 
-   FileWrite(h, StringFormat("%s;%s;%d;%.1f;%.2f;%d;%.2f;%.2f;%d;%d;%d;%d;%d;%d;%d;%d;",
+   FileWrite(h, StringFormat("%s;%s;%d;%.1f;%.2f;%d;%.2f;%.2f;%d;%d;%d;%d;%d;%d;%d;%d;%d;%d;",
              _Symbol, tf, InpBandPeriod, InpBandDev, InpZEntry,
              (int)InpTPMode, InpTPMult, InpAtrSLMult, InpMaxBars,
              (int)InpTrendMode, InpTrendPeriod, (int)InpUseRSI,
-             (int)InpRSILow, (int)InpRSIHigh, (int)InpNeedTurn, InpCooldownBars)
+             (int)InpRSILow, (int)InpRSIHigh, (int)InpNeedTurn, InpCooldownBars,
+             InpHourFrom, InpHourTo)
             + MetricsCsvTail(score));
    FileClose(h);
 }
