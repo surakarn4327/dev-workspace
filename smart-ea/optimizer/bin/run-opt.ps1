@@ -24,6 +24,7 @@ param(
   [string]$To,                                       # yyyy.MM.dd
   [string]$Model = '1',                              # 0=every tick 1=1 min OHLC 2=open prices 4=real ticks
   [string]$ExecutionMode = '37',                     # หน่วง ms จำลอง slippage — 0 = ได้ราคาดีเกินจริง
+  [string]$Deposit = '10000',                        # เงินฝากตั้งต้น — ต้องเท่ากันทุกรอบถึงเทียบกันได้
   [switch]$SkipPreflight                             # ข้ามด่านตรวจค่าใน GUI
 )
 
@@ -69,6 +70,7 @@ if (-not $SkipPreflight) {
   #  เอามาตรวจจึงไม่มีประโยชน์ — บล็อกตัวเองเปล่าๆ)
   $want = @{
     Leverage = '100'         # 1:100
+    Deposit  = "$Deposit.00"  # เงินฝากตั้งต้น — เคยค้างเป็น 3000 จากรอบตรวจ real tick แล้วผลเทียบกันไม่ได้
     OptCrit  = '6'           # Custom max = คะแนนจาก OnTester()
   }
   # ช่วงวันที่ตรวจเฉพาะตอนที่ไม่ได้สั่งมาเอง
@@ -102,6 +104,7 @@ $lines = @(
   "ExpertParameters=$SetName.set"
   "Model=$Model"                     # ต้องระบุเอง — MT5 รีเซ็ตช่องนี้ทุกครั้งที่เปิดด้วย /config
   "ExecutionMode=$ExecutionMode"     # เช่นเดียวกัน ไม่ระบุ = 0 ms ซึ่งได้ราคาดีเกินจริง
+  "Deposit=$Deposit"
   'ShutdownTerminal=1'
 )
 if ($From) { $lines += "FromDate=$From" }
