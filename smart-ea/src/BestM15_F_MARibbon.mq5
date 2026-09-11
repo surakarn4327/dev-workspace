@@ -62,6 +62,10 @@ input group "จุดเสมอตัว (BE)"
 input bool InpUseBE = true; // แตะ TP1 แล้วเลื่อน SL มาที่จุดเข้า
 input int  InpBELockPoints = 0;   // ล็อกกำไรเหนือจุดเข้า (point)
 
+input group "เลื่อน SL ตามราคา (Trailing)"
+input double InpTrailAtrMult = 0;  // ระยะ trail เป็นตัวคูณ ATR (0 = ปิด)
+input int    InpTrailAfterTP = 1; // เริ่ม trail หลังแตะ TP ที่เท่าไร (1 หรือ 2)
+
 input group "ความเสี่ยงและการเข้าออก"
 input double InpRiskPerTrade   = 100;  // ทุนเสี่ยงต่อไม้ (USD)
 input double InpRiskPointUnit  = 0.01; // ขนาด 1 จุดในสูตร lot (ราคา) — XAUUSD ใช้ 0.01

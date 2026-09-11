@@ -14,7 +14,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$OutName,
   [int]$Top = 20,
-  [ValidateSet('auto', 'ribbon', 'rangefade', 'rangefade15')][string]$Layout = 'auto',
+  [ValidateSet('auto', 'ribbon', 'ribbon14', 'rangefade', 'rangefade15')][string]$Layout = 'auto',
   [switch]$All,          # คืนทุกแถวเป็นออบเจกต์ ไม่จัดตาราง (เอาไปกรองต่อเอง)
   [switch]$Raw           # ไม่กรองแถวคะแนน 0 ออก
 )
@@ -28,6 +28,8 @@ $tail = @(
 )
 $layouts = @{
   ribbon    = @('symbol', 'tf', 'atrSL', 'atrMult', 'tpMode', 'rr1', 'rr2', 'rr3', 'be',
+                'shift', 'ma', 'swing', 'closeOpp', 'beLock', 'trailAtr', 'trailAfter') + $tail
+  ribbon14  = @('symbol', 'tf', 'atrSL', 'atrMult', 'tpMode', 'rr1', 'rr2', 'rr3', 'be',
                 'shift', 'ma', 'swing', 'closeOpp', 'beLock') + $tail
   rangefade = @('symbol', 'tf', 'bandPeriod', 'bandDev', 'zEntry', 'tpMode', 'tpMult',
                 'slMult', 'maxBars', 'trendMode', 'trendPeriod', 'useRSI', 'rsiLow',
@@ -37,7 +39,8 @@ $layouts = @{
                 'rsiHigh', 'needTurn', 'cooldown') + $tail
 }
 $shown = @{
-  ribbon    = @('atrSL', 'atrMult', 'tpMode', 'rr1', 'rr3', 'be', 'beLock', 'shift', 'ma', 'swing', 'closeOpp')
+  ribbon    = @('atrSL', 'atrMult', 'tpMode', 'rr1', 'rr3', 'be', 'shift', 'ma', 'closeOpp', 'trailAtr', 'trailAfter')
+  ribbon14  = @('atrSL', 'atrMult', 'tpMode', 'rr1', 'rr3', 'be', 'beLock', 'shift', 'ma', 'swing', 'closeOpp')
   rangefade = @('bandPeriod', 'zEntry', 'tpMult', 'slMult', 'maxBars', 'trendMode', 'useRSI', 'rsiLow', 'rsiHigh', 'needTurn', 'hourFrom', 'hourTo')
   rangefade15 = @('bandPeriod', 'zEntry', 'tpMode', 'tpMult', 'slMult', 'maxBars', 'trendMode', 'useRSI', 'needTurn', 'cooldown')
 }
@@ -48,8 +51,13 @@ $lines = @(Get-Content $path | Where-Object { $_.Trim() })
 if (-not $lines) { throw "$path ว่างเปล่า" }
 
 if ($Layout -eq 'auto') {
+  # ผัง ribbon กับ rangefade15 มีจำนวนช่องเท่ากัน (33) จำนวนช่องจึงแยกไม่ออก
+  # ไล่ตามลำดับที่กำหนดไว้และเอาตัวแรกที่ตรง — ผังปัจจุบันมาก่อนผังเก่าเสมอ
+  # ไฟล์ rangefade รุ่น 33 ช่อง (rf1..rf10 ที่รันก่อนแก้เรื่องชั่วโมง) ต้องส่ง
+  # -Layout rangefade15 มาเอง
   $n = ($lines[0] -split ';').Count
-  $Layout = ($layouts.Keys | Where-Object { $layouts[$_].Count -eq $n } | Select-Object -First 1)
+  $Layout = @('ribbon', 'rangefade', 'ribbon14', 'rangefade15') |
+    Where-Object { $layouts[$_].Count -eq $n } | Select-Object -First 1
   if (-not $Layout) { throw "แถวมี $n ช่อง ไม่ตรงกับผังไหนเลย — ส่ง -Layout มาเอง" }
 }
 $cols = $layouts[$Layout]

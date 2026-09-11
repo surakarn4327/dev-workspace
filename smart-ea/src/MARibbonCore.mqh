@@ -57,6 +57,7 @@ double gRiskUsed      = 0;     // ทุนเสี่ยงที่ใช้�
 int gCnt_Cross=0, gCnt_LotTooSmall=0, gCnt_NoRisk=0, gCnt_OpenFail=0, gCnt_Entered=0;
 int gCnt_ReverseClose=0, gCnt_BEMoved=0, gCnt_Part1=0, gCnt_Part2=0, gCnt_PartFail=0;
 int gCnt_Parlay=0, gCnt_ParlayNoMargin=0, gCnt_ParlayWin=0;
+int gCnt_Trail=0;
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -148,6 +149,8 @@ void OnDeinit(const int reason)
    PrintFormat("diag: cross=%d entered=%d lotTooSmall=%d noRisk=%d openFail=%d reverseClose=%d beMoved=%d part1=%d part2=%d partFail=%d",
                gCnt_Cross, gCnt_Entered, gCnt_LotTooSmall, gCnt_NoRisk, gCnt_OpenFail,
                gCnt_ReverseClose, gCnt_BEMoved, gCnt_Part1, gCnt_Part2, gCnt_PartFail);
+   if(InpTrailAtrMult > 0)
+      PrintFormat("diag trail: slMoved=%d", gCnt_Trail);
    if(InpUseParlay)
       PrintFormat("diag parlay: boosted=%d boostedWin=%d noMargin=%d",
                   gCnt_Parlay, gCnt_ParlayWin, gCnt_ParlayNoMargin);
@@ -623,6 +626,40 @@ void ManageOpen()
             DrawRay("sl", newSL, clrOrange, "SL -> BE");
       }
    }
+
+   // เลื่อน SL ตามราคาสำหรับไม้ส่วนที่เหลือ (ไม้สุดท้ายในโหมดแบ่งปิด)
+   //
+   // ทำไมถึงสำคัญกว่าที่เห็น: winrate ของระบบแบ่งปิดถูกกำหนดโดยไม้ที่ปล่อยวิ่ง
+   // ไม่ใช่ไม้แรก เพราะไม้จะนับว่าชนะก็ต่อเมื่อ "สุทธิทั้งไม้" เป็นบวก ปิดหนึ่งใน
+   // สามที่ 2R ได้ +0.67R แต่ถ้าที่เหลือย้อนกลับมาโดน SL เต็มก็ยังติดลบอยู่ดี
+   // — วัดแล้ว 2026-09-11 ว่าดึง TP1 เข้ามาใกล้แค่ไหนก็ไม่ช่วย (24% เป็น 31%)
+   // การ trail เปลี่ยนสมการนั้น เพราะไม้ที่เคยกำไรแล้วย้อนกลับ จะจบเป็นบวกเล็กๆ
+   // แทนที่จะเป็นลบเต็ม โดยไม่ต้องตัดหางกำไรทิ้งเหมือนการใส่ TP ใกล้ๆ
+   if(InpTrailAtrMult > 0 &&
+      ((InpTrailAfterTP <= 1 && gGot1) || (InpTrailAfterTP >= 2 && gGot2)))
+   {
+      if(!SelectPosition(ticket))
+         return;
+
+      double atr[];
+      if(CopyBuffer(hATR, 0, 1, 1, atr) < 1 || atr[0] <= 0)
+         return;
+
+      double dist  = atr[0] * InpTrailAtrMult;
+      double newSL = gDir == 1 ? price - dist : price + dist;
+      double curSL = PositionGetDouble(POSITION_SL);
+      double curTP = PositionGetDouble(POSITION_TP);
+
+      // ขยับเข้าหากำไรได้ทางเดียวเท่านั้น ห้ามถอยกลับ ไม่งั้นกลายเป็นขยาย
+      // ความเสี่ยงตอนราคาสวนทาง ซึ่งตรงข้ามกับเจตนาของ trailing
+      bool better = gDir == 1 ? newSL > curSL + _Point : newSL < curSL - _Point;
+      if(better && trade.PositionModify(ticket, NormalizeDouble(newSL, _Digits), curTP))
+      {
+         gCnt_Trail++;
+         if(gDraw)
+            DrawRay("sl", newSL, clrOrange, "SL trail");
+      }
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -801,11 +838,12 @@ void DumpPass(const double score)
 {
    string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)Period()), 7);
 
-   string stem = StringFormat("%s_%s_%d_%.2f_%d_%.1f_%.1f_%.1f_%d_%d_%d_%d_%d_%d",
+   string stem = StringFormat("%s_%s_%d_%.2f_%d_%.1f_%.1f_%.1f_%d_%d_%d_%d_%d_%d_%.2f_%d",
                               _Symbol, tf, (int)InpUseAtrSL, InpAtrMult,
                               (int)InpTPMode, InpRR1, InpRR2, InpRR3,
                               (int)InpUseBE, InpRibbonShift, (int)InpMAMethod,
-                              InpSwingBars, (int)InpCloseOnOpposite, InpBELockPoints);
+                              InpSwingBars, (int)InpCloseOnOpposite, InpBELockPoints,
+                              InpTrailAtrMult, InpTrailAfterTP);
    string path = "ribbon_opt\\" + stem + ".csv";
 
    int h = FileOpen(path, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
@@ -814,12 +852,12 @@ void DumpPass(const double score)
 
    WriteMonthlySeries("ribbon_opt\\monthly\\" + stem + ".csv");
 
-   FileWrite(h, StringFormat("%s;%s;%d;%.2f;%d;%.1f;%.1f;%.1f;%d;%d;%d;%d;%d;%d;",
+   FileWrite(h, StringFormat("%s;%s;%d;%.2f;%d;%.1f;%.1f;%.1f;%d;%d;%d;%d;%d;%d;%.2f;%d;",
              _Symbol, tf,
              (int)InpUseAtrSL, InpAtrMult, (int)InpTPMode,
              InpRR1, InpRR2, InpRR3, (int)InpUseBE,
              InpRibbonShift, (int)InpMAMethod, InpSwingBars,
-             (int)InpCloseOnOpposite, InpBELockPoints)
+             (int)InpCloseOnOpposite, InpBELockPoints, InpTrailAtrMult, InpTrailAfterTP)
             + MetricsCsvTail(score));
    FileClose(h);
 }
