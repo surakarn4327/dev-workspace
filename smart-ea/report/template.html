@@ -458,7 +458,7 @@ const COLS = [
 const na = (t,off) => off ? `<span class="na">${t}</span>` : t;
 
 // ชุดที่เลือกมาใช้จริง — ไฮไลต์ให้หาเจอในตาราง
-const PICK = r => r[I.tf]==='M15' && r[I.shift]===10 && r[I.ma]===1 &&
+const PICK = r => r[I.tf]==='M15' && r[I.shift]===10 && r[I.ma]===1 && Math.abs(r[I.rr1]-2)<.01 &&
                   Math.abs(r[I.atrMult]-4.5)<.01 && r[I.tpMode]===0 &&
                   Math.abs(r[I.rr3]-5)<.01 && !r[I.trail];
 

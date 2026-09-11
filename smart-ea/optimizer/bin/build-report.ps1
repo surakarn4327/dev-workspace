@@ -30,7 +30,7 @@ $SETS = @(
   @{ id='lowtp';  name='M15 · TP ต่ำ (รอบแรก)';   win='จูน · ก.ย. 2568–ก.ย. 2569'
      files=@('consistA_M15','consistB_M15','consistA_M5') }
   @{ id='oos';    name='ตรวจสอบนอกช่วงจูน';        win='ม.ค.–ก.ย. 2569 · tick จริง'
-     files=@('val_A_oos','val_B_oos','val_C_oos','val_D_oos','val_E_oos','val_F_oos','val_G_oos') }
+     files=@('val_A_oos','val_B_oos','val_C_oos','val_D_oos','val_E_oos','val_F_oos','val_G_oos','val_H_oos') }
 )
 
 # เขียนใส่ลิสต์ที่ส่งเข้ามาโดยตรง ไม่ return ออกไป — ถ้า return ลิสต์ที่มีแถวเดียว
