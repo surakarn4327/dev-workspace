@@ -14,7 +14,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$OutName,
   [int]$Top = 20,
-  [ValidateSet('auto', 'ribbon', 'ribbon14', 'rangefade', 'rangefade15')][string]$Layout = 'auto',
+  [ValidateSet('auto', 'ribbon', 'ribbon14', 'rangefade', 'rangefade15', 'sats')][string]$Layout = 'auto',
   [switch]$All,          # คืนทุกแถวเป็นออบเจกต์ ไม่จัดตาราง (เอาไปกรองต่อเอง)
   [switch]$Raw           # ไม่กรองแถวคะแนน 0 ออก
 )
@@ -37,12 +37,16 @@ $layouts = @{
   rangefade15 = @('symbol', 'tf', 'bandPeriod', 'bandDev', 'zEntry', 'tpMode', 'tpMult',
                 'slMult', 'maxBars', 'trendMode', 'trendPeriod', 'useRSI', 'rsiLow',
                 'rsiHigh', 'needTurn', 'cooldown') + $tail
+  sats      = @('symbol', 'tf', 'preset', 'atrLen', 'baseMult', 'qStr', 'qCurve', 'slMult',
+                'slMax', 'rr1', 'rr2', 'rr3', 'maxAge', 'tpMode', 'cfAge', 'cfHigh', 'cfLow',
+                'asym', 'riskPct') + $tail
 }
 $shown = @{
   ribbon    = @('atrSL', 'atrMult', 'tpMode', 'rr1', 'rr3', 'be', 'shift', 'ma', 'closeOpp', 'trailAtr', 'trailAfter')
   ribbon14  = @('atrSL', 'atrMult', 'tpMode', 'rr1', 'rr3', 'be', 'beLock', 'shift', 'ma', 'swing', 'closeOpp')
   rangefade = @('bandPeriod', 'zEntry', 'tpMult', 'slMult', 'maxBars', 'trendMode', 'useRSI', 'rsiLow', 'rsiHigh', 'needTurn', 'hourFrom', 'hourTo')
   rangefade15 = @('bandPeriod', 'zEntry', 'tpMode', 'tpMult', 'slMult', 'maxBars', 'trendMode', 'useRSI', 'needTurn', 'cooldown')
+  sats      = @('baseMult', 'slMult', 'cfAge', 'qStr', 'qCurve', 'asym', 'cfHigh', 'cfLow', 'tpMode', 'rr1', 'rr2', 'rr3', 'maxAge')
 }
 
 $path = Join-Path (Split-Path -Parent $PSScriptRoot) "results\$OutName.csv"
@@ -56,7 +60,7 @@ if ($Layout -eq 'auto') {
   # ไฟล์ rangefade รุ่น 33 ช่อง (rf1..rf10 ที่รันก่อนแก้เรื่องชั่วโมง) ต้องส่ง
   # -Layout rangefade15 มาเอง
   $n = ($lines[0] -split ';').Count
-  $Layout = @('ribbon', 'rangefade', 'ribbon14', 'rangefade15') |
+  $Layout = @('sats', 'ribbon', 'rangefade', 'ribbon14', 'rangefade15') |
     Where-Object { $layouts[$_].Count -eq $n } | Select-Object -First 1
   if (-not $Layout) { throw "แถวมี $n ช่อง ไม่ตรงกับผังไหนเลย — ส่ง -Layout มาเอง" }
 }
