@@ -703,7 +703,8 @@ void OpenTrade(const bool isLong)
    // lot = ทุนเสี่ยง / (ระยะ SL คิดเป็นจุด) — สูตรเดียวกับ Pine/smart-indicator
    double slPoints = risk / InpRiskPointUnit;
 
-   double riskUsd = InpRiskPerTrade;
+   double riskUsd = InpRiskMode == RISK_FIXED_USD ? InpRiskPerTrade
+                                                   : AccountInfoDouble(ACCOUNT_EQUITY) * InpRiskPct / 100.0;
    bool   boosted = false;
    if(InpUseParlay && gParlayArmed && gParlayBonus > 0)
    {

@@ -20,4 +20,10 @@ enum ENUM_TP_MODE
    TP_NONE = 2        // ไม่ใช้ TP ปล่อยไหลจนโดน SL/BE หรือสัญญาณกลับทิศ
 };
 
+enum ENUM_RISK_MODE
+{
+   RISK_PERCENT_EQUITY = 0, // % ของ equity ปัจจุบัน — ทบต้นอัตโนมัติ (โต/หดตามพอร์ต)
+   RISK_FIXED_USD       = 1  // ทุนเสี่ยงคงที่เป็น USD ทุกไม้ ไม่ว่า equity จะเป็นเท่าไร
+};
+
 #endif

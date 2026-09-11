@@ -59,7 +59,9 @@ input double InpTrailAtrMult = 0;  // ระยะ trail เป็นตัว�
 input int    InpTrailAfterTP = 1; // เริ่ม trail หลังแตะ TP ที่เท่าไร (1 หรือ 2)
 
 input group "ความเสี่ยงและการเข้าออก"
-input double InpRiskPerTrade   = 400;  // ทุนเสี่ยงต่อไม้ (USD)
+input ENUM_RISK_MODE InpRiskMode = RISK_PERCENT_EQUITY; // โหมดทุนเสี่ยง: % ของ equity (ทบต้น) หรือคงที่ USD
+input double InpRiskPct        = 4.0;  // ทุนเสี่ยงต่อไม้ เป็น % ของ equity (ใช้เมื่อ RiskMode = PercentEquity)
+input double InpRiskPerTrade   = 400;  // ทุนเสี่ยงต่อไม้ คงที่ USD (ใช้เมื่อ RiskMode = FixedUsd)
 input double InpRiskPointUnit  = 0.01; // ขนาด 1 จุดในสูตร lot (ราคา) — XAUUSD ใช้ 0.01
 input bool   InpCloseOnOpposite = true; // สัญญาณกลับทิศแล้วปิดไม้เดิมทันที
 input int    InpMagic          = 20260909; // magic number
