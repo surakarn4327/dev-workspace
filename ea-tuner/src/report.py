@@ -263,6 +263,7 @@ def render_report(
     model_label: str,
     pass_rows: list[dict] | None = None,
     verified_rows: list[dict] | None = None,
+    holdout_row: dict | None = None,
     period_rows: list[tuple[str, float, int]] | None = None,
     period_unit: str = "งวด",
     monthly_rows: list[tuple[str, float, int]] | None = None,
@@ -294,6 +295,37 @@ def render_report(
                {'<span class="pos">ค่าเดิมยืนยันแล้วว่าเป็นจุดดีที่สุดในละแวกนี้จริง</span>' if same else
                 '<span class="neg">ค่าที่ดีที่สุดขยับจากรอบแรก — แปลว่ารอบแรกยังไม่ใช่จุดที่ดีที่สุดในละแวกนั้น</span>'}
             </p>
+          </div>
+        </section>
+        """
+
+    holdout_section = ""
+    if holdout_row and best_verified:
+        passed = holdout_row["profit"] > 0 and holdout_row["pf"] >= 1.0
+        verdict = (
+            "ผ่าน — ยังทำกำไรได้จริงบนช่วงที่ไม่เคยใช้เลือกค่าเลย"
+            if passed else
+            "ไม่ผ่าน — อย่าเอาค่านี้ไปใช้จริง ต้องจูนใหม่หรือทบทวนตรรกะ ไม่ใช่แค่ขยับพารามิเตอร์"
+        )
+        holdout_section = f"""
+        <section>
+          <div class="card" style="border-left:3px solid var(--{'good' if passed else 'bad'})">
+            <h2>ตรวจสอบ holdout (ช่วงล่าสุดที่ไม่เคยใช้เลือกค่าเลยทั้งสองขั้นที่แล้ว)</h2>
+            <p class="note">ห้ามเอาผลตรงนี้กลับไปเลือกค่าใหม่ — แค่ไว้ยืนยัน/ปฏิเสธค่าที่ได้จากขั้นตรวจสอบ
+              เพื่อนบ้านเท่านั้น ถ้าเอาไปเลือกค่าต่อ ช่วงนี้ก็จะกลายเป็นข้อมูลที่ใช้จูนไปด้วย
+              แล้วจะไม่เหลืออะไรไว้ตรวจสอบอีกเลย</p>
+            <table class="plain">
+              <thead><tr><th></th><th>ช่วง train (ตรวจสอบเพื่อนบ้าน)</th><th>ช่วง holdout (ล่าสุด)</th></tr></thead>
+              <tbody>
+                <tr><td>ไม้</td><td>{best_verified['trades']:,.0f}</td><td>{holdout_row['trades']:,.0f}</td></tr>
+                <tr><td>กำไรสุทธิ</td><td>{_fmt_money(best_verified['profit'])}</td><td>{_fmt_money(holdout_row['profit'])}</td></tr>
+                <tr><td>PF</td><td>{best_verified['pf']:.2f}</td><td>{holdout_row['pf']:.2f}</td></tr>
+                <tr><td>winrate</td><td>{best_verified['winrate']*100:.1f}%</td><td>{holdout_row['winrate']*100:.1f}%</td></tr>
+                <tr><td>เดือนที่กำไร</td><td>{best_verified['posMonths']:.0f}/{best_verified['months']:.0f}</td>
+                    <td>{holdout_row['posMonths']:.0f}/{holdout_row['months']:.0f}</td></tr>
+              </tbody>
+            </table>
+            <p style="margin-top:10px"><b class="{'pos' if passed else 'neg'}">{verdict}</b></p>
           </div>
         </section>
         """
@@ -346,6 +378,7 @@ def render_report(
 {'<section><h2>ชุดที่แนะนำให้ใช้จริง</h2><div class="stats">' + _stat_cells(best) + '</div></section>' if best else ''}
 
 {verify_callout}
+{holdout_section}
 {period_section}
 {monthly_section}
 {verified_section}

@@ -9,7 +9,7 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import config
@@ -34,6 +34,8 @@ class RunRequest:
     opt_override: str | None = None  # ถ้าตั้งไว้ ใช้แทนค่า Optimization ที่เดาจาก mode
     # (ใช้กับรอบตรวจสอบเพื่อนบ้าน — mode ยังเป็น "optimize" แต่ต้องบังคับ exhaustive "1"
     # ไม่ใช่ genetic "2" เพราะกริดตอนนั้นแคบพอจะไล่ครบทุกจุดจริงได้แล้ว)
+    genetic_reps: int = 3       # จำนวนรอบ genetic ที่รันซ้ำ (เช็คความนิ่งของผู้ชนะ)
+    holdout_pct: float = 20.0   # % ท้ายสุดของช่วงที่ขอมา กันไว้ตรวจสอบ ไม่ใช้จูนเลย
 
 
 def _dt(d: date) -> str:
@@ -178,3 +180,34 @@ def build_neighbor_set(entries: list[SetEntry], winner_values: list[str], n_para
         else:
             out_lines.append(f"{e.name}={e.value}")
     return "\n".join(out_lines) + "\n"
+
+
+def build_fixed_set(entries: list[SetEntry], winner_values: list[str], n_params: int) -> str:
+    """ล็อกพารามิเตอร์ N ตัวแรกเป็นค่าตายตัวตามผู้ชนะ (ไม่มีช่วงให้จูนอีกต่อไป) —
+    ใช้รัน single-pass (Optimization=0) บนช่วง holdout เพื่อวัดผลจริงของค่าที่เลือกมา"""
+    out_lines = []
+    for i, e in enumerate(entries):
+        if i < n_params:
+            out_lines.append(f"{e.name}={winner_values[i]}")
+        elif e.ranged:
+            out_lines.append(f"{e.name}={e.default}||{e.start}||{e.step}||{e.end}||{e.opt_flag}")
+        else:
+            out_lines.append(f"{e.name}={e.value}")
+    return "\n".join(out_lines) + "\n"
+
+
+def split_train_holdout(
+    date_from: date, date_to: date, holdout_pct: float
+) -> tuple[date, date, date, date]:
+    """แบ่งช่วงวันที่เป็น (train_from, train_to, holdout_from, holdout_to)
+
+    holdout เป็น "ส่วนท้ายสุด" ของช่วงที่ขอมาเสมอ (ไม่ใช่ปีเก่าคงที่แบบตรึงไว้) — ตาม
+    เหตุผลที่ผู้ใช้ให้ไว้ 2026-09-12: ตลาดเปลี่ยน regime ตลอด ค่าที่จูนจากข้อมูลเก่าอาจใช้ไม่ได้
+    กับตอนนี้ ดังนั้นทุกครั้งที่ผู้ใช้ขยับ date_to มาให้ใหม่ (เช่น ขยับมาถึงวันนี้) ช่วง holdout
+    ก็จะขยับตามมาเป็น "ช่วงล่าสุดที่สุด" โดยอัตโนมัติ ไม่ใช่ช่วงที่ถูกแช่แข็งไว้ตายตัว —
+    มิเรอร์กติกา walk-forward ที่โปรเจกต์ smart-ea ใช้กับ AMD Po3 (ดู optimizer/README.md)
+    """
+    total_days = (date_to - date_from).days
+    holdout_days = max(1, int(round(total_days * holdout_pct / 100)))
+    split_date = date_to - timedelta(days=holdout_days)
+    return date_from, split_date, split_date, date_to
