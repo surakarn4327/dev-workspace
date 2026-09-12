@@ -159,16 +159,16 @@ class App(tk.Tk):
             ttk.Radiobutton(row4, text=label, value=value, variable=self.mode_var,
                              command=self._on_mode_change).pack(side="left", padx=6)
 
-        # แถว 4b: ตั้งค่าเฉพาะโหมดจูน — รันซ้ำกี่รอบ genetic (เช็คความนิ่ง) เท่านั้นที่ปรับได้
-        # ช่วงวันที่กับสัดส่วน holdout ล็อกไว้ตายตัวแล้ว (ดู config.OPTIMIZE_HOLDOUT_DAYS)
+        # แถว 4b: โหมดจูนล็อกทุกอย่างไว้ตายตัวแล้ว (คำขอผู้ใช้ 2026-09-12 — "ไม่ควรให้ฉันตั้งค่าเอง
+        # ควรตั้งค่าที่ดีที่สุดเป็นค่าเริ่มต้น") ไม่มีช่องให้ปรับเลยสักช่อง แค่โชว์ค่าที่ใช้จริงเฉยๆ
         row4b = ttk.Frame(top)
         row4b.pack(fill="x", **pad)
-        ttk.Label(row4b, text="(โหมดจูนเท่านั้น) รันซ้ำ genetic:").pack(side="left")
-        self.reps_var = tk.StringVar(value="3")
-        ttk.Entry(row4b, textvariable=self.reps_var, width=4).pack(side="left", padx=(4, 16))
         ttk.Label(
             row4b,
-            text=f"รอบ · กันช่วงท้ายสุด {config.OPTIMIZE_HOLDOUT_DAYS} วันไว้ตรวจสอบเสมอ (ตั้งตายตัว)",
+            text=(
+                f"(โหมดจูนเท่านั้น) ล็อกไว้ตายตัวทั้งหมด — genetic {config.OPTIMIZE_GENETIC_REPS} รอบ "
+                f"· กันช่วงท้ายสุด {config.OPTIMIZE_HOLDOUT_DAYS} วันไว้ตรวจสอบ"
+            ),
             foreground="#666",
         ).pack(side="left")
 
@@ -268,12 +268,6 @@ class App(tk.Tk):
                 messagebox.showerror("ผิดพลาด", "รูปแบบวันที่ต้องเป็น yyyy-mm-dd")
                 return
 
-        try:
-            genetic_reps = max(1, int(self.reps_var.get().strip()))
-        except ValueError:
-            messagebox.showerror("ผิดพลาด", "'รันซ้ำ genetic' ต้องเป็นจำนวนเต็ม")
-            return
-
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         out_name = f"eatuner_{ea['name']}_{self.symbol_var.get()}_{self.period_var.get()}_{ts}"
 
@@ -300,7 +294,7 @@ class App(tk.Tk):
             mode=mode,
             out_name=out_name,
             terminal_data_dir=str(term_dir),
-            genetic_reps=genetic_reps,
+            genetic_reps=config.OPTIMIZE_GENETIC_REPS,
             holdout_days=config.OPTIMIZE_HOLDOUT_DAYS,
         )
         self.last_req = req
