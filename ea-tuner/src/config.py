@@ -161,27 +161,40 @@ def guess_period_for_ea(ea_name: str) -> str:
     return "M15"
 
 
+def _strategy_key(ea_name: str) -> str:
+    """ตัด prefix `Best*_TF_` ทิ้งแล้วคืนชื่อกลยุทธ์ตัวพิมพ์เล็ก เช่น 'BestM5_AmdPo3' กับ
+    'AmdPo3EA' ทั้งคู่เหลือ 'amdpo3' — ใช้จับคู่ EA กับ .set ที่เป็นกลยุทธ์เดียวกัน"""
+    # เรียง TF ยาวไปสั้นในการอ้าง alternation (เหตุผลเดียวกับ guess_period_for_ea) — regex
+    # alternation จับตัวเลือกแรกที่แมตช์ได้ก่อนเสมอ ไม่ใช่ตัวที่ยาวที่สุด ถ้าเรียง M1 มาก่อน M15
+    # "BestM15_AmdPo3" จะโดนตัดแค่ "BestM1" เหลือเศษ "5_AmdPo3" ค้าง (เจอบั๊กนี้จริงตอนเขียนเทสต์)
+    tf_alt = "|".join(sorted(TIMEFRAMES, key=len, reverse=True))
+    strategy = re.sub(rf"^Best(\w+?)?_?({tf_alt})_?", "", ea_name, flags=re.IGNORECASE)
+    return re.sub(r"EA$", "", strategy, flags=re.IGNORECASE).lower()
+
+
+def list_sets_for_ea(ea_name: str) -> list[str]:
+    """คืนเฉพาะไฟล์ `.set` ที่เป็นกลยุทธ์เดียวกับ EA ที่เลือก (ไม่ใช่ทุกไฟล์ในโปรเจกต์) — คำขอ
+    ผู้ใช้ 2026-09-12: ไม่อยากเห็น .set ของ EA อื่นปนอยู่ในตัวเลือก ไม่กรอง TF ด้วย (ต่างจาก
+    guess_set_for_ea ที่ต้องเดาแค่ตัวเดียว) เพราะอยากให้เห็นทุก TF variant ของกลยุทธ์นั้นให้เลือกเอง
+    ถ้าไม่มีไฟล์กลยุทธ์ไหนตรงเลย คืน list ว่าง (ไม่ fallback ไปโชว์ทุกไฟล์ กันสับสนกับ EA อื่น)"""
+    strategy = _strategy_key(ea_name)
+    if not strategy:
+        return []
+    return [s for s in list_sets() if strategy in s.lower()]
+
+
 def guess_set_for_ea(ea_name: str) -> str | None:
-    """เดาไฟล์ .set ที่น่าจะตรงกับ EA ที่เลือก จากชื่อกลยุทธ์ร่วม (ตัด prefix Best*_TF_ ทิ้งแล้ว
-    เทียบส่วนที่เหลือ เช่น BestM5_AmdPo3 กับ AmdPo3EA ทั้งคู่เหลือ 'amdpo3') คืน None ถ้าไม่มั่นใจ
-    (ดีกว่าเดาผิดแล้วให้ผู้ใช้จูนด้วยช่วงค่าของ EA อื่น)
+    """เดาไฟล์ .set ที่น่าจะตรงกับ EA ที่เลือกที่สุด (ตัวเดียว) จาก list_sets_for_ea() คืน None
+    ถ้าไม่มั่นใจ (ดีกว่าเดาผิดแล้วให้ผู้ใช้จูนด้วยช่วงค่าของ EA อื่น)
 
     ต้องเลือกไฟล์ที่ TF ตรงกับที่เดาไว้ด้วยเสมอ (ไม่ใช่แค่ชื่อกลยุทธ์ตรง) — พบจริงว่ากลยุทธ์เดียวกัน
     มักมี .set แยกกันคนละ TF (เช่น `amdpo3_clean2025_M5.set` กับ `..._M15.set`) เรียงตามตัวอักษร
     "M15" มาก่อน "M5" เสมอ (ตัวอักษร '1' < '5') ถ้าไม่กรอง TF จะได้ไฟล์ผิด TF ทุกครั้งที่ EA
     เป็น M5 แต่มีไฟล์ M15 อยู่ด้วย (เจอบั๊กนี้จริงตอนทดสอบ 2026-09-12)"""
-    tf = guess_period_for_ea(ea_name)
-    # เรียง TF ยาวไปสั้นในการอ้าง alternation ด้วย (เหตุผลเดียวกับ guess_period_for_ea) — regex
-    # alternation จับตัวเลือกแรกที่แมตช์ได้ก่อนเสมอ ไม่ใช่ตัวที่ยาวที่สุด ถ้าเรียง M1 มาก่อน M15
-    # "BestM15_AmdPo3" จะโดนตัดแค่ "BestM1" เหลือเศษ "5_AmdPo3" ค้าง (เจอบั๊กนี้จริงตอนเขียนเทสต์)
-    tf_alt = "|".join(sorted(TIMEFRAMES, key=len, reverse=True))
-    strategy = re.sub(rf"^Best(\w+?)?_?({tf_alt})_?", "", ea_name, flags=re.IGNORECASE)
-    strategy = re.sub(r"EA$", "", strategy, flags=re.IGNORECASE).lower()
-    if not strategy:
-        return None
-    candidates = [s for s in list_sets() if strategy in s.lower()]
+    candidates = list_sets_for_ea(ea_name)
     if not candidates:
         return None
+    tf = guess_period_for_ea(ea_name)
 
     def has_range(name: str) -> bool:
         text = (SETS_DIR / f"{name}.set").read_text(encoding="utf-8-sig", errors="ignore")

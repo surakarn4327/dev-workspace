@@ -214,14 +214,22 @@ class App(tk.Tk):
         self._on_ea_change()
 
     def _on_ea_change(self, event=None):
-        """เดา TF + .set ให้เองตาม EA ที่เลือก (แก้เองได้เสมอ ไม่ได้ล็อกเหมือนช่วงวันที่/holdout)"""
+        """เดา TF ให้ + จำกัดตัวเลือก .set ให้เหลือแค่ของ EA ที่เลือกเท่านั้น (คำขอผู้ใช้ 2026-09-12
+        — ไม่อยากเห็น .set ของ EA อื่นปนอยู่ในตัวเลือก) TF ยังแก้เองได้เสมอ ไม่ได้ล็อกเหมือน
+        ช่วงวันที่/holdout"""
         ea = self._current_ea()
         if not ea:
             return
         self.period_var.set(config.guess_period_for_ea(ea["name"]))
+        matching_sets = config.list_sets_for_ea(ea["name"])
+        self.set_combo["values"] = matching_sets
         guessed_set = config.guess_set_for_ea(ea["name"])
         if guessed_set:
             self.set_var.set(guessed_set)
+        elif matching_sets:
+            self.set_var.set(matching_sets[0])
+        else:
+            self.set_var.set("")
 
     def _on_symbol_change(self, event=None):
         """เดาขนาด 1 จุดใหม่ทุกครั้งที่แก้ช่องสัญลักษณ์เสร็จ (ออกจากช่อง) — ยังแก้เองทับได้เสมอ"""
@@ -249,7 +257,8 @@ class App(tk.Tk):
         self.eas = config.list_eas()
         names = [e["name"] for e in self.eas]
         self.ea_combo["values"] = names
-        self.set_combo["values"] = config.list_sets()
+        ea = self._current_ea()
+        self.set_combo["values"] = config.list_sets_for_ea(ea["name"]) if ea else []
 
     def _open_set_editor(self):
         SetEditor(self, self.set_var.get().strip() or None,

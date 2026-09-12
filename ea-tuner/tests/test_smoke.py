@@ -154,6 +154,17 @@ def test_apply_risk_overrides_missing_fields_warns(tmp_path) -> None:
     assert "InpRiskPointUnit=0.01" in text
 
 
+def test_list_sets_for_ea_filters_by_strategy(tmp_path, monkeypatch) -> None:
+    (tmp_path / "amdpo3_clean2025_M15.set").write_text("InpA=1||1||1||2||Y\n", encoding="utf-8")
+    (tmp_path / "amdpo3_clean2025_M5.set").write_text("InpA=1||1||1||2||Y\n", encoding="utf-8")
+    (tmp_path / "MARibbonOpt.set").write_text("InpA=1\n", encoding="utf-8")
+    monkeypatch.setattr(config, "SETS_DIR", tmp_path)
+    result = config.list_sets_for_ea("BestM5_AmdPo3")
+    assert set(result) == {"amdpo3_clean2025_M15", "amdpo3_clean2025_M5"}
+    assert config.list_sets_for_ea("MARibbonEA") == ["MARibbonOpt"]
+    assert config.list_sets_for_ea("SmartIndicatorEA") == []
+
+
 def test_guess_set_for_ea_prefers_matching_timeframe(tmp_path, monkeypatch) -> None:
     # จำลองสถานการณ์จริงที่เจอบั๊ก 2026-09-12: กลยุทธ์เดียวกันมี .set แยกคนละ TF
     # ("M15" เรียงก่อน "M5" ตามตัวอักษรเสมอ) ต้องเลือกไฟล์ที่ TF ตรงกับที่เดาไว้ ไม่ใช่ตัวแรกตามลำดับ
