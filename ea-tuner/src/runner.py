@@ -44,11 +44,16 @@ def _dt(d: date) -> str:
 
 def build_command(req: RunRequest) -> list[str]:
     ps_exe = "powershell.exe"
+    # -ExecutionPolicy Bypass ผูกกับ process นี้ครั้งเดียวเท่านั้น ไม่ได้เปลี่ยนนโยบายของเครื่อง
+    # ถาวร — ต้องใส่เพราะเครื่องผู้ใช้ทั่วไป default เป็น Restricted (บล็อกสคริปต์ .ps1 ทุกไฟล์)
+    # ต่างจาก session ที่ใช้ทดสอบตอนพัฒนา ea-tuner ซึ่ง bypass ไว้แล้วในนั้น เจอจริงตอนผู้ใช้กดรัน
+    # ครั้งแรก (2026-09-12): "running scripts is disabled on this system"
+    base_args = ["-NoProfile", "-ExecutionPolicy", "Bypass"]
 
     if req.mode in ("single", "optimize"):
         script = str(config.BIN_DIR / "run-opt.ps1")
         opt_flag = req.opt_override or ("0" if req.mode == "single" else "2")
-        args = [
+        args = base_args + [
             "-File", script,
             "-Period", req.period,
             "-SetName", req.set_name,
@@ -70,7 +75,7 @@ def build_command(req: RunRequest) -> list[str]:
     script_name = "run-weekly-reset.ps1" if req.mode == "weekly" else "run-monthly-reset.ps1"
     date_flag = "-StartDate" if req.mode == "weekly" else "-StartMonth"
     script = str(config.BIN_DIR / script_name)
-    args = [
+    args = base_args + [
         "-File", script,
         "-SetName", req.set_name,
         "-OutPrefix", req.out_name,
