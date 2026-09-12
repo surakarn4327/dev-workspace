@@ -1,5 +1,9 @@
+from gui import App
+
+
 def main() -> None:
-    print('ea-tuner is alive')
+    app = App()
+    app.mainloop()
 
 
 if __name__ == '__main__':

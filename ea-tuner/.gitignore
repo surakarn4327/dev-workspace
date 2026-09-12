@@ -18,3 +18,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 *.log
+
+# หน้าสรุปผลที่โปรแกรมสร้างเอง — สร้างใหม่ได้ทุกครั้งจากไฟล์ผลใน smart-ea/optimizer/results
+output/
