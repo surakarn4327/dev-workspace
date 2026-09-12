@@ -115,6 +115,45 @@ def test_parse_set_file_and_build_neighbor_set(tmp_path) -> None:
     assert fixed_lines["InpMagic"] == "InpMagic=123"
 
 
+def test_guess_point_unit_by_symbol_suffix() -> None:
+    assert config.guess_point_unit("XAUUSDc") == 1.0
+    assert config.guess_point_unit("XAUUSDm") == 0.01
+    assert config.guess_point_unit("XAUUSD") == 0.01
+
+
+def test_apply_risk_overrides_fixed_mode(tmp_path) -> None:
+    p = tmp_path / "sample.set"
+    p.write_text(
+        "InpRiskMode=0\nInpRiskPct=2.0\nInpRiskFixedUsd=200\nInpRiskPointUnit=0.01\nInpMagic=1\n",
+        encoding="utf-8",
+    )
+    entries = runner.parse_set_file(p)
+    text, warnings = runner.apply_risk_overrides(
+        entries, risk_mode="fixed", risk_value=150.0, point_unit=1.0
+    )
+    lines = {ln.split("=")[0]: ln for ln in text.strip().splitlines()}
+    assert lines["InpRiskMode"] == "InpRiskMode=1"       # RISK_FIXED_USD
+    assert lines["InpRiskFixedUsd"] == "InpRiskFixedUsd=150.0"
+    assert lines["InpRiskPointUnit"] == "InpRiskPointUnit=1.0"
+    assert lines["InpMagic"] == "InpMagic=1"              # ไม่ถูกแตะ
+    assert not warnings
+
+
+def test_apply_risk_overrides_missing_fields_warns(tmp_path) -> None:
+    p = tmp_path / "sample.set"
+    p.write_text("InpRiskPerTrade=100\n", encoding="utf-8")
+    entries = runner.parse_set_file(p)
+    text, warnings = runner.apply_risk_overrides(
+        entries, risk_mode="percent", risk_value=2.0, point_unit=0.01
+    )
+    assert any("InpRiskPct" in w for w in warnings)
+    assert any("InpRiskMode" in w for w in warnings)
+    # InpRiskPointUnit ไม่เจอในไฟล์นี้ก็จริง แต่ EA ทุกตัวในโปรเจกต์นี้มี field นี้เสมอ
+    # เลยเพิ่มบรรทัดใหม่ให้เองแทนการแค่เตือน (ต่างจาก mode/pct/fixed)
+    assert not any("InpRiskPointUnit" in w for w in warnings)
+    assert "InpRiskPointUnit=0.01" in text
+
+
 def test_guess_set_for_ea_prefers_matching_timeframe(tmp_path, monkeypatch) -> None:
     # จำลองสถานการณ์จริงที่เจอบั๊ก 2026-09-12: กลยุทธ์เดียวกันมี .set แยกคนละ TF
     # ("M15" เรียงก่อน "M5" ตามตัวอักษรเสมอ) ต้องเลือกไฟล์ที่ TF ตรงกับที่เดาไว้ ไม่ใช่ตัวแรกตามลำดับ

@@ -109,7 +109,9 @@ class App(tk.Tk):
         row2.pack(fill="x", **pad)
         ttk.Label(row2, text="สัญลักษณ์:").pack(side="left")
         self.symbol_var = tk.StringVar(value="XAUUSDc")
-        ttk.Entry(row2, textvariable=self.symbol_var, width=12).pack(side="left", padx=(4, 16))
+        self.symbol_entry = ttk.Entry(row2, textvariable=self.symbol_var, width=12)
+        self.symbol_entry.bind("<FocusOut>", self._on_symbol_change)
+        self.symbol_entry.pack(side="left", padx=(4, 16))
 
         ttk.Label(row2, text="TF:").pack(side="left")
         self.period_var = tk.StringVar(value="M15")
@@ -121,6 +123,28 @@ class App(tk.Tk):
         ttk.Label(row2, text="เงินฝากตั้งต้น (USD):").pack(side="left")
         self.deposit_var = tk.StringVar(value="10000")
         ttk.Entry(row2, textvariable=self.deposit_var, width=10).pack(side="left", padx=4)
+
+        # แถว 2b: ความเสี่ยงต่อไม้ + ขนาด 1 จุด (point unit) — แก้ตรงนี้ได้เลย ไม่ต้องเปิดไฟล์
+        # .set เอง (คำขอผู้ใช้ 2026-09-12) โปรแกรมจะเขียนทับ field ที่เกี่ยวข้องในไฟล์ .set
+        # ที่เลือกให้เองก่อนรันทุกครั้ง — เขียนทับเฉพาะ field ที่หาเจอ (ดู runner.apply_risk_overrides)
+        row2b = ttk.Frame(top)
+        row2b.pack(fill="x", **pad)
+        ttk.Label(row2b, text="ความเสี่ยงต่อไม้:").pack(side="left")
+        self.risk_mode_var = tk.StringVar(value=config.RISK_MODES[0][1])
+        ttk.Combobox(row2b, textvariable=self.risk_mode_var,
+                     values=[m[1] for m in config.RISK_MODES],
+                     state="readonly", width=18).pack(side="left", padx=(4, 8))
+        self.risk_value_var = tk.StringVar(value="100")
+        ttk.Entry(row2b, textvariable=self.risk_value_var, width=8).pack(side="left", padx=(0, 16))
+
+        ttk.Label(row2b, text="ขนาด 1 จุด (point unit):").pack(side="left")
+        self.point_unit_var = tk.StringVar(value=config.guess_point_unit("XAUUSDc"))
+        ttk.Entry(row2b, textvariable=self.point_unit_var, width=8).pack(side="left", padx=(4, 8))
+        ttk.Label(
+            row2b,
+            text="(เดาจากชื่อสัญลักษณ์ — ชัวร์แค่ทองบัญชี m/c, คู่เงินอื่นเช็คด้วย SymbolInfoDump.mq5 ก่อน)",
+            foreground="#666",
+        ).pack(side="left")
 
         # แถว 3: ช่วงวันที่ (โหมดจูนล็อกอัตโนมัติ ดู _on_mode_change — คำขอผู้ใช้ 2026-09-12:
         # ให้ใช้งานง่ายที่สุด ไม่ต้องมาคอยปรับช่วงวันที่/holdout เอง)
@@ -199,6 +223,10 @@ class App(tk.Tk):
         if guessed_set:
             self.set_var.set(guessed_set)
 
+    def _on_symbol_change(self, event=None):
+        """เดาขนาด 1 จุดใหม่ทุกครั้งที่แก้ช่องสัญลักษณ์เสร็จ (ออกจากช่อง) — ยังแก้เองทับได้เสมอ"""
+        self.point_unit_var.set(config.guess_point_unit(self.symbol_var.get()))
+
     def _on_mode_change(self):
         """โหมดจูนล็อกช่วงวันที่ + holdout ให้เองเสมอ (คำขอผู้ใช้ 2026-09-12) — ผู้ใช้แก้เองไม่ได้
         เพื่อกันไม่ให้ต้องมาคอยปรับ ส่วนโหมดอื่น (รันเดี่ยว/รายสัปดาห์/รายเดือน) ยังกรอกเองได้ตามปกติ"""
@@ -236,6 +264,13 @@ class App(tk.Tk):
         name = self.ea_var.get()
         return next((e for e in self.eas if e["name"] == name), None)
 
+    def _risk_mode_key(self) -> str:
+        label = self.risk_mode_var.get()
+        for key, lbl in config.RISK_MODES:
+            if lbl == label:
+                return key
+        return "fixed"
+
     def _log(self, line: str):
         self.log_box.configure(state="normal")
         self.log_box.insert("end", line + "\n")
@@ -268,8 +303,28 @@ class App(tk.Tk):
                 messagebox.showerror("ผิดพลาด", "รูปแบบวันที่ต้องเป็น yyyy-mm-dd")
                 return
 
+        try:
+            risk_value = float(self.risk_value_var.get().strip())
+            point_unit = float(self.point_unit_var.get().strip())
+        except ValueError:
+            messagebox.showerror("ผิดพลาด", "'ความเสี่ยงต่อไม้' และ 'ขนาด 1 จุด' ต้องเป็นตัวเลข")
+            return
+
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         out_name = f"eatuner_{ea['name']}_{self.symbol_var.get()}_{self.period_var.get()}_{ts}"
+
+        # เขียนทับ field ความเสี่ยง/point-unit ตามค่าในหน้าต่างลงไฟล์ .set ทำงานชุดใหม่ (ไม่แตะ
+        # ไฟล์เดิมที่เลือกไว้) แล้วใช้ไฟล์นี้แทนตลอดทั้งขั้นตอน (คำขอผู้ใช้ 2026-09-12)
+        entries = runner.parse_set_file(config.SETS_DIR / f"{set_name}.set")
+        risk_mode_key = self._risk_mode_key()
+        risk_text, risk_warnings = runner.apply_risk_overrides(
+            entries, risk_mode=risk_mode_key, risk_value=risk_value, point_unit=point_unit
+        )
+        working_set_name = f"{set_name}__risk_{ts}"
+        (config.SETS_DIR / f"{working_set_name}.set").write_text(risk_text, encoding="utf-8")
+        set_name = working_set_name
+        for w in risk_warnings:
+            self._log(f"[คำเตือน] {w}")
 
         term_dir = config.find_terminal_data_dir(ea["expert_path"])
         if not term_dir:

@@ -38,6 +38,30 @@ PARAM_PREFIX_COLS = 2  # [symbol, timeframe]
 
 TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
 
+RISK_MODES = [
+    ("fixed", "USD คงที่ต่อไม้"),
+    ("percent", "% ของ equity ต่อไม้"),
+]
+
+# ชื่อ input ที่เกี่ยวกับความเสี่ยงที่ EA ในโปรเจกต์นี้ใช้ (เรียงตามที่เจอบ่อยสุดก่อน) — ไม่ทุก
+# EA จะมีครบทุกชื่อ (เช่น MARibbonEA รุ่นเก่าใช้ InpRiskPerTrade ตัวเดียวไม่มี InpRiskMode
+# แปลว่ารองรับแค่โหมด fixed) หาไม่เจอก็แค่ข้ามการ override ชื่อนั้นไป ไม่ error
+RISK_MODE_NAMES = ["InpRiskMode"]
+RISK_PCT_NAMES = ["InpRiskPct"]
+RISK_FIXED_NAMES = ["InpRiskFixedUsd", "InpRiskPerTrade"]
+RISK_POINT_UNIT_NAMES = ["InpRiskPointUnit"]
+
+
+def guess_point_unit(symbol: str) -> float:
+    """เดา 'ขนาด 1 จุด' (InpRiskPointUnit) จากชื่อสัญลักษณ์ — เดาแบบหยาบมาก ใช้ได้ชัวร์เฉพาะทอง
+    บนบัญชีนี้เท่านั้น (บัญชี m ปกติ contract=100 -> 0.01, บัญชี Cent ลงท้าย 'c' contract=1 -> 1.0)
+    คู่เงินอื่นค่าจริงต่างไปตาม contract size ของสัญลักษณ์นั้นๆ (เช่น EURUSDc=0.001,
+    USDJPYc=0.15975 — มี USD เป็น base currency ต้องคูณเรตด้วย) **ต้องเช็คด้วย
+    SymbolInfoDump.mq5 เองก่อนถ้าไม่ใช่ทอง** ดู smart-ea/bugs.md หัวข้อ 2026-09-12
+    (สูตรเต็ม: pointUnit = 1/contract_size เมื่อ quote currency = USD, = เรตปัจจุบัน/contract_size
+    เมื่อ USD เป็น base currency แทน) ที่นี่แค่เดาให้เป็นจุดเริ่มต้น ยังแก้เองได้เสมอในหน้าต่าง"""
+    return 1.0 if symbol.strip().lower().endswith("c") else 0.01
+
 # โมเดล tick ล็อกไว้ตายตัวตามด่าน ผู้ใช้ไม่ต้องเลือกเอง (คำขอผู้ใช้ 2026-09-12 — และเป็นบั๊กเสี่ยง
 # จริงถ้าปล่อยให้เลือกผิด: bugs.md ของ smart-ea บันทึกไว้ว่ารันกริดด้วย Every tick ช้ากว่า
 # 1-minute OHLC ~50 เท่า จนดูเหมือนเครื่องค้าง ต้อง taskkill ทิ้ง) —

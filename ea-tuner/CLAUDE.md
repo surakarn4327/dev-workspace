@@ -101,10 +101,22 @@ pytest                  # test
 - **ไม่มี dependency ภายนอกเกินจำเป็น** — ใช้แต่ standard library ของ Python (Tkinter, subprocess,
   threading) เพื่อไม่ต้องพึ่ง `pip install` อะไรเพิ่มตอนย้ายเครื่อง (เครื่องนี้ไม่มี Python ติดตั้งมา
   ด้วยซ้ำตอนสร้างโปรเจกต์ — ต้องลงผ่าน `winget install Python.Python.3.12` ก่อน)
-- **โหมดความเสี่ยง (fixed USD / % equity) ไม่มี control แยกในหน้าต่างหลัก** ตั้งใจให้แก้ผ่านไฟล์
-  `.set` โดยตรง (ปุ่ม "แก้ไฟล์ .set") เพราะชื่อ input ของแต่ละ EA ไม่เหมือนกัน
-  (`InpRiskMode`/`InpRiskPct`/`InpRiskFixedUsd`) การสร้าง control เฉพาะจะผูก ea-tuner
-  เข้ากับ EA ตัวใดตัวหนึ่งมากเกินไป
+- **โหมดความเสี่ยง (fixed USD / % equity), ความเสี่ยงต่อไม้, และขนาด 1 จุด (point unit) แก้ได้
+  ตรงหน้าต่างหลักแล้ว** (คำขอผู้ใช้ 2026-09-12 รอบที่ 4 — ย้อนจากดีไซน์เดิมที่ให้แก้ผ่าน `.set`
+  editor เท่านั้น) ก่อนรันทุกครั้ง `_on_run` จะเรียก `runner.apply_risk_overrides()` เขียนทับ
+  `InpRiskMode`/`InpRiskPct`/`InpRiskFixedUsd`/`InpRiskPointUnit` (ชื่อผู้สมัครอยู่ใน
+  `config.RISK_*_NAMES`) ลงไฟล์ **สำเนาใหม่** (`{ชื่อ.set}__risk_{timestamp}.set`) ไม่แตะไฟล์เดิม
+  แล้วใช้สำเนานั้นตลอดทั้ง pipeline — หา field ไม่เจอก็แค่เตือน (log คำเตือนในหน้าต่าง) ไม่ error
+  ยกเว้น `InpRiskPointUnit` ที่ยืนยันแล้วว่า EA ทุกตัวในโปรเจกต์นี้มี field นี้จริงเสมอ (เช็ค
+  MARibbon/AmdPo3/SATS/SmartIndicator ครบแล้ว) เจอว่าไฟล์ `.set` ไม่ได้ระบุไว้ (พึ่ง default ของ
+  EA เฉยๆ) ก็เพิ่มบรรทัดใหม่ให้เองได้อย่างปลอดภัย — **ระวัง**: `InpRiskMode`/`InpRiskFixedUsd`/
+  `InpRiskPct` ไม่ยืนยันว่ามีครบทุก EA (EA รุ่นเก่าอาจมีแค่โหมดเดียว เช่น `InpRiskPerTrade` ของ
+  MARibbon) จึงแค่เตือนไม่เพิ่มบรรทัดใหม่ให้ เพิ่มมั่วอาจโดน MT5 เมินเงียบๆ หรือ error แทน
+- **ขนาด 1 จุด (point unit) เดาอัตโนมัติจากส่วนท้ายชื่อสัญลักษณ์เท่านั้น** (`config.guess_point_unit`
+  — ลงท้าย 'c' = บัญชี Cent = 1.0, อื่นๆ = 0.01) **ใช้ได้ชัวร์แค่ทองเท่านั้น** คู่เงินอื่นค่าจริงต่างไป
+  ตาม contract size ของสัญลักษณ์นั้นๆ (ดู `smart-ea/bugs.md` หัวข้อ 2026-09-12 เรื่อง
+  `InpRiskPointUnit = 1/contract_size` และกรณีพิเศษที่ USD เป็น base currency เช่น USDJPY/USDCAD
+  ต้องคูณเรตด้วย) — ผู้ใช้ต้องเช็คด้วย `SymbolInfoDump.mq5` เองแล้วแก้ตัวเลขในช่องนี้ถ้าไม่ใช่ทอง
 - **การรันจริงทุกครั้งเรียก `optimizer/bin/run-opt.ps1` ของ smart-ea เสมอ** (ไม่เขียน logic
   เรียก MT5 ซ้ำเอง) เพราะสคริปต์นั้นมีด่านตรวจ/แก้บั๊กสะสมมาเยอะแล้ว (ดู `smart-ea/bugs.md`
   และ `smart-ea/optimizer/README.md`) — ถ้า `run-opt.ps1` เปลี่ยน interface ต้องแก้

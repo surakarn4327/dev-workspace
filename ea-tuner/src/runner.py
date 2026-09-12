@@ -196,6 +196,73 @@ def build_fixed_set(entries: list[SetEntry], winner_values: list[str], n_params:
     return "\n".join(out_lines) + "\n"
 
 
+def apply_risk_overrides(
+    entries: list[SetEntry], *, risk_mode: str, risk_value: float, point_unit: float
+) -> tuple[str, list[str]]:
+    """เขียนทับ field ความเสี่ยง/point-unit ในไฟล์ .set ตามค่าที่ตั้งในหน้าต่างโปรแกรม (คำขอ
+    ผู้ใช้ 2026-09-12: ไม่อยากเปิดไฟล์ .set เองเพื่อแก้แค่ความเสี่ยง/point unit) — หา field ตาม
+    รายชื่อที่รู้จักใน config.RISK_*_NAMES ก่อนเสมอ ถ้าไม่เจอชื่อไหนก็แค่ข้าม (EA บางตัวอาจไม่มี
+    field นั้น เช่น EA รุ่นเก่าที่รองรับความเสี่ยงคงที่แบบเดียว) คืน (เนื้อไฟล์ .set ใหม่,
+    รายการคำเตือนที่ควรแจ้งผู้ใช้)
+
+    risk_mode: "fixed" (USD คงที่ต่อไม้) หรือ "percent" (% ของ equity) — ต้องตรงกับ
+    config.RISK_MODES ค่าตัวเลขของ InpRiskMode อ้างอิงลำดับ enum ที่ทุก EA ในโปรเจกต์นี้ใช้
+    ตรงกัน (RISK_PERCENT_EQUITY=0, RISK_FIXED_USD=1 — ดู smart-ea/src/*Types.mqh)
+    """
+    warnings: list[str] = []
+    names_lower = {e.name.lower() for e in entries}
+
+    def find_name(candidates: list[str]) -> str | None:
+        for c in candidates:
+            if c.lower() in names_lower:
+                return c
+        return None
+
+    mode_name = find_name(config.RISK_MODE_NAMES)
+    pct_name = find_name(config.RISK_PCT_NAMES)
+    fixed_name = find_name(config.RISK_FIXED_NAMES)
+    point_name = find_name(config.RISK_POINT_UNIT_NAMES)
+
+    overrides: dict[str, str] = {}
+    if mode_name:
+        overrides[mode_name] = "0" if risk_mode == "percent" else "1"
+    else:
+        warnings.append(f"ไม่พบ {config.RISK_MODE_NAMES[0]} ใน .set นี้ — EA อาจรองรับความเสี่ยงแค่โหมดเดียว")
+
+    if risk_mode == "percent":
+        if pct_name:
+            overrides[pct_name] = f"{risk_value}"
+        else:
+            warnings.append(f"ไม่พบ {config.RISK_PCT_NAMES[0]} ใน .set นี้ — ตั้งโหมด % ไม่ได้")
+    else:
+        if fixed_name:
+            overrides[fixed_name] = f"{risk_value}"
+        else:
+            warnings.append(f"ไม่พบ {'/'.join(config.RISK_FIXED_NAMES)} ใน .set นี้ — ตั้ง USD คงที่ไม่ได้")
+
+    append_lines: list[str] = []
+    if point_name:
+        overrides[point_name] = f"{point_unit}"
+    else:
+        # InpRiskPointUnit มีอยู่จริงในทุก EA ของโปรเจกต์นี้เสมอ (เช็คแล้วทั้ง MARibbon/AmdPo3/
+        # SATS/SmartIndicator) แค่ไฟล์ .set นี้ไม่ได้ระบุไว้ (พึ่งค่า default ของ EA เฉยๆ) —
+        # เพิ่มบรรทัดใหม่ให้เองได้อย่างปลอดภัย ต่างจาก mode/pct/fixed ที่บาง EA (รุ่นเก่า) อาจไม่มี
+        # field นั้นจริงๆ เพิ่มมั่วอาจโดน MT5 เมินเงียบๆ หรือ error แทน
+        name = config.RISK_POINT_UNIT_NAMES[0]
+        append_lines.append(f"{name}={point_unit}")
+
+    out_lines = []
+    for e in entries:
+        if e.name in overrides:
+            out_lines.append(f"{e.name}={overrides[e.name]}")
+        elif e.ranged:
+            out_lines.append(f"{e.name}={e.default}||{e.start}||{e.step}||{e.end}||{e.opt_flag}")
+        else:
+            out_lines.append(f"{e.name}={e.value}")
+    out_lines.extend(append_lines)
+    return "\n".join(out_lines) + "\n", warnings
+
+
 def split_train_holdout(
     date_from: date, date_to: date, holdout_days: int
 ) -> tuple[date, date, date, date]:
