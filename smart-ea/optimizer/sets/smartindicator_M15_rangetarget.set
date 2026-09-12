@@ -1,0 +1,17 @@
+InpHtf=16385
+InpMaxZoneAgeBars=100||50||50||200||Y
+InpSlBufferPoints=30||10||10||50||Y
+InpRiskPointUnit=1.0
+InpRiskMode=1
+InpRiskPct=2.0
+InpRiskFixedUsd=100
+InpTpMode=1
+InpTp1R=1.0
+InpTp2R=2.0
+InpTp3R=3.0
+InpUsePartials=0
+InpUseBe=0
+InpMagic=20260912
+InpMinTrades=15
+InpMinProfit=0
+InpDumpPasses=1

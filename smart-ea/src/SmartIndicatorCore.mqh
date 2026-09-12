@@ -472,13 +472,20 @@ double OnTester()
 void DumpPass(const double score)
 {
    string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)Period()), 7);
-   string htfTf = StringSubstr(EnumToString(InpHtf), 7);
+   string htfLabel = StringSubstr(EnumToString(InpHtf), 7); // แค่ใช้แต่งชื่อไฟล์ให้อ่านง่าย
 
+   // ลำดับคอลัมน์พารามิเตอร์ต้องตรงกับลำดับ input ที่ประกาศใน SmartIndicatorEA.mq5 เป๊ะ (InpHtf ->
+   // InpMaxZoneAgeBars -> InpSlBufferPoints -> ...) เพราะเครื่องมือจูนอ่านไฟล์ .csv นี้แล้วจับคู่
+   // กลับไปยังบรรทัดใน .set ตามตำแหน่งคอลัมน์ตรงๆ (ea-tuner/src/runner.py) — เคยเขียนผิดลำดับมา
+   // ก่อน (สลับ InpSlBufferPoints มาก่อน InpMaxZoneAgeBars) พบตอนเตรียมจูนจริงครั้งแรก 2026-09-12
+   // ถ้าลำดับไม่ตรง เครื่องมือจูนจะเอาค่าที่ชนะไปเขียนทับผิดพารามิเตอร์แบบเงียบๆ — ต้องใช้
+   // (int)InpHtf ค่าตัวเลขจริงด้วย ไม่ใช่ label ข้อความ "H1" เหมือนเดิม (EA อื่นในโปรเจกต์นี้ทุกตัว
+   // ใช้ตัวเลขดิบของ enum เสมอในคอลัมน์ผล ไม่เคยใช้ label ข้อความ)
    string stem = StringFormat(
-      "%s_%s_htf%s_slb%.1f_pu%.4f_rm%d_rp%.2f_rf%.2f_tpm%d_r1%.2f_r2%.2f_r3%.2f_part%d_be%d_maxage%d",
-      _Symbol, tf, htfTf,
-      InpSlBufferPoints, InpRiskPointUnit, (int)InpRiskMode, InpRiskPct, InpRiskFixedUsd,
-      (int)InpTpMode, InpTp1R, InpTp2R, InpTp3R, (int)InpUsePartials, (int)InpUseBe, InpMaxZoneAgeBars);
+      "%s_%s_htf%s_maxage%d_slb%.1f_pu%.4f_rm%d_rp%.2f_rf%.2f_tpm%d_r1%.2f_r2%.2f_r3%.2f_part%d_be%d",
+      _Symbol, tf, htfLabel,
+      InpMaxZoneAgeBars, InpSlBufferPoints, InpRiskPointUnit, (int)InpRiskMode, InpRiskPct,
+      InpRiskFixedUsd, (int)InpTpMode, InpTp1R, InpTp2R, InpTp3R, (int)InpUsePartials, (int)InpUseBe);
    string path = "smartind_opt\\" + stem + ".csv";
 
    int h = FileOpen(path, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
@@ -488,10 +495,10 @@ void DumpPass(const double score)
    WriteMonthlySeries("smartind_opt\\monthly\\" + stem + ".csv");
 
    FileWrite(h, StringFormat(
-      "%s;%s;%s;%.1f;%.4f;%d;%.2f;%.2f;%d;%.2f;%.2f;%.2f;%d;%d;%d;",
-      _Symbol, tf, htfTf,
-      InpSlBufferPoints, InpRiskPointUnit, (int)InpRiskMode, InpRiskPct, InpRiskFixedUsd,
-      (int)InpTpMode, InpTp1R, InpTp2R, InpTp3R, (int)InpUsePartials, (int)InpUseBe, InpMaxZoneAgeBars)
+      "%s;%s;%d;%d;%.1f;%.4f;%d;%.2f;%.2f;%d;%.2f;%.2f;%.2f;%d;%d;",
+      _Symbol, tf, (int)InpHtf,
+      InpMaxZoneAgeBars, InpSlBufferPoints, InpRiskPointUnit, (int)InpRiskMode, InpRiskPct,
+      InpRiskFixedUsd, (int)InpTpMode, InpTp1R, InpTp2R, InpTp3R, (int)InpUsePartials, (int)InpUseBe)
       + MetricsCsvTail(score));
    FileClose(h);
 }
