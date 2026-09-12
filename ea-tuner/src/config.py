@@ -7,6 +7,7 @@ optimizer/bin/*.ps1 ที่มีอยู่แล้วเป็น subproce
 from __future__ import annotations
 
 import re
+from datetime import date, timedelta
 from pathlib import Path
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -48,6 +49,27 @@ RUN_MODES = [
     ("weekly", "จำลองถอนกำไรรายสัปดาห์ (รีเซ็ตทุนทุก 7 วัน)"),
     ("monthly", "จำลองถอนกำไรรายเดือน (รีเซ็ตทุนทุกเดือน)"),
 ]
+
+# โหมดจูนล็อกช่วงวันที่เองเสมอ ผู้ใช้ไม่ต้องกรอก (คำขอผู้ใช้ 2026-09-12 — "ใช้งานง่ายที่สุด
+# ไม่ต้องมาคอยปรับอีก"): เริ่ม 1 ม.ค. 2568 (ขอบเขตข้อมูลมาตรฐานของ XAUUSD ในโปรเจกต์นี้ ดู
+# smart-ea/optimizer/README.md — ทองเปลี่ยนพฤติกรรมไปแล้วหลังจากนั้น) ถึงสิ้นเดือนก่อนเดือน
+# ปัจจุบัน (ตัดเดือนที่กำลังเดินอยู่ทิ้งเพราะข้อมูลยังไม่ครบเดือน)
+OPTIMIZE_TRAIN_START = date(2025, 1, 1)
+
+# กันไว้ตรวจสอบท้ายช่วงเท่านี้เสมอ (ตายตัว ไม่ให้ผู้ใช้ปรับ) — เลือกเป็นจำนวนวันคงที่ (ไม่ใช่ %)
+# เพราะช่วงข้อมูลจะยาวขึ้นเรื่อยๆ ตามเวลา ถ้าใช้ % ระยะ holdout จะบวมขึ้นเรื่อยๆ ทั้งที่ไม่จำเป็น
+# 45 วัน (~1.5 เดือน) เป็นจุดกลางที่ยังมีไม้พอให้วัดผลได้จริง แต่เสียข้อมูลล่าสุดไปไม่มากเกินไป
+# (เทียบ 20% ของช่วง ~20 เดือนคือเสียไปเกือบ 4 เดือน) — อ้างอิงบทเรียนที่ Range Fade/SATS ผ่าน
+# ด่านตรวจเพื่อนบ้านหมดแต่ยังพังบนข้อมูลที่ไม่เคยจูน จึงยังต้องมี holdout เสมอ ไม่ตัดทิ้งทั้งหมด
+OPTIMIZE_HOLDOUT_DAYS = 45
+
+
+def default_optimize_date_range() -> tuple[date, date]:
+    """ช่วงวันที่ที่โหมดจูนใช้เสมอ: 1 ม.ค. 2568 ถึงสิ้นเดือนก่อนเดือนปัจจุบัน"""
+    today = date.today()
+    first_of_this_month = today.replace(day=1)
+    last_of_prev_month = first_of_this_month - timedelta(days=1)
+    return OPTIMIZE_TRAIN_START, last_of_prev_month
 
 
 def find_terminal_data_dir(expert_rel_path: str) -> Path | None:

@@ -64,3 +64,46 @@ def test_parse_period_summary(tmp_path) -> None:
     p.write_text("2026-01;123.45;10\n2026-02;-50.0;8\n", encoding="utf-8-sig")
     rows = report.parse_period_summary(p)
     assert rows == [("2026-01", 123.45, 10), ("2026-02", -50.0, 8)]
+
+
+def test_split_train_holdout_uses_fixed_days() -> None:
+    train_from, train_to, hold_from, hold_to = runner.split_train_holdout(
+        date(2025, 1, 1), date(2026, 9, 11), holdout_days=45
+    )
+    assert train_from == date(2025, 1, 1)
+    assert hold_to == date(2026, 9, 11)
+    assert train_to == hold_from
+    assert (hold_to - hold_from).days == 45
+
+
+def test_default_optimize_date_range_ends_last_month() -> None:
+    start, end = config.default_optimize_date_range()
+    assert start == config.OPTIMIZE_TRAIN_START
+    assert end < date.today().replace(day=1)  # ตัดเดือนปัจจุบันทิ้งเสมอ
+
+
+def test_parse_set_file_and_build_neighbor_set(tmp_path) -> None:
+    p = tmp_path / "sample.set"
+    p.write_text(
+        "InpA=40||30||10||60||Y\n"
+        "InpB=0.15||0.10||0.05||0.20||Y\n"
+        "InpFlag=1\n"
+        "InpMagic=123\n",
+        encoding="utf-8",
+    )
+    entries = runner.parse_set_file(p)
+    assert [e.name for e in entries] == ["InpA", "InpB", "InpFlag", "InpMagic"]
+    assert entries[0].ranged and entries[2].ranged is False
+
+    # winner_values สำหรับ 3 พารามิเตอร์ที่ปรากฏในผล .csv (InpA, InpB, InpFlag) — InpMagic
+    # ไม่ถูกจูนเลยไม่อยู่ในผล .csv จึงไม่ส่งมาที่นี่ (n_params=3 < len(entries)=4)
+    neighbor = runner.build_neighbor_set(entries, ["50", "0.15", "1"], n_params=3)
+    lines = {ln.split("=")[0]: ln for ln in neighbor.strip().splitlines()}
+    assert "InpA=50" in lines["InpA"]  # ค่าเริ่มของช่วงใหม่ = ค่าที่ชนะ
+    assert lines["InpFlag"] == "InpFlag=1"  # ไม่ ranged ก็ล็อกตรงๆ
+    assert lines["InpMagic"] == "InpMagic=123"  # พารามิเตอร์ควบคุมไม่ถูกแตะเลย
+
+    fixed = runner.build_fixed_set(entries, ["50", "0.15", "1"], n_params=3)
+    fixed_lines = {ln.split("=")[0]: ln for ln in fixed.strip().splitlines()}
+    assert fixed_lines["InpA"] == "InpA=50"  # ไม่มีช่วงอีกต่อไป ล็อกตายตัว
+    assert fixed_lines["InpMagic"] == "InpMagic=123"

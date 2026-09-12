@@ -126,21 +126,29 @@ class App(tk.Tk):
         self.deposit_var = tk.StringVar(value="10000")
         ttk.Entry(row2, textvariable=self.deposit_var, width=10).pack(side="left", padx=4)
 
-        # แถว 3: ช่วงวันที่
+        # แถว 3: ช่วงวันที่ (โหมดจูนล็อกอัตโนมัติ ดู _on_mode_change — คำขอผู้ใช้ 2026-09-12:
+        # ให้ใช้งานง่ายที่สุด ไม่ต้องมาคอยปรับช่วงวันที่/holdout เอง)
         row3 = ttk.Frame(top)
         row3.pack(fill="x", **pad)
         ttk.Label(row3, text="ตั้งแต่วันที่ (yyyy-mm-dd):").pack(side="left")
         self.from_var = tk.StringVar(value="2025-01-01")
-        ttk.Entry(row3, textvariable=self.from_var, width=12).pack(side="left", padx=(4, 16))
+        self.from_entry = ttk.Entry(row3, textvariable=self.from_var, width=12)
+        self.from_entry.pack(side="left", padx=(4, 16))
         ttk.Label(row3, text="ถึงวันที่:").pack(side="left")
         self.to_var = tk.StringVar(value=date.today().isoformat())
-        ttk.Entry(row3, textvariable=self.to_var, width=12).pack(side="left", padx=4)
+        self.to_entry = ttk.Entry(row3, textvariable=self.to_var, width=12)
+        self.to_entry.pack(side="left", padx=4)
+        self.date_note_var = tk.StringVar(value="")
+        ttk.Label(row3, textvariable=self.date_note_var, foreground="#666").pack(side="left", padx=6)
+
+        row3b = ttk.Frame(top)
+        row3b.pack(fill="x", **pad)
         ttk.Label(
-            row3,
-            text="  โหมดความเสี่ยง (fixed USD / % equity) แก้ได้ในไฟล์ .set "
+            row3b,
+            text="โหมดความเสี่ยง (fixed USD / % equity) แก้ได้ในไฟล์ .set "
                  "(InpRiskMode/InpRiskPct/InpRiskFixedUsd) — กด 'แก้ไฟล์ .set' ด้านบน",
             foreground="#666",
-        ).pack(side="left", padx=6)
+        ).pack(side="left")
 
         # แถว 4: โหมดรัน
         row4 = ttk.Frame(top)
@@ -148,18 +156,21 @@ class App(tk.Tk):
         ttk.Label(row4, text="โหมด:").pack(side="left")
         self.mode_var = tk.StringVar(value=config.RUN_MODES[0][0])
         for value, label in config.RUN_MODES:
-            ttk.Radiobutton(row4, text=label, value=value, variable=self.mode_var).pack(side="left", padx=6)
+            ttk.Radiobutton(row4, text=label, value=value, variable=self.mode_var,
+                             command=self._on_mode_change).pack(side="left", padx=6)
 
-        # แถว 4b: ตั้งค่าเฉพาะโหมดจูน — รันซ้ำกี่รอบ (เช็คความนิ่ง) + กันช่วงท้ายไว้ตรวจสอบกี่ %
+        # แถว 4b: ตั้งค่าเฉพาะโหมดจูน — รันซ้ำกี่รอบ genetic (เช็คความนิ่ง) เท่านั้นที่ปรับได้
+        # ช่วงวันที่กับสัดส่วน holdout ล็อกไว้ตายตัวแล้ว (ดู config.OPTIMIZE_HOLDOUT_DAYS)
         row4b = ttk.Frame(top)
         row4b.pack(fill="x", **pad)
         ttk.Label(row4b, text="(โหมดจูนเท่านั้น) รันซ้ำ genetic:").pack(side="left")
         self.reps_var = tk.StringVar(value="3")
         ttk.Entry(row4b, textvariable=self.reps_var, width=4).pack(side="left", padx=(4, 16))
-        ttk.Label(row4b, text="รอบ · กันช่วงท้ายสุด (ล่าสุดเสมอ) ไว้ตรวจสอบ:").pack(side="left")
-        self.holdout_var = tk.StringVar(value="20")
-        ttk.Entry(row4b, textvariable=self.holdout_var, width=4).pack(side="left", padx=4)
-        ttk.Label(row4b, text="% ของช่วงที่ขอ").pack(side="left")
+        ttk.Label(
+            row4b,
+            text=f"รอบ · กันช่วงท้ายสุด {config.OPTIMIZE_HOLDOUT_DAYS} วันไว้ตรวจสอบเสมอ (ตั้งตายตัว)",
+            foreground="#666",
+        ).pack(side="left")
 
         # แถว 5: ปุ่ม
         row5 = ttk.Frame(top)
@@ -179,6 +190,25 @@ class App(tk.Tk):
         self.log_box.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         self._last_report_path: Path | None = None
+        self._on_mode_change()
+
+    def _on_mode_change(self):
+        """โหมดจูนล็อกช่วงวันที่ + holdout ให้เองเสมอ (คำขอผู้ใช้ 2026-09-12) — ผู้ใช้แก้เองไม่ได้
+        เพื่อกันไม่ให้ต้องมาคอยปรับ ส่วนโหมดอื่น (รันเดี่ยว/รายสัปดาห์/รายเดือน) ยังกรอกเองได้ตามปกติ"""
+        if self.mode_var.get() == "optimize":
+            range_start, range_end = config.default_optimize_date_range()
+            self.from_var.set(range_start.isoformat())
+            self.to_var.set(range_end.isoformat())
+            self.from_entry.configure(state="disabled")
+            self.to_entry.configure(state="disabled")
+            self.date_note_var.set(
+                f"  ล็อกอัตโนมัติ: {range_start.isoformat()} ถึงสิ้นเดือนก่อนหน้า "
+                f"(กันท้ายสุด {config.OPTIMIZE_HOLDOUT_DAYS} วันไว้ตรวจสอบ ไม่ต้องปรับเอง)"
+            )
+        else:
+            self.from_entry.configure(state="normal")
+            self.to_entry.configure(state="normal")
+            self.date_note_var.set("")
 
     def _refresh_lists(self):
         self.eas = config.list_eas()
@@ -224,22 +254,24 @@ class App(tk.Tk):
         if not (config.SETS_DIR / f"{set_name}.set").exists():
             messagebox.showerror("ผิดพลาด", f"ไม่พบไฟล์ {set_name}.set ใน optimizer/sets/")
             return
-        try:
-            date_from = datetime.strptime(self.from_var.get().strip(), "%Y-%m-%d").date()
-            date_to = datetime.strptime(self.to_var.get().strip(), "%Y-%m-%d").date()
-        except ValueError:
-            messagebox.showerror("ผิดพลาด", "รูปแบบวันที่ต้องเป็น yyyy-mm-dd")
-            return
-
         mode = self.mode_var.get()
+        if mode == "optimize":
+            # คำนวณสดเสมอ ไม่พึ่งค่าที่ค้างในช่อง (เผื่อเปิดโปรแกรมทิ้งไว้ข้ามวัน/ข้ามเดือน)
+            date_from, date_to = config.default_optimize_date_range()
+            self.from_var.set(date_from.isoformat())
+            self.to_var.set(date_to.isoformat())
+        else:
+            try:
+                date_from = datetime.strptime(self.from_var.get().strip(), "%Y-%m-%d").date()
+                date_to = datetime.strptime(self.to_var.get().strip(), "%Y-%m-%d").date()
+            except ValueError:
+                messagebox.showerror("ผิดพลาด", "รูปแบบวันที่ต้องเป็น yyyy-mm-dd")
+                return
+
         try:
             genetic_reps = max(1, int(self.reps_var.get().strip()))
-            holdout_pct = float(self.holdout_var.get().strip())
         except ValueError:
-            messagebox.showerror("ผิดพลาด", "'รันซ้ำ genetic' ต้องเป็นจำนวนเต็ม และ '%กันไว้ตรวจสอบ' ต้องเป็นตัวเลข")
-            return
-        if not (0 < holdout_pct < 90):
-            messagebox.showerror("ผิดพลาด", "% กันไว้ตรวจสอบ ควรอยู่ระหว่าง 1-89")
+            messagebox.showerror("ผิดพลาด", "'รันซ้ำ genetic' ต้องเป็นจำนวนเต็ม")
             return
 
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -269,7 +301,7 @@ class App(tk.Tk):
             out_name=out_name,
             terminal_data_dir=str(term_dir),
             genetic_reps=genetic_reps,
-            holdout_pct=holdout_pct,
+            holdout_days=config.OPTIMIZE_HOLDOUT_DAYS,
         )
         self.last_req = req
         self.stage2_out_name = None
@@ -310,7 +342,7 @@ class App(tk.Tk):
         """
         try:
             train_from, train_to, hold_from, hold_to = runner.split_train_holdout(
-                req.date_from, req.date_to, req.holdout_pct
+                req.date_from, req.date_to, req.holdout_days
             )
             self.log_queue.put(
                 f"ช่วง train (ใช้จูนเท่านั้น): {train_from} – {train_to}\n"
