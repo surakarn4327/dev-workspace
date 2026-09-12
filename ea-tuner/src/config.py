@@ -37,12 +37,16 @@ CORE_TO_DUMPDIR = {
 PARAM_PREFIX_COLS = 2  # [symbol, timeframe]
 
 TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
-MODELS = [
-    ("0", "Every tick (ละเอียดสุด, ช้าสุด)"),
-    ("1", "1 minute OHLC (เร็ว, ใช้จูน)"),
-    ("2", "Open prices only (เร็วสุด, หยาบสุด)"),
-    ("4", "Real ticks (แม่นสุด, มีแค่ ~8 เดือนย้อนหลัง)"),
-]
+
+# โมเดล tick ล็อกไว้ตายตัวตามด่าน ผู้ใช้ไม่ต้องเลือกเอง (คำขอผู้ใช้ 2026-09-12 — และเป็นบั๊กเสี่ยง
+# จริงถ้าปล่อยให้เลือกผิด: bugs.md ของ smart-ea บันทึกไว้ว่ารันกริดด้วย Every tick ช้ากว่า
+# 1-minute OHLC ~50 เท่า จนดูเหมือนเครื่องค้าง ต้อง taskkill ทิ้ง) —
+# MODEL_GRID ใช้กับขั้นที่รันหลายร้อย/พันชุด (genetic + exhaustive), MODEL_ACCURATE ใช้กับขั้น
+# ที่รันแค่ครั้งเดียว (รันเดี่ยว, holdout, รายสัปดาห์/รายเดือน) ซึ่งความช้าของ Every tick ไม่กระทบ
+# เพราะมีแค่ 1 pass แต่ได้ความแม่นยำที่ดีกว่า
+MODEL_GRID = "1"       # 1 minute OHLC — ใช้กับ genetic + exhaustive เท่านั้น
+MODEL_ACCURATE = "0"   # Every tick — ใช้กับทุกอย่างที่รันแค่ 1 pass
+
 RUN_MODES = [
     ("single", "รันเดี่ยว (ทดสอบชุดค่าเดียว)"),
     ("optimize", "จูน (genetic optimize ตามช่วงค่าใน .set)"),
@@ -118,3 +122,52 @@ def list_sets() -> list[str]:
     if not SETS_DIR.exists():
         return []
     return sorted(p.stem for p in SETS_DIR.glob("*.set"))
+
+
+# ตัวช่วยเดา TF/`.set` ที่เหมาะกับ EA ที่เลือก — เดาให้เฉยๆ ยังแก้เองได้เสมอ (ไม่ล็อกเหมือน
+# ช่วงวันที่/holdout/genetic reps เพราะสัญลักษณ์ที่จะเทรดเป็นเรื่องที่ผู้ใช้ต้องเลือกเองจริงๆ
+# TF ที่เหมาะสมยังต่างกันไปตาม EA/สัญลักษณ์ ไม่มี "ค่าที่ดีที่สุด" ตายตัวแบบ holdout days)
+def guess_period_for_ea(ea_name: str) -> str:
+    """เดา TF จากชื่อไฟล์ EA (เช่น BestM5_AmdPo3 -> M5) — ไล่จากยาวไปสั้นกันชื่อชนกัน (M15 มี
+    'M1' เป็น substring) คืน 'M15' ถ้าเดาไม่ได้ (TF ที่โปรเจกต์ smart-ea ใช้บ่อยที่สุด)"""
+    name_upper = ea_name.upper()
+    for tf in sorted(TIMEFRAMES, key=len, reverse=True):
+        if tf in name_upper:
+            return tf
+    return "M15"
+
+
+def guess_set_for_ea(ea_name: str) -> str | None:
+    """เดาไฟล์ .set ที่น่าจะตรงกับ EA ที่เลือก จากชื่อกลยุทธ์ร่วม (ตัด prefix Best*_TF_ ทิ้งแล้ว
+    เทียบส่วนที่เหลือ เช่น BestM5_AmdPo3 กับ AmdPo3EA ทั้งคู่เหลือ 'amdpo3') คืน None ถ้าไม่มั่นใจ
+    (ดีกว่าเดาผิดแล้วให้ผู้ใช้จูนด้วยช่วงค่าของ EA อื่น)
+
+    ต้องเลือกไฟล์ที่ TF ตรงกับที่เดาไว้ด้วยเสมอ (ไม่ใช่แค่ชื่อกลยุทธ์ตรง) — พบจริงว่ากลยุทธ์เดียวกัน
+    มักมี .set แยกกันคนละ TF (เช่น `amdpo3_clean2025_M5.set` กับ `..._M15.set`) เรียงตามตัวอักษร
+    "M15" มาก่อน "M5" เสมอ (ตัวอักษร '1' < '5') ถ้าไม่กรอง TF จะได้ไฟล์ผิด TF ทุกครั้งที่ EA
+    เป็น M5 แต่มีไฟล์ M15 อยู่ด้วย (เจอบั๊กนี้จริงตอนทดสอบ 2026-09-12)"""
+    tf = guess_period_for_ea(ea_name)
+    # เรียง TF ยาวไปสั้นในการอ้าง alternation ด้วย (เหตุผลเดียวกับ guess_period_for_ea) — regex
+    # alternation จับตัวเลือกแรกที่แมตช์ได้ก่อนเสมอ ไม่ใช่ตัวที่ยาวที่สุด ถ้าเรียง M1 มาก่อน M15
+    # "BestM15_AmdPo3" จะโดนตัดแค่ "BestM1" เหลือเศษ "5_AmdPo3" ค้าง (เจอบั๊กนี้จริงตอนเขียนเทสต์)
+    tf_alt = "|".join(sorted(TIMEFRAMES, key=len, reverse=True))
+    strategy = re.sub(rf"^Best(\w+?)?_?({tf_alt})_?", "", ea_name, flags=re.IGNORECASE)
+    strategy = re.sub(r"EA$", "", strategy, flags=re.IGNORECASE).lower()
+    if not strategy:
+        return None
+    candidates = [s for s in list_sets() if strategy in s.lower()]
+    if not candidates:
+        return None
+
+    def has_range(name: str) -> bool:
+        text = (SETS_DIR / f"{name}.set").read_text(encoding="utf-8-sig", errors="ignore")
+        return "||" in text
+
+    # ต้องเป็นคำเต็ม ไม่ใช่ substring (กัน "M1" ไปแมตช์ผิดเข้ากับ "M15")
+    tf_pattern = re.compile(rf"(?<![0-9A-Za-z]){re.escape(tf)}(?![0-9A-Za-z])", re.IGNORECASE)
+    tf_matched = [s for s in candidates if tf_pattern.search(s)]
+    for pool in (tf_matched, candidates):
+        for name in pool:
+            if has_range(name):
+                return name
+    return tf_matched[0] if tf_matched else candidates[0]

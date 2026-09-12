@@ -90,6 +90,7 @@ class App(tk.Tk):
         ea_names = [e["name"] for e in self.eas]
         self.ea_combo = ttk.Combobox(row1, textvariable=self.ea_var, values=ea_names,
                                       state="readonly", width=32)
+        self.ea_combo.bind("<<ComboboxSelected>>", self._on_ea_change)
         if ea_names:
             self.ea_combo.current(0)
         self.ea_combo.pack(side="left", padx=(4, 16))
@@ -102,7 +103,8 @@ class App(tk.Tk):
         ttk.Button(row1, text="แก้ไฟล์ .set", command=self._open_set_editor).pack(side="left", padx=4)
         ttk.Button(row1, text="รีเฟรชรายการ", command=self._refresh_lists).pack(side="left", padx=4)
 
-        # แถว 2: symbol / period / model / deposit
+        # แถว 2: symbol / period / deposit — โมเดล tick ไม่มีช่องให้เลือกแล้ว (คำขอผู้ใช้
+        # 2026-09-12 + เป็นบั๊กเสี่ยงจริงถ้าเลือกผิด — ดู config.MODEL_GRID/MODEL_ACCURATE)
         row2 = ttk.Frame(top)
         row2.pack(fill="x", **pad)
         ttk.Label(row2, text="สัญลักษณ์:").pack(side="left")
@@ -113,14 +115,8 @@ class App(tk.Tk):
         self.period_var = tk.StringVar(value="M15")
         ttk.Combobox(row2, textvariable=self.period_var, values=config.TIMEFRAMES,
                      state="readonly", width=6).pack(side="left", padx=(4, 16))
-
-        ttk.Label(row2, text="โมเดล tick:").pack(side="left")
-        self.model_var = tk.StringVar(value=config.MODELS[0][1])
-        self.model_combo = ttk.Combobox(row2, textvariable=self.model_var,
-                                         values=[m[1] for m in config.MODELS],
-                                         state="readonly", width=30)
-        self.model_combo.current(0)
-        self.model_combo.pack(side="left", padx=(4, 16))
+        ttk.Label(row2, text="(เดา TF ให้อัตโนมัติตาม EA ที่เลือก — แก้เองได้)",
+                  foreground="#666").pack(side="left", padx=(0, 16))
 
         ttk.Label(row2, text="เงินฝากตั้งต้น (USD):").pack(side="left")
         self.deposit_var = tk.StringVar(value="10000")
@@ -191,6 +187,17 @@ class App(tk.Tk):
 
         self._last_report_path: Path | None = None
         self._on_mode_change()
+        self._on_ea_change()
+
+    def _on_ea_change(self, event=None):
+        """เดา TF + .set ให้เองตาม EA ที่เลือก (แก้เองได้เสมอ ไม่ได้ล็อกเหมือนช่วงวันที่/holdout)"""
+        ea = self._current_ea()
+        if not ea:
+            return
+        self.period_var.set(config.guess_period_for_ea(ea["name"]))
+        guessed_set = config.guess_set_for_ea(ea["name"])
+        if guessed_set:
+            self.set_var.set(guessed_set)
 
     def _on_mode_change(self):
         """โหมดจูนล็อกช่วงวันที่ + holdout ให้เองเสมอ (คำขอผู้ใช้ 2026-09-12) — ผู้ใช้แก้เองไม่ได้
@@ -228,13 +235,6 @@ class App(tk.Tk):
     def _current_ea(self) -> dict | None:
         name = self.ea_var.get()
         return next((e for e in self.eas if e["name"] == name), None)
-
-    def _model_value(self) -> str:
-        label = self.model_var.get()
-        for value, lbl in config.MODELS:
-            if lbl == label:
-                return value
-        return "0"
 
     def _log(self, line: str):
         self.log_box.configure(state="normal")
@@ -287,7 +287,10 @@ class App(tk.Tk):
             set_name=set_name,
             symbol=self.symbol_var.get().strip(),
             period=self.period_var.get(),
-            model=self._model_value(),
+            # โมเดล tick ล็อกตายตัวตามโหมด (ไม่มีช่องให้เลือกแล้ว) — โหมดจูนรันทับด้วย
+            # config.MODEL_GRID เองอีกทีใน _run_worker_optimize (ทุก pass ของ genetic/exhaustive)
+            # ส่วนตรงนี้ใช้ค่าที่แม่นสุดสำหรับโหมดที่รันแค่ 1 pass ต่อครั้ง
+            model=config.MODEL_ACCURATE,
             deposit=self.deposit_var.get().strip(),
             date_from=date_from,
             date_to=date_to,
@@ -349,7 +352,8 @@ class App(tk.Tk):
                 self.log_queue.put(f"\n----- ขั้น 1/3 — รอบ genetic {rep}/{req.genetic_reps} (ช่วง train) -----")
                 rep_req = runner.RunRequest(
                     ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
-                    set_name=req.set_name, symbol=req.symbol, period=req.period, model=req.model,
+                    set_name=req.set_name, symbol=req.symbol, period=req.period,
+                    model=config.MODEL_GRID,  # หลายร้อยชุด — ต้อง 1-minute OHLC เท่านั้น (ดู bugs.md)
                     deposit=req.deposit, date_from=train_from, date_to=train_to,
                     mode="optimize", out_name=f"{req.out_name}_gen{rep}",
                     terminal_data_dir=req.terminal_data_dir,
@@ -384,7 +388,8 @@ class App(tk.Tk):
             stage2_out = f"{req.out_name}_neighbor"
             stage2_req = runner.RunRequest(
                 ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
-                set_name=neighbor_name, symbol=req.symbol, period=req.period, model=req.model,
+                set_name=neighbor_name, symbol=req.symbol, period=req.period,
+                model=config.MODEL_GRID,  # ยังหลายร้อยชุด (exhaustive) — เหตุผลเดียวกับขั้น 1
                 deposit=req.deposit, date_from=train_from, date_to=train_to,
                 mode="optimize", out_name=stage2_out, terminal_data_dir=req.terminal_data_dir,
                 opt_override="1",  # exhaustive — กริดแคบพอจะไล่ครบทุกจุดได้แล้ว
@@ -414,7 +419,8 @@ class App(tk.Tk):
             stage3_out = f"{req.out_name}_holdout"
             stage3_req = runner.RunRequest(
                 ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
-                set_name=fixed_name, symbol=req.symbol, period=req.period, model=req.model,
+                set_name=fixed_name, symbol=req.symbol, period=req.period,
+                model=config.MODEL_ACCURATE,  # แค่ 1 pass — ใช้ Every tick เอาความแม่นยำสูงสุด
                 deposit=req.deposit, date_from=hold_from, date_to=hold_to,
                 mode="single", out_name=stage3_out, terminal_data_dir=req.terminal_data_dir,
                 opt_override="0",
@@ -457,7 +463,10 @@ class App(tk.Tk):
     def _build_report(self) -> Path:
         req = self.last_req
         assert req is not None
-        model_label = self.model_var.get()
+        model_label = (
+            "1 minute OHLC (genetic/exhaustive) + Every tick (holdout)"
+            if req.mode == "optimize" else "Every tick"
+        )
 
         pass_rows = None
         verified_rows = None

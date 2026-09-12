@@ -13,6 +13,12 @@ def test_imports() -> None:
     assert config.SMART_EA_DIR.name == "smart-ea"
 
 
+def test_guess_period_for_ea_prefers_longer_match() -> None:
+    assert config.guess_period_for_ea("BestM5_AmdPo3") == "M5"
+    assert config.guess_period_for_ea("BestWide_M15_MARibbon") == "M15"
+    assert config.guess_period_for_ea("SomeEAWithNoTf") == "M15"  # ค่า default เมื่อเดาไม่ได้
+
+
 def test_list_eas_finds_something_when_smart_ea_present() -> None:
     if not config.SRC_DIR.exists():
         return  # smart-ea อาจไม่มีในเครื่อง CI — ข้ามแบบเงียบๆ
@@ -107,3 +113,13 @@ def test_parse_set_file_and_build_neighbor_set(tmp_path) -> None:
     fixed_lines = {ln.split("=")[0]: ln for ln in fixed.strip().splitlines()}
     assert fixed_lines["InpA"] == "InpA=50"  # ไม่มีช่วงอีกต่อไป ล็อกตายตัว
     assert fixed_lines["InpMagic"] == "InpMagic=123"
+
+
+def test_guess_set_for_ea_prefers_matching_timeframe(tmp_path, monkeypatch) -> None:
+    # จำลองสถานการณ์จริงที่เจอบั๊ก 2026-09-12: กลยุทธ์เดียวกันมี .set แยกคนละ TF
+    # ("M15" เรียงก่อน "M5" ตามตัวอักษรเสมอ) ต้องเลือกไฟล์ที่ TF ตรงกับที่เดาไว้ ไม่ใช่ตัวแรกตามลำดับ
+    (tmp_path / "amdpo3_clean2025_M15.set").write_text("InpA=1||1||1||2||Y\n", encoding="utf-8")
+    (tmp_path / "amdpo3_clean2025_M5.set").write_text("InpA=1||1||1||2||Y\n", encoding="utf-8")
+    monkeypatch.setattr(config, "SETS_DIR", tmp_path)
+    assert config.guess_set_for_ea("BestM5_AmdPo3") == "amdpo3_clean2025_M5"
+    assert config.guess_set_for_ea("BestM15_AmdPo3") == "amdpo3_clean2025_M15"
