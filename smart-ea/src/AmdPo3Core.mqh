@@ -353,9 +353,17 @@ void OpenTrade(const int dir, const double stopPrice, const double tgtPrice)
       return;
    }
 
+   // SL/TP ของ SELL ถูก broker เช็คกับ Ask ไม่ใช่ Bid — stopPrice/tgtPrice คำนวณมาจาก
+   // ราคา Bid (high/low/close ของแท่งเป็นค่า Bid โดย default) จึงต้องบวก spread ปัจจุบัน
+   // ชดเชยให้จุดที่ Ask ถูกเช็คตรงกับระดับ Bid ที่ตั้งใจไว้จริง — BUY ไม่ต้องเพราะ SL/TP
+   // เช็คกับ Bid อยู่แล้วตรงกับที่คำนวณมา ไม่กระทบ lot/risk เพราะยังคำนวณจาก stopPrice เดิม
+   double spread = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ordSl  = isLong ? stopPrice : stopPrice + spread;
+   double ordTp  = isLong ? tgtPrice  : tgtPrice  + spread;
+
    bool ok = isLong
-      ? trade.Buy(lot, _Symbol, 0, NormalizeDouble(stopPrice, _Digits), NormalizeDouble(tgtPrice, _Digits), "AmdPo3")
-      : trade.Sell(lot, _Symbol, 0, NormalizeDouble(stopPrice, _Digits), NormalizeDouble(tgtPrice, _Digits), "AmdPo3");
+      ? trade.Buy(lot, _Symbol, 0, NormalizeDouble(ordSl, _Digits), NormalizeDouble(ordTp, _Digits), "AmdPo3")
+      : trade.Sell(lot, _Symbol, 0, NormalizeDouble(ordSl, _Digits), NormalizeDouble(ordTp, _Digits), "AmdPo3");
 
    if(!ok)
    {

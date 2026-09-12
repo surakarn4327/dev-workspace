@@ -1,0 +1,425 @@
+<title>Gold EA Withdrawal Test</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg:#f6f1e6;
+    --panel:#efe7d6;
+    --panel-2:#e6dcc6;
+    --ink:#2a2016;
+    --ink-dim:#6b5f4d;
+    --hair:#d9cbac;
+    --accent:#a9762f;
+    --accent-ink:#5c3e15;
+    --pos:#3d7a52;
+    --pos-bg:#dcead9;
+    --neg:#a8402f;
+    --neg-bg:#f3ddd5;
+    --shadow: 0 1px 2px rgba(42,32,22,.06), 0 4px 14px rgba(42,32,22,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#191410;
+      --panel:#231c15;
+      --panel-2:#2c2318;
+      --ink:#efe6d4;
+      --ink-dim:#b3a488;
+      --hair:#3c3122;
+      --accent:#d9a54b;
+      --accent-ink:#f0cc8b;
+      --pos:#7ac299;
+      --pos-bg:#1f2f24;
+      --neg:#e08a78;
+      --neg-bg:#332019;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#191410;
+    --panel:#231c15;
+    --panel-2:#2c2318;
+    --ink:#efe6d4;
+    --ink-dim:#b3a488;
+    --hair:#3c3122;
+    --accent:#d9a54b;
+    --accent-ink:#f0cc8b;
+    --pos:#7ac299;
+    --pos-bg:#1f2f24;
+    --neg:#e08a78;
+    --neg-bg:#332019;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    line-height:1.5;
+  }
+  .wrap{ max-width:1180px; margin:0 auto; padding:40px 24px 80px; }
+
+  .num{ font-family:'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  header.top{
+    display:flex; flex-direction:column; gap:10px;
+    padding-bottom:28px; margin-bottom:28px;
+    border-bottom:1px solid var(--hair);
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--accent-ink); font-weight:600;
+  }
+  h1{
+    font-size:clamp(28px,4vw,38px); margin:0; text-wrap:balance;
+    font-weight:700; letter-spacing:-.01em;
+  }
+  .lede{ color:var(--ink-dim); max-width:66ch; font-size:15px; }
+
+  .method{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:1px; background:var(--hair);
+    border:1px solid var(--hair); border-radius:10px; overflow:hidden;
+    margin-bottom:14px;
+  }
+  .method div{ background:var(--panel); padding:12px 16px; }
+  .method .k{ font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-dim); margin-bottom:3px;}
+  .method .v{ font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600;}
+
+  .callout{
+    background:var(--panel-2);
+    border:1px solid var(--hair);
+    border-left:4px solid var(--accent);
+    border-radius:8px;
+    padding:14px 18px;
+    font-size:13.5px;
+    color:var(--ink-dim);
+  }
+  .callout b{ color:var(--ink); }
+  .callout ul{ margin:6px 0 0; padding-left:18px; }
+  .callout li{ margin:3px 0; }
+
+  section.strategy{ margin-top:48px; }
+  .strategy-head{
+    display:flex; align-items:baseline; justify-content:space-between; gap:16px;
+    flex-wrap:wrap; margin-bottom:6px;
+  }
+  .strategy-head h2{ font-size:22px; margin:0; letter-spacing:-.005em; }
+  .strategy-head .file{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim);}
+  .strategy-note{ color:var(--ink-dim); font-size:13.5px; margin-bottom:18px; max-width:70ch;}
+
+  .kpi-block{
+    display:grid; grid-template-columns:1fr 1fr; gap:16px;
+    margin-bottom:22px;
+  }
+  @media (max-width:720px){ .kpi-block{ grid-template-columns:1fr; } }
+
+  .kpi-card{
+    background:var(--panel); border:1px solid var(--hair); border-radius:12px;
+    padding:16px 18px; box-shadow:var(--shadow);
+  }
+  .kpi-card .mode-label{
+    font-size:12px; text-transform:uppercase; letter-spacing:.07em; font-weight:600;
+    color:var(--accent-ink); margin-bottom:10px; display:flex; align-items:center; gap:8px;
+  }
+  .kpi-card .mode-label .dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); }
+  .kpi-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px 14px; }
+  .kpi-grid .item .kv-k{ font-size:11px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.04em;}
+  .kpi-grid .item .kv-v{ font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:600; margin-top:2px;}
+  .kpi-grid .item .kv-v.pos{ color:var(--pos); }
+  .kpi-grid .item .kv-v.neg{ color:var(--neg); }
+
+  .heat-title{ font-size:14px; font-weight:600; margin:26px 0 8px; color:var(--ink); }
+  .heat-sub{ font-size:12.5px; color:var(--ink-dim); margin:-4px 0 12px; }
+
+  .table-scroll{ overflow-x:auto; border:1px solid var(--hair); border-radius:10px; background:var(--panel); box-shadow:var(--shadow);}
+  table.heat{ border-collapse:collapse; width:100%; min-width:1080px; font-size:12.5px; }
+  table.heat th, table.heat td{ padding:7px 8px; text-align:right; border-bottom:1px solid var(--hair); white-space:nowrap; }
+  table.heat th.rowlabel, table.heat td.rowlabel{ text-align:left; position:sticky; left:0; background:var(--panel); font-weight:600; z-index:1; border-right:1px solid var(--hair); }
+  table.heat thead th{ font-family:'IBM Plex Mono',monospace; font-weight:500; color:var(--ink-dim); font-size:11px; text-transform:uppercase; letter-spacing:.02em; border-bottom:1px solid var(--hair); background:var(--panel);}
+  table.heat thead th.rowlabel{ background:var(--panel); }
+  table.heat tbody tr:last-child td{ border-bottom:none; }
+  table.heat td.cell{ font-family:'IBM Plex Mono',monospace; font-weight:500; border-radius:5px; }
+  table.heat td.total{ font-weight:700; border-left:2px solid var(--hair); }
+  table.heat tbody tr:hover td:not(.rowlabel){ filter:brightness(1.03); }
+
+  .spark-block{ margin-bottom:16px; }
+  .spark-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; gap:12px; flex-wrap:wrap; }
+  .spark-head .label{ font-size:12px; text-transform:uppercase; letter-spacing:.06em; font-weight:600; color:var(--accent-ink);}
+  .spark-head .stats{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim); }
+  .spark-head .stats b{ color:var(--ink); font-weight:600; }
+  .spark-scroll{ overflow-x:auto; border:1px solid var(--hair); border-radius:10px; background:var(--panel); box-shadow:var(--shadow); padding:10px 12px 8px; }
+  .spark-track{ position:relative; min-width:712px; }
+  .spark-track .zero{ position:absolute; left:0; right:0; top:50%; border-top:1px dashed var(--hair); }
+  .spark-bars{ position:relative; height:110px; display:flex; align-items:stretch; gap:1px; }
+  .spark-bars .slot{ position:relative; flex:1 0 6px; min-width:6px; cursor:default; }
+  .spark-bars .bar{ position:absolute; left:0; right:0; border-radius:2px; }
+  .spark-bars .slot:hover .bar{ filter:brightness(1.15); outline:1px solid var(--ink); outline-offset:0; }
+
+  footer.notes{
+    margin-top:44px; padding-top:18px; border-top:1px solid var(--hair);
+    font-size:12.5px; color:var(--ink-dim); max-width:78ch;
+  }
+  footer.notes li{ margin:5px 0; }
+</style>
+
+<div class="wrap">
+
+  <header class="top">
+    <div class="eyebrow">Strategy Tester &middot; XAUUSDc &middot; M5</div>
+    <h1>Gold EA Withdrawal Test</h1>
+    <p class="lede">
+      AMD Po3 and Self-Aware Trend System (SATS), backtested Jan 2025 &ndash; 12 Sep 2026 on the same
+      account/symbol so results are directly comparable. Two withdrawal styles &times; two risk-sizing
+      modes, per strategy.
+    </p>
+    <div class="method">
+      <div><div class="k">Symbol</div><div class="v">XAUUSDc</div></div>
+      <div><div class="k">Timeframe</div><div class="v">M5</div></div>
+      <div><div class="k">Tick model</div><div class="v">Every tick (M1-derived)</div></div>
+      <div><div class="k">Period</div><div class="v">2025-01 &rarr; 2026-09-12</div></div>
+      <div><div class="k">Deposit / month</div><div class="v">$10,000</div></div>
+      <div><div class="k">Fixed risk</div><div class="v">$500 / trade</div></div>
+      <div><div class="k">% equity risk</div><div class="v">5% / trade</div></div>
+    </div>
+    <div class="callout">
+      <b>Read this before the numbers.</b> Both EAs were tuned on <code>XAUUSDm</code>; this account only
+      offers <code>XAUUSDc</code>, whose contract size is 1.0 vs. 100 &mdash; lot sizing was rescaled
+      (<code>InpRiskPointUnit</code> 0.01&rarr;1.0) and verified against the journal (no margin calls) before
+      any of these runs. Two other caveats carry over from the project's own notes:
+      <ul>
+        <li>Real-tick data on this account only reaches back to Jan 2026, so the full range uses the
+          <b>Every tick</b> model (M1-derived), not real ticks &mdash; consistent across every run here.</li>
+        <li>SATS's tuning window <i>is</i> this same Jan 2025&ndash;Sep 2026 range (in-sample, no held-out
+          period this round) &mdash; read its numbers as an upper bound, not a forecast.</li>
+      </ul>
+    </div>
+  </header>
+
+  <!-- ========================= AMD PO3 ========================= -->
+  <section class="strategy">
+    <div class="strategy-head">
+      <h2>AMD Po3</h2>
+      <span class="file">BestM5_AmdPo3.mq5</span>
+    </div>
+    <p class="strategy-note">
+      Liquidity-sweep-reversal model. 537 trades across the window, 33.9% win rate, PF 1.36&ndash;1.37 &mdash;
+      identical trade set in both risk modes (sizing doesn't change which signals fire here).
+    </p>
+
+    <div class="kpi-block">
+      <div class="kpi-card">
+        <div class="mode-label"><span class="dot"></span>Continuous &middot; Fixed $500/trade</div>
+        <div class="kpi-grid">
+          <div class="item"><div class="kv-k">Net profit</div><div class="kv-v pos">$63,852.54</div></div>
+          <div class="item"><div class="kv-k">Max drawdown</div><div class="kv-v neg">$11,087.18</div></div>
+          <div class="item"><div class="kv-k">Profit factor</div><div class="kv-v">1.36</div></div>
+          <div class="item"><div class="kv-k">Win rate</div><div class="kv-v">33.9%</div></div>
+          <div class="item"><div class="kv-k">Profitable months</div><div class="kv-v">16 / 21</div></div>
+          <div class="item"><div class="kv-k">Trades</div><div class="kv-v">537</div></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="mode-label"><span class="dot"></span>Continuous &middot; 5% equity/trade</div>
+        <div class="kpi-grid">
+          <div class="item"><div class="kv-k">Net profit</div><div class="kv-v pos">$200,257.32</div></div>
+          <div class="item"><div class="kv-k">Max drawdown</div><div class="kv-v neg">$32,409.52</div></div>
+          <div class="item"><div class="kv-k">Profit factor</div><div class="kv-v">1.37</div></div>
+          <div class="item"><div class="kv-k">Win rate</div><div class="kv-v">33.9%</div></div>
+          <div class="item"><div class="kv-k">Profitable months</div><div class="kv-v">14 / 21</div></div>
+          <div class="item"><div class="kv-k">Trades</div><div class="kv-v">537</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="heat-title">Monthly P&amp;L</div>
+    <div class="heat-sub">Continuous rows compound equity month to month; Reset rows start every month fresh at $10,000 (simulated withdrawal).</div>
+    <div class="table-scroll">
+      <table class="heat" id="heat-amd"></table>
+    </div>
+
+    <div class="heat-title">Weekly P&amp;L &mdash; reset $10,000 every week</div>
+    <div class="heat-sub">89 sequential 7-day blocks from 2025-01-01 (not calendar-aligned ISO weeks), each an independent Strategy Tester pass. Hover a bar for the week and P&amp;L.</div>
+    <div class="spark-block">
+      <div class="spark-head"><span class="label">Fixed $500/trade</span><span class="stats" id="amd-wk-fixed-stats"></span></div>
+      <div class="spark-scroll"><div id="amd-wk-fixed"></div></div>
+    </div>
+    <div class="spark-block">
+      <div class="spark-head"><span class="label">5% equity/trade</span><span class="stats" id="amd-wk-pct-stats"></span></div>
+      <div class="spark-scroll"><div id="amd-wk-pct"></div></div>
+    </div>
+  </section>
+
+  <!-- ========================= SATS ========================= -->
+  <section class="strategy">
+    <div class="strategy-head">
+      <h2>Self-Aware Trend System</h2>
+      <span class="file">BestM5_SelfAwareTrend.mq5</span>
+    </div>
+    <p class="strategy-note">
+      Adaptive-band trend model. 2,701 trades in the continuous runs (~127/month), 52.5% win rate,
+      PF 1.12&ndash;1.15. In the monthly-reset runs, trade counts drift slightly between risk modes in a few
+      months (e.g. 2025-08: 90 vs 116) &mdash; equity-dependent sizing occasionally hits margin limits
+      differently once a month's account has already taken a loss or gain.
+    </p>
+
+    <div class="kpi-block">
+      <div class="kpi-card">
+        <div class="mode-label"><span class="dot"></span>Continuous &middot; Fixed $500/trade</div>
+        <div class="kpi-grid">
+          <div class="item"><div class="kv-k">Net profit</div><div class="kv-v pos">$43,702.07</div></div>
+          <div class="item"><div class="kv-k">Max drawdown</div><div class="kv-v neg">$8,096.43</div></div>
+          <div class="item"><div class="kv-k">Profit factor</div><div class="kv-v">1.15</div></div>
+          <div class="item"><div class="kv-k">Win rate</div><div class="kv-v">52.5%</div></div>
+          <div class="item"><div class="kv-k">Profitable months</div><div class="kv-v">15 / 21</div></div>
+          <div class="item"><div class="kv-k">Trades</div><div class="kv-v">2,701</div></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="mode-label"><span class="dot"></span>Continuous &middot; 5% equity/trade</div>
+        <div class="kpi-grid">
+          <div class="item"><div class="kv-k">Net profit</div><div class="kv-v pos">$123,099.73</div></div>
+          <div class="item"><div class="kv-k">Max drawdown</div><div class="kv-v neg">$30,868.43</div></div>
+          <div class="item"><div class="kv-k">Profit factor</div><div class="kv-v">1.12</div></div>
+          <div class="item"><div class="kv-k">Win rate</div><div class="kv-v">52.5%</div></div>
+          <div class="item"><div class="kv-k">Profitable months</div><div class="kv-v">14 / 21</div></div>
+          <div class="item"><div class="kv-k">Trades</div><div class="kv-v">2,701</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="heat-title">Monthly P&amp;L</div>
+    <div class="heat-sub">Continuous rows compound equity month to month; Reset rows start every month fresh at $10,000 (simulated withdrawal).</div>
+    <div class="table-scroll">
+      <table class="heat" id="heat-sats"></table>
+    </div>
+
+    <div class="heat-title">Weekly P&amp;L &mdash; reset $10,000 every week</div>
+    <div class="heat-sub">89 sequential 7-day blocks from 2025-01-01 (not calendar-aligned ISO weeks), each an independent Strategy Tester pass. Hover a bar for the week and P&amp;L.</div>
+    <div class="spark-block">
+      <div class="spark-head"><span class="label">Fixed $500/trade</span><span class="stats" id="sats-wk-fixed-stats"></span></div>
+      <div class="spark-scroll"><div id="sats-wk-fixed"></div></div>
+    </div>
+    <div class="spark-block">
+      <div class="spark-head"><span class="label">5% equity/trade</span><span class="stats" id="sats-wk-pct-stats"></span></div>
+      <div class="spark-scroll"><div id="sats-wk-pct"></div></div>
+    </div>
+  </section>
+
+  <footer class="notes">
+    <ul>
+      <li>All Strategy Tester passes, no re-optimization &mdash; single fixed parameter set per strategy, taken
+        as-is from the project's most recent tuning round.</li>
+      <li>"Reset" months are independent Strategy Tester passes (fresh $10,000 each), not a running account
+        &mdash; there is no carry-over of losses or gains between months in those rows.</li>
+      <li>2026-09 is partial (through the 12th), so its trade count and P&amp;L are lower than a full month/week.</li>
+      <li>Weekly blocks are plain 7-day slices from 2025-01-01, not calendar weeks (Mon&ndash;Sun) &mdash; the last
+        block is also partial.</li>
+      <li>Contract-size fix, verification method, and full per-month CSVs live alongside this report in
+        <code>optimizer/results/</code>.</li>
+    </ul>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  const months = ["2025-01","2025-02","2025-03","2025-04","2025-05","2025-06","2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
+                  "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06","2026-07","2026-08","2026-09"];
+  const monthLabel = m => { const [y,mo] = m.split("-"); return mo + "/" + y.slice(2); };
+
+  const amd = {
+    "Continuous · Fixed $500": [1400.93,-3731.53,10440.50,-2678.62,9073.58,-4768.26,-1150.68,623.43,4499.09,-637.59,3850.76,12103.84,2106.40,2842.03,3022.52,3141.73,2205.74,10636.27,5102.36,1951.98,3818.06],
+    "Continuous · 5% Equity": [542.22,-3687.81,9507.34,-4948.83,11297.24,-9196.87,-2360.56,-144.16,4143.17,-2008.45,4429.23,20469.10,7394.20,14324.26,14673.99,27993.02,-11436.78,52231.39,35576.88,18319.94,13138.80],
+    "Reset $10k · Fixed $500": [1400.93,-3731.53,9324.98,-3613.92,7117.88,-4268.08,-6324.38,1625.57,4997.68,364.12,3520.89,9540.72,706.12,2694.71,3523.14,3263.13,2497.99,9492.69,3679.40,1577.44,4318.54],
+    "Reset $10k · 5% Equity": [542.22,-3498.33,11078.11,-3621.11,7364.41,-3887.09,-3485.06,936.06,4619.05,-387.12,2943.48,11271.32,-128.86,2190.46,2973.98,2043.38,1302.96,12438.38,2906.30,859.97,4284.22]
+  };
+
+  const sats = {
+    "Continuous · Fixed $500": [-990.67,-1021.54,1539.43,5482.61,10062.06,3874.25,2047.58,-6009.46,1983.90,2569.77,5906.71,-2630.90,6639.70,24.56,1515.56,4355.96,-900.24,4075.05,4791.18,804.07,-417.51],
+    "Continuous · 5% Equity": [-1479.64,-1356.92,525.38,4768.70,17542.41,8335.08,3916.87,-15952.91,1981.09,7069.88,16952.46,-12865.67,17030.14,-4426.91,2158.17,16840.63,-2922.15,40732.07,24114.04,3134.95,-2997.94],
+    "Reset $10k · Fixed $500": [-904.12,-2132.99,559.60,5284.63,8789.79,4146.88,1551.35,-7822.58,1039.37,2889.15,5194.65,-2214.66,5746.72,267.98,-369.11,5357.11,-982.13,3708.47,2975.23,1865.17,-1092.37],
+    "Reset $10k · 5% Equity": [-1405.91,-2439.91,-116.41,5903.54,11499.09,4224.72,827.55,-4751.06,316.25,2487.18,5689.99,-2471.72,5128.58,-388.56,-1052.96,5095.65,-1320.31,3631.29,2280.51,1279.79,-1237.95]
+  };
+
+  function fmt(v){
+    const sign = v < 0 ? "−" : "+";
+    return sign + "$" + Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0});
+  }
+
+  function buildTable(tableEl, data){
+    const rows = Object.keys(data);
+    // per-row min/max for color intensity (separate scales: continuous compounds much bigger than reset)
+    const ranges = {};
+    rows.forEach(r => {
+      const vals = data[r];
+      ranges[r] = { max: Math.max(...vals.map(Math.abs), 1) };
+    });
+
+    let thead = "<thead><tr><th class='rowlabel'>Mode</th>";
+    months.forEach(m => thead += `<th>${monthLabel(m)}</th>`);
+    thead += "<th>Total</th></tr></thead>";
+
+    let tbody = "<tbody>";
+    rows.forEach(r => {
+      const vals = data[r];
+      const total = vals.reduce((a,b)=>a+b,0);
+      tbody += `<tr><td class="rowlabel">${r}</td>`;
+      vals.forEach(v => {
+        const intensity = Math.min(Math.abs(v) / ranges[r].max, 1);
+        const alpha = 0.12 + intensity * 0.55;
+        const bg = v >= 0 ? `rgba(61,122,82,${alpha})` : `rgba(168,64,47,${alpha})`;
+        const fg = "var(--ink)";
+        tbody += `<td class="cell" style="background:${bg}; color:${fg};">${fmt(v)}</td>`;
+      });
+      const totalColor = total >= 0 ? "var(--pos)" : "var(--neg)";
+      tbody += `<td class="total" style="color:${totalColor}">${fmt(total)}</td>`;
+      tbody += "</tr>";
+    });
+    tbody += "</tbody>";
+    tableEl.innerHTML = thead + tbody;
+  }
+
+  buildTable(document.getElementById("heat-amd"), amd);
+  buildTable(document.getElementById("heat-sats"), sats);
+
+  // ---- Weekly reset ($10,000 every week), 89 sequential 7-day blocks from 2025-01-01 ----
+  const weekStart = new Date(2025, 0, 1);
+
+  const amdWeekFixed = [-1926.51,-224.45,463.06,-678.63,-500.05,-2309.04,1555.20,-103.91,-654.39,1007.15,4914.16,5737.84,272.09,2242.24,737.24,-1001.26,-6.57,6753.06,1840.92,-2003.20,-3117.67,122.19,-1274.45,2044.67,-538.40,1013.68,84.04,-1940.89,3069.06,-449.54,-2133.73,-560.97,-411.57,833.00,-1502.08,-439.41,932.01,1616.86,-2030.17,1964.08,-3501.85,-854.85,1723.99,-735.12,3226.28,822.27,-801.14,2470.93,9662.90,4213.21,-147.35,-2501.27,1479.28,223.70,676.77,805.13,170.68,647.43,482.75,1021.03,-2005.61,2476.70,-97.60,-1501.48,2661.48,-186.01,3395.02,-1396.96,-261.44,1471.99,1104.57,530.42,1960.99,2451.06,487.60,3077.24,-774.05,-409.35,-2391.59,5615.15,158.23,-11.05,790.33,-11.04,-226.48,-3001.25,458.33,1022.41,1444.34];
+  const amdWeekPct = [-1811.17,-389.24,254.58,-823.44,-500.05,-2113.65,1415.90,-248.85,-760.10,958.47,5703.17,5874.01,201.13,2162.81,562.07,-976.20,-327.06,8291.71,1630.18,-1857.69,-2740.15,-154.05,-1323.41,1995.93,-636.01,933.36,-80.45,-1824.01,2912.43,-592.91,-1963.99,-635.43,-568.33,646.27,-1428.10,-539.82,749.93,1441.15,-1880.74,1914.90,-3017.93,-900.34,1639.94,-758.05,3473.16,656.79,-948.59,2527.50,12550.31,4911.13,-266.67,-2263.19,1456.96,110.97,513.38,535.33,25.20,437.91,352.10,866.36,-1859.68,2446.72,-233.91,-1427.73,2584.99,-302.73,2962.88,-1410.63,-364.88,1213.84,980.61,254.20,1640.12,2208.32,251.58,3151.24,-856.77,-491.40,-2173.85,6475.06,37.01,-73.66,688.47,-34.43,-306.89,-2650.29,195.13,686.67,1346.07];
+  const satsWeekFixed = [39.26,-19.96,-1698.67,1285.52,-229.46,-257.14,439.38,-608.77,2307.72,-1877.29,911.92,-836.07,3398.34,255.65,-2594.68,988.36,3770.94,1471.78,5985.23,2700.00,1524.99,1657.01,2856.95,-717.14,373.36,1252.22,61.20,675.50,1491.47,-145.07,1039.18,-4453.52,273.50,-1849.47,-391.02,1554.59,-605.77,121.49,522.16,2680.42,-28.81,-14.44,-481.49,-146.21,2755.27,654.92,521.44,2103.92,-2541.80,2967.77,-2246.62,-706.68,1900.25,-2041.01,-301.56,6161.28,336.00,-441.39,-87.25,701.96,2417.56,-2848.96,-37.15,1569.77,-122.12,-382.41,3668.05,3395.12,-1245.36,1270.34,-183.48,-1842.76,1713.22,1498.26,1919.27,1383.89,-316.02,252.16,2143.81,-438.98,1624.05,-3008.20,816.85,921.84,1402.82,-2046.03,553.85,-1595.02,-20.37];
+  const satsWeekPct = [-37.64,-128.87,-1740.21,1214.22,-338.90,-488.75,343.64,-720.68,2399.76,-1805.52,825.86,-954.79,3781.23,158.79,-2348.10,922.71,4217.35,1432.42,7153.28,2777.10,1451.84,1680.55,3082.77,-832.65,295.38,1185.59,-173.64,584.36,1395.71,-286.58,911.77,-3676.07,150.58,-1802.83,-584.26,1521.77,-746.56,3.65,342.29,2924.67,-185.38,-75.17,-623.09,-239.95,2856.08,574.55,454.03,2149.38,-2320.34,3138.23,-2073.70,-748.39,1915.30,-1910.69,-386.32,6480.09,150.26,-573.64,-231.65,548.87,2309.51,-2567.53,-179.49,1450.98,-272.78,-462.74,3716.39,3593.28,-1319.76,1151.77,-255.57,-1750.77,1753.70,1433.65,1942.40,1312.16,-415.87,106.43,2198.75,-548.02,1652.83,-2856.49,690.32,834.08,1342.90,-1952.64,446.98,-1557.29,-98.96];
+
+  function buildSpark(container, values){
+    const maxAbs = Math.max(...values.map(Math.abs), 1);
+    let bars = "";
+    values.forEach((v,i) => {
+      const d = new Date(weekStart); d.setDate(d.getDate() + i*7);
+      const label = (d.getMonth()+1) + "/" + d.getDate() + "/" + String(d.getFullYear()).slice(2);
+      const h = (Math.min(Math.abs(v)/maxAbs, 1) * 50).toFixed(1);
+      const color = v >= 0 ? "var(--pos)" : "var(--neg)";
+      const style = v >= 0 ? `bottom:50%; height:${h}%; background:${color};` : `top:50%; height:${h}%; background:${color};`;
+      bars += `<div class="slot" title="Week of ${label}: ${fmt(v)}"><div class="bar" style="${style}"></div></div>`;
+    });
+    container.innerHTML = `<div class="spark-track"><div class="zero"></div><div class="spark-bars">${bars}</div></div>`;
+  }
+
+  function weekStats(values){
+    const total = values.reduce((a,b)=>a+b,0);
+    const pos = values.filter(v => v > 0).length;
+    return `<b>${fmt(total)}</b> total &middot; ${pos}/${values.length} weeks positive`;
+  }
+
+  buildSpark(document.getElementById("amd-wk-fixed"), amdWeekFixed);
+  buildSpark(document.getElementById("amd-wk-pct"), amdWeekPct);
+  buildSpark(document.getElementById("sats-wk-fixed"), satsWeekFixed);
+  buildSpark(document.getElementById("sats-wk-pct"), satsWeekPct);
+
+  document.getElementById("amd-wk-fixed-stats").innerHTML = weekStats(amdWeekFixed);
+  document.getElementById("amd-wk-pct-stats").innerHTML = weekStats(amdWeekPct);
+  document.getElementById("sats-wk-fixed-stats").innerHTML = weekStats(satsWeekFixed);
+  document.getElementById("sats-wk-pct-stats").innerHTML = weekStats(satsWeekPct);
+})();
+</script>

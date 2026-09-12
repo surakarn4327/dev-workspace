@@ -107,8 +107,19 @@ bool PL_Open(const int dir, const double slPrice,
       return false;
    }
 
-   double sl = NormalizeDouble(slPrice, _Digits);
-   double tp = NormalizeDouble(tp3, _Digits);
+   // SL/TP ของ SELL ถูก broker เช็คกับ Ask ไม่ใช่ Bid — slPrice/tp1/tp2/tp3 คำนวณมาจาก
+   // ราคา Bid (high/low/close ของแท่งเป็นค่า Bid โดย default) จึงต้องบวก spread ปัจจุบัน
+   // ชดเชยให้ทุกระดับ (ทั้งที่ส่ง broker และที่ PL_Manage เทียบกับ Ask เอง) ตรงกับ Bid ที่
+   // ตั้งใจไว้จริง — BUY ไม่ต้องเพราะเช็คกับ Bid อยู่แล้ว ไม่กระทบ lot/risk เพราะคำนวณจาก
+   // slPrice เดิมไปแล้วข้างบน
+   double spread = isLong ? 0.0 : SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double slAdj  = slPrice + spread;
+   double tp1Adj = tp1 + spread;
+   double tp2Adj = tp2 + spread;
+   double tp3Adj = tp3 + spread;
+
+   double sl = NormalizeDouble(slAdj, _Digits);
+   double tp = NormalizeDouble(tp3Adj, _Digits);
 
    bool ok = isLong ? gTrade.Buy(lot, _Symbol, 0, sl, tp, cmt)
                     : gTrade.Sell(lot, _Symbol, 0, sl, tp, cmt);
@@ -123,10 +134,10 @@ bool PL_Open(const int dir, const double slPrice,
 
    gMtDir     = dir;
    gMtEntry   = entry;
-   gMtSlInit  = slPrice;
-   gMtTp1     = tp1;
-   gMtTp2     = tp2;
-   gMtTp3     = tp3;
+   gMtSlInit  = slAdj;
+   gMtTp1     = tp1Adj;
+   gMtTp2     = tp2Adj;
+   gMtTp3     = tp3Adj;
    gMtHitTp1  = false;
    gMtHitTp2  = false;
    gMtBeDone  = false;
@@ -183,6 +194,9 @@ void PL_ClassifyClosed()
 //+------------------------------------------------------------------+
 //| เลื่อน SL ของไม้ที่เปิดอยู่ (TP เดิมคงไว้)                             |
 //+------------------------------------------------------------------+
+// newSl ต้องเป็นระดับที่พร้อมส่งให้ broker แล้ว (ชดเชย spread มาแล้วถ้าเป็น SELL) —
+// ผู้เรียกรับผิดชอบเรื่องนี้เอง เพราะบางค่าที่ส่งเข้ามา (เช่น gMtTp1) ชดเชยไว้แล้วตั้งแต่
+// ตอนเปิดไม้ ถ้าชดเชยซ้ำในนี้อีกจะบวก spread สองรอบ
 bool PL_MoveSl(const ulong ticket, const double newSl)
 {
    if(!PositionSelectByTicket(ticket)) return false;
@@ -232,7 +246,10 @@ bool PL_Manage(const long magic, const bool usePartials,
       }
       if(useBe && !gMtBeDone)
       {
-         if(PL_MoveSl(ticket, gMtEntry))
+         // gMtEntry เป็นราคาที่เปิดไม้จริง (Bid สำหรับ SELL) ไม่ได้ชดเชย spread ไว้
+         // ต่างจาก gMtTp1/Tp2 ที่ชดเชยแล้วตั้งแต่ PL_Open — ต้องบวกเองตรงนี้
+         double beSpread = isLong ? 0.0 : SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         if(PL_MoveSl(ticket, gMtEntry + beSpread))
             gMtBeDone = true;
       }
    }

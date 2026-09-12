@@ -616,7 +616,10 @@ void ManageOpen()
       if(!SelectPosition(ticket))
          return;
       double lock  = InpBELockPoints * _Point;
-      double newSL = gDir == 1 ? gEntry + lock : gEntry - lock;
+      // gEntry เป็นราคาที่เปิดไม้จริง (Bid สำหรับ SELL) ไม่ได้ชดเชย spread ไว้ —
+      // ต่างจาก gTP1/gTP2/gTP3 ที่ชดเชยแล้วตั้งแต่ OpenTrade ต้องบวกเองตรงนี้
+      double beSpread = gDir == 1 ? 0.0 : SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double newSL = gDir == 1 ? gEntry + lock : gEntry - lock + beSpread;
       double curTP = PositionGetDouble(POSITION_TP);
       if(trade.PositionModify(ticket, NormalizeDouble(newSL, _Digits), curTP))
       {
@@ -763,10 +766,20 @@ void OpenTrade(const bool isLong)
          part = 0;
    }
 
-   double tpOrder = InpTPMode == TP_NONE ? 0 : tp3;
+   // SL/TP ของ SELL ถูก broker เช็คกับ Ask ไม่ใช่ Bid — sl/tp1/tp2/tp3 คำนวณมาจาก
+   // ราคา Bid (entry ของ SELL คือ Bid) จึงต้องบวก spread ปัจจุบันชดเชยให้ตรงกับระดับ
+   // Bid ที่ตั้งใจไว้จริง — BUY ไม่ต้องเพราะเช็คกับ Bid อยู่แล้ว ไม่กระทบ lot/risk
+   // เพราะคำนวณจาก sl เดิมไปแล้วข้างบน
+   double spread = isLong ? 0.0 : SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double slAdj  = sl  + spread;
+   double tp1Adj = tp1 + spread;
+   double tp2Adj = tp2 + spread;
+   double tp3Adj = tp3 + spread;
+
+   double tpOrder = InpTPMode == TP_NONE ? 0 : tp3Adj;
    bool ok = isLong
-      ? trade.Buy(lot, _Symbol, 0, NormalizeDouble(sl, _Digits), NormalizeDouble(tpOrder, _Digits), "MARibbon")
-      : trade.Sell(lot, _Symbol, 0, NormalizeDouble(sl, _Digits), NormalizeDouble(tpOrder, _Digits), "MARibbon");
+      ? trade.Buy(lot, _Symbol, 0, NormalizeDouble(slAdj, _Digits), NormalizeDouble(tpOrder, _Digits), "MARibbon")
+      : trade.Sell(lot, _Symbol, 0, NormalizeDouble(slAdj, _Digits), NormalizeDouble(tpOrder, _Digits), "MARibbon");
 
    if(!ok)
    {
@@ -777,11 +790,11 @@ void OpenTrade(const bool isLong)
 
    gDir        = isLong ? 1 : -1;
    gEntry      = trade.ResultPrice() > 0 ? trade.ResultPrice() : entry;
-   gSL         = sl;
+   gSL         = slAdj;
    gRisk       = risk;
-   gTP1        = tp1;
-   gTP2        = tp2;
-   gTP3        = tp3;
+   gTP1        = tp1Adj;
+   gTP2        = tp2Adj;
+   gTP3        = tp3Adj;
    gInitVolume = lot;
    gPartVolume = part;
    gGot1       = false;
