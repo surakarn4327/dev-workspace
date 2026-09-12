@@ -13,6 +13,8 @@ import json
 import time
 from pathlib import Path
 
+import config
+
 METRIC_NAMES = [
     "deposit", "trades", "profit", "dd", "pf", "payoff",
     "winrate", "months", "posMonths", "posPct", "worstMonth", "medianMonth",
@@ -160,6 +162,95 @@ def _bars_html(rows: list[tuple[str, float, int]], unit_label: str, total_label:
     return body
 
 
+_METRIC_LABELS = [
+    "ไม้", "กำไร", "DD", "PF", "payoff", "winrate", "เดือนทั้งหมด",
+    "เดือนกำไร", "%เดือนกำไร", "เดือนแย่สุด", "ไม้ใหญ่สุด/กำไร",
+    "ถือ(ชม.)", "แพ้ติดกัน", "คะแนน",
+]
+_SHOW_METRIC_IDX = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16]  # ดัชนีใน METRIC_NAMES
+
+
+def _table_and_script(rows: list[dict], table_id: str) -> tuple[str, str, int]:
+    """สร้าง <table> + <script> คู่หนึ่ง คืน (html, script, n_params) — แยก id ตาม table_id
+    เพื่อให้วางสองตาราง (genetic กับ neighbor-verify) ในหน้าเดียวกันได้โดยไม่ชนกัน"""
+    n_params = max((len(r["params"]) for r in rows), default=0)
+    data = [r["params"] + [""] * (n_params - len(r["params"])) + [r[m] for m in METRIC_NAMES]
+            for r in rows]
+
+    if not rows:
+        return '<p class="empty">ไม่มีข้อมูล</p>', "", n_params
+
+    fixed_labels = ["Symbol", "TF"][:min(n_params, config.PARAM_PREFIX_COLS)]
+    param_headers = fixed_labels + [
+        f"Param{i+1}" for i in range(max(0, n_params - len(fixed_labels)))
+    ]
+    head_cells = "".join(f'<th data-i="{i}">{html.escape(h)}</th>' for i, h in enumerate(param_headers))
+    head_cells += "".join(
+        f'<th data-i="{n_params + idx}">{h}</th>' for idx, h in zip(_SHOW_METRIC_IDX, _METRIC_LABELS)
+    )
+    table_html = f"""
+    <div class="grid">
+      <table>
+        <thead><tr id="head{table_id}">{head_cells}</tr></thead>
+        <tbody id="body{table_id}"></tbody>
+      </table>
+    </div>
+    <p class="note">กดหัวคอลัมน์เพื่อเรียง · {len(rows)} ชุด · Param1..{n_params} คือพารามิเตอร์ตามลำดับใน
+      .set ของ EA นี้ (เปิด .set คู่กับตารางนี้เพื่อเทียบลำดับ)</p>
+    """
+    script = f"""
+(function() {{
+  const DATA = {json.dumps(data)};
+  const N_PARAMS = {n_params};
+  const SCORE_COL = N_PARAMS + 16;
+  let sortCol = SCORE_COL, sortDir = -1;
+  function fmt(v) {{
+    if (typeof v !== 'number') return v;
+    return Number.isInteger(v) ? v.toLocaleString('en-US') : v.toFixed(2);
+  }}
+  function render() {{
+    const body = document.getElementById('body{table_id}');
+    if (!body) return;
+    const rows = DATA.slice().sort((a,b) => {{
+      const x = a[sortCol], y = b[sortCol];
+      if (x < y) return -1*sortDir; if (x > y) return 1*sortDir; return 0;
+    }});
+    const showIdx = {_SHOW_METRIC_IDX}.map(i => N_PARAMS + i);
+    const cols = [...Array(N_PARAMS).keys(), ...showIdx];
+    body.innerHTML = rows.map(r =>
+      '<tr>' + cols.map(i => `<td>${{fmt(r[i])}}</td>`).join('') + '</tr>'
+    ).join('') || '<tr><td class="empty">ไม่มีข้อมูล</td></tr>';
+  }}
+  const head = document.getElementById('head{table_id}');
+  if (head) {{
+    head.addEventListener('click', e => {{
+      const th = e.target.closest('th'); if (!th) return;
+      const i = parseInt(th.dataset.i, 10);
+      if (sortCol === i) sortDir *= -1; else {{ sortCol = i; sortDir = -1; }}
+      render();
+    }});
+  }}
+  render();
+}})();
+"""
+    return table_html, script, n_params
+
+
+def _stat_cells(best: dict) -> str:
+    stat_defs = [
+        ("ไม้", f"{best['trades']:,.0f}"),
+        ("กำไรสุทธิ", _fmt_money(best["profit"])),
+        ("ขาดทุนสูงสุด", _fmt_money(best["dd"])),
+        ("PF", f"{best['pf']:.2f}"),
+        ("winrate", f"{best['winrate']*100:.1f}%"),
+        ("เดือนที่กำไร", f"{best['posMonths']:.0f}/{best['months']:.0f}"),
+    ]
+    return "".join(
+        f'<div class="st"><div class="k">{k}</div><div class="v">{v}</div></div>'
+        for k, v in stat_defs
+    )
+
+
 def render_report(
     *,
     title: str,
@@ -171,72 +262,41 @@ def render_report(
     date_to: str,
     model_label: str,
     pass_rows: list[dict] | None = None,
+    verified_rows: list[dict] | None = None,
     period_rows: list[tuple[str, float, int]] | None = None,
     period_unit: str = "งวด",
     monthly_rows: list[tuple[str, float, int]] | None = None,
 ) -> str:
     pass_rows = pass_rows or []
-    n_params = max((len(r["params"]) for r in pass_rows), default=0)
-    param_headers = [f"Param{i+1}" for i in range(n_params)]
+    verified_rows = verified_rows or []
 
-    data = []
-    for r in pass_rows:
-        params = r["params"] + [""] * (n_params - len(r["params"]))
-        data.append(params + [r[m] for m in METRIC_NAMES])
-    metric_start = n_params
+    table1_html, script1, _ = _table_and_script(pass_rows, "1")
+    table2_html, script2, _ = _table_and_script(verified_rows, "2") if verified_rows else ("", "", 0)
 
-    table_html = ""
-    if pass_rows:
-        headers = param_headers + [
-            "ไม้", "กำไร", "DD", "PF", "payoff", "winrate", "เดือนทั้งหมด",
-            "เดือนกำไร", "%เดือนกำไร", "เดือนแย่สุด", "เดือนกลาง",
-            "ไม้ใหญ่สุด/กำไร", "ถือ(ชม.)", "แพ้ติดกัน", "คะแนน",
-        ]
-        # ข้าม deposit (metric index 0) และ shareGross (index 13) ในการแสดงผล ให้กระชับ
-        show_metric_idx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15, 16]
-        head_cells = "".join(
-            f'<th data-i="{i}">{html.escape(h)}</th>' for i, h in enumerate(param_headers)
-        )
-        head_cells += "".join(
-            f'<th data-i="{n_params + idx}">{h}</th>'
-            for idx, h in zip(show_metric_idx, [
-                "ไม้", "กำไร", "DD", "PF", "payoff", "winrate", "เดือนทั้งหมด",
-                "เดือนกำไร", "%เดือนกำไร", "เดือนแย่สุด", "ไม้ใหญ่สุด/กำไร",
-                "ถือ(ชม.)", "แพ้ติดกัน", "คะแนน",
-            ])
-        )
-        table_html = f"""
-        <div class="grid">
-          <table>
-            <thead><tr id="head">{head_cells}</tr></thead>
-            <tbody id="body"></tbody>
-          </table>
-        </div>
-        <p class="note">กดหัวคอลัมน์เพื่อเรียง · {len(pass_rows)} ชุดทั้งหมด เรียงตามคะแนนมากไปน้อยโดย default
-          · Param1..{n_params} คือพารามิเตอร์ตามลำดับใน .set ของ EA นี้ (ea-tuner ไม่รู้ชื่อจริงของแต่ละตัว
-          เปิด .set คู่กับตารางนี้เพื่อเทียบลำดับ)</p>
+    best_genetic = max(pass_rows, key=lambda r: r["score"]) if pass_rows else None
+    best_verified = max(verified_rows, key=lambda r: r["score"]) if verified_rows else None
+    # ค่าที่ควรใช้จริง: ถ้ามีรอบตรวจสอบเพื่อนบ้าน (exhaustive) ใช้ผู้ชนะของรอบนั้นเสมอ
+    # เพราะรอบ genetic สุ่มมาแค่บางส่วนของกริด ผู้ชนะอาจเป็นแค่จุดฟลุก
+    best = best_verified or best_genetic
+
+    verify_callout = ""
+    if best_verified and best_genetic:
+        same = best_verified["params"] == best_genetic["params"]
+        verify_callout = f"""
+        <section>
+          <div class="card" style="border-left:3px solid var(--accent)">
+            <h2>ผลตรวจสอบเพื่อนบ้าน (รอบ exhaustive รอบที่ 2)</h2>
+            <p class="note">รอบแรก (genetic) สุ่มทดสอบแค่บางส่วนของกริดทั้งหมด ผู้ชนะรอบนั้นอาจเป็นจุดฟลุก —
+              รอบนี้ไล่ครบทุกจุด ±1 ขั้นรอบค่าที่ชนะรอบแรก เพื่อดูว่าเป็น "ที่ราบ" จริงหรือ "ยอดแหลม"
+              เดี่ยวๆ ค่าที่ควรเอาไปใช้จริงคือผู้ชนะของรอบนี้ ไม่ใช่รอบแรก</p>
+            <p>คะแนนรอบแรก (genetic): <b>{best_genetic['score']:.3f}</b> ·
+               คะแนนสูงสุดในรอบเพื่อนบ้าน (exhaustive): <b>{best_verified['score']:.3f}</b> ·
+               {'<span class="pos">ค่าเดิมยืนยันแล้วว่าเป็นจุดดีที่สุดในละแวกนี้จริง</span>' if same else
+                '<span class="neg">ค่าที่ดีที่สุดขยับจากรอบแรก — แปลว่ารอบแรกยังไม่ใช่จุดที่ดีที่สุดในละแวกนั้น</span>'}
+            </p>
+          </div>
+        </section>
         """
-    else:
-        table_html = '<p class="empty">โหมดนี้ไม่มีตารางไล่ดูราย pass (ดูกราฟรายงวดด้านล่างแทน)</p>'
-
-    best = None
-    if pass_rows:
-        best = max(pass_rows, key=lambda r: r["score"])
-
-    stat_cells = ""
-    if best:
-        stat_defs = [
-            ("ไม้", f"{best['trades']:,.0f}"),
-            ("กำไรสุทธิ", _fmt_money(best["profit"])),
-            ("ขาดทุนสูงสุด", _fmt_money(best["dd"])),
-            ("PF", f"{best['pf']:.2f}"),
-            ("winrate", f"{best['winrate']*100:.1f}%"),
-            ("เดือนที่กำไร", f"{best['posMonths']:.0f}/{best['months']:.0f}"),
-        ]
-        stat_cells = "".join(
-            f'<div class="st"><div class="k">{k}</div><div class="v">{v}</div></div>'
-            for k, v in stat_defs
-        )
 
     period_section = ""
     if period_rows is not None:
@@ -256,8 +316,14 @@ def render_report(
         </section>
         """
 
-    js_data = json.dumps(data)
-    n_metrics_shown = len(show_metric_idx) if pass_rows else 0
+    verified_section = ""
+    if verified_rows:
+        verified_section = f"""
+        <section>
+          <h2>ตารางรอบตรวจสอบเพื่อนบ้าน (exhaustive — ค่าที่ควรใช้จริงมาจากตารางนี้)</h2>
+          {table2_html}
+        </section>
+        """
 
     html_out = f"""<!doctype html>
 <html lang="th"><head><meta charset="utf-8">
@@ -277,51 +343,22 @@ def render_report(
   </div>
 </header>
 
-{'<section><h2>ชุดคะแนนสูงสุด</h2><div class="stats">' + stat_cells + '</div></section>' if best else ''}
+{'<section><h2>ชุดที่แนะนำให้ใช้จริง</h2><div class="stats">' + _stat_cells(best) + '</div></section>' if best else ''}
 
+{verify_callout}
 {period_section}
 {monthly_section}
+{verified_section}
 
 <section>
-  <h2>ตารางอันดับทุกชุดที่รัน (เรียงตามคะแนน)</h2>
-  {table_html}
+  <h2>{'ตารางรอบค้นกว้าง (genetic)' if verified_rows else 'ตารางอันดับทุกชุดที่รัน (เรียงตามคะแนน)'}</h2>
+  {table1_html}
 </section>
 
 </div>
 <script>
-const DATA = {js_data};
-const N_PARAMS = {n_params};
-const SCORE_COL = N_PARAMS + 16; // ตำแหน่งคะแนนใน METRIC_NAMES (index 16) หลังพารามิเตอร์
-let sortCol = SCORE_COL, sortDir = -1;
-
-function fmt(v, i) {{
-  if (typeof v !== 'number') return v;
-  return Number.isInteger(v) ? v.toLocaleString('en-US') : v.toFixed(2);
-}}
-
-function render() {{
-  const body = document.getElementById('body');
-  if (!body) return;
-  const rows = DATA.slice().sort((a,b) => {{
-    const x = a[sortCol], y = b[sortCol];
-    if (x < y) return -1*sortDir; if (x > y) return 1*sortDir; return 0;
-  }});
-  const showIdx = [1,2,3,4,5,6,7,8,9,10,12,14,15,16].map(i => N_PARAMS + i);
-  const cols = [...Array(N_PARAMS).keys(), ...showIdx];
-  body.innerHTML = rows.map(r =>
-    '<tr>' + cols.map(i => `<td>${{fmt(r[i], i)}}</td>`).join('') + '</tr>'
-  ).join('') || '<tr><td class="empty">ไม่มีข้อมูล</td></tr>';
-}}
-const head = document.getElementById('head');
-if (head) {{
-  head.addEventListener('click', e => {{
-    const th = e.target.closest('th'); if (!th) return;
-    const i = parseInt(th.dataset.i, 10);
-    if (sortCol === i) sortDir *= -1; else {{ sortCol = i; sortDir = -1; }}
-    render();
-  }});
-}}
-render();
+{script1}
+{script2}
 </script>
 </body></html>"""
     return html_out

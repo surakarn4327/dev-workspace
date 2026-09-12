@@ -70,6 +70,7 @@ class App(tk.Tk):
         self.log_queue: queue.Queue[str] = queue.Queue()
         self.worker: threading.Thread | None = None
         self.last_req: runner.RunRequest | None = None
+        self.stage2_out_name: str | None = None  # ผลรอบตรวจสอบเพื่อนบ้าน (โหมด optimize เท่านั้น)
 
         self._build_ui()
         self.after(100, self._poll_log)
@@ -247,12 +248,14 @@ class App(tk.Tk):
             terminal_data_dir=str(term_dir),
         )
         self.last_req = req
+        self.stage2_out_name = None
         self.run_btn.configure(state="disabled")
         self.open_report_btn.configure(state="disabled")
         self.status_var.set("กำลังรัน... (ดู log ด้านล่าง)")
         self._log(f"\n===== เริ่มรัน {out_name} โหมด={mode} =====")
 
-        self.worker = threading.Thread(target=self._run_worker, args=(req,), daemon=True)
+        target = self._run_worker_optimize if mode == "optimize" else self._run_worker
+        self.worker = threading.Thread(target=target, args=(req,), daemon=True)
         self.worker.start()
 
     def _run_worker(self, req: runner.RunRequest):
@@ -260,6 +263,54 @@ class App(tk.Tk):
             for line in runner.run_streaming(req):
                 self.log_queue.put(line)
         except Exception as exc:  # noqa: BLE001 — ต้องโชว์ error ให้ผู้ใช้เห็น ไม่ใช่ให้ thread เงียบตาย
+            self.log_queue.put(f"[เกิดข้อผิดพลาด] {exc}")
+        self.log_queue.put("__DONE__")
+
+    def _run_worker_optimize(self, req: runner.RunRequest):
+        """โหมดจูน = 2 รอบเสมอ: (1) genetic ค้นกว้างตามช่วงค่าเต็มใน .set (2) exhaustive
+        ไล่ครบทุกจุด ±1 step รอบค่าที่ชนะรอบแรก — เพื่อเช็คว่าเป็นที่ราบจริงหรือแค่ยอดแหลม
+        (กฎ "ห้ามเชื่อผู้ชนะโดดเดี่ยว" ของโปรเจกต์นี้ ทำให้เป็นอัตโนมัติแทนที่จะพึ่งคนสังเกตเอง)
+        ค่าที่ควรใช้จริงคือผู้ชนะของรอบ (2) ไม่ใช่รอบ (1)
+        """
+        try:
+            self.log_queue.put("----- รอบ 1/2: ค้นกว้างด้วย genetic -----")
+            for line in runner.run_streaming(req):
+                self.log_queue.put(line)
+
+            rows = report.parse_pass_csv(config.RESULTS_DIR / f"{req.out_name}.csv")
+            if not rows:
+                self.log_queue.put("[ไม่มีผลจากรอบ 1 — ข้ามรอบตรวจสอบเพื่อนบ้าน]")
+                self.log_queue.put("__DONE__")
+                return
+
+            best = max(rows, key=lambda r: r["score"])
+            # 2 คอลัมน์แรกของ params คือ symbol/timeframe เสมอ (มาจาก -Symbol/-Period ของ
+            # run-opt.ps1 เอง ไม่ได้มาจาก .set) ต้องตัดออกก่อนจับคู่กับบรรทัดใน .set
+            tunable_values = best["params"][config.PARAM_PREFIX_COLS:]
+            n_params = len(tunable_values)
+            self.log_queue.put(
+                f"ผู้ชนะรอบ 1 (คะแนน {best['score']:.3f}): {best['params']}"
+            )
+
+            entries = runner.parse_set_file(config.SETS_DIR / f"{req.set_name}.set")
+            neighbor_text = runner.build_neighbor_set(entries, tunable_values, n_params)
+            neighbor_name = f"{req.set_name}__neighbor_{req.out_name[-15:]}"
+            (config.SETS_DIR / f"{neighbor_name}.set").write_text(neighbor_text, encoding="utf-8")
+            self.log_queue.put(f"สร้างไฟล์ตรวจสอบเพื่อนบ้าน: {neighbor_name}.set")
+
+            stage2_out = f"{req.out_name}_neighbor"
+            stage2_req = runner.RunRequest(
+                ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
+                set_name=neighbor_name, symbol=req.symbol, period=req.period, model=req.model,
+                deposit=req.deposit, date_from=req.date_from, date_to=req.date_to,
+                mode="optimize", out_name=stage2_out, terminal_data_dir=req.terminal_data_dir,
+                opt_override="1",  # exhaustive — กริดแคบพอจะไล่ครบทุกจุดได้แล้ว
+            )
+            self.log_queue.put("\n----- รอบ 2/2: exhaustive รอบเพื่อนบ้าน (ค่าที่ควรใช้จริงมาจากรอบนี้) -----")
+            for line in runner.run_streaming(stage2_req):
+                self.log_queue.put(line)
+            self.stage2_out_name = stage2_out
+        except Exception as exc:  # noqa: BLE001
             self.log_queue.put(f"[เกิดข้อผิดพลาด] {exc}")
         self.log_queue.put("__DONE__")
 
@@ -294,6 +345,7 @@ class App(tk.Tk):
         model_label = self.model_var.get()
 
         pass_rows = None
+        verified_rows = None
         period_rows = None
         period_unit = "งวด"
         monthly_rows = None
@@ -303,6 +355,10 @@ class App(tk.Tk):
             pass_rows = report.parse_pass_csv(csv_path)
             monthly_path = config.RESULTS_DIR / f"{req.out_name}_monthly.csv"
             monthly_rows = report.parse_monthly_series(monthly_path) or None
+            if req.mode == "optimize" and self.stage2_out_name:
+                verified_rows = report.parse_pass_csv(
+                    config.RESULTS_DIR / f"{self.stage2_out_name}.csv"
+                )
         else:
             period_unit = "สัปดาห์" if req.mode == "weekly" else "เดือน"
             summary_path = config.RESULTS_DIR / f"{req.out_name}_summary.csv"
@@ -319,6 +375,7 @@ class App(tk.Tk):
             date_to=req.date_to.isoformat(),
             model_label=model_label,
             pass_rows=pass_rows,
+            verified_rows=verified_rows,
             period_rows=period_rows,
             period_unit=period_unit,
             monthly_rows=monthly_rows,

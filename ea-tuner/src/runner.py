@@ -10,6 +10,7 @@ import subprocess
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 
 import config
 
@@ -30,6 +31,9 @@ class RunRequest:
     out_name: str
     terminal_data_dir: str | None = None
     extra_args: list[str] = field(default_factory=list)
+    opt_override: str | None = None  # ถ้าตั้งไว้ ใช้แทนค่า Optimization ที่เดาจาก mode
+    # (ใช้กับรอบตรวจสอบเพื่อนบ้าน — mode ยังเป็น "optimize" แต่ต้องบังคับ exhaustive "1"
+    # ไม่ใช่ genetic "2" เพราะกริดตอนนั้นแคบพอจะไล่ครบทุกจุดจริงได้แล้ว)
 
 
 def _dt(d: date) -> str:
@@ -41,7 +45,7 @@ def build_command(req: RunRequest) -> list[str]:
 
     if req.mode in ("single", "optimize"):
         script = str(config.BIN_DIR / "run-opt.ps1")
-        opt_flag = "0" if req.mode == "single" else "2"
+        opt_flag = req.opt_override or ("0" if req.mode == "single" else "2")
         args = [
             "-File", script,
             "-Period", req.period,
@@ -98,3 +102,79 @@ def run_streaming(req: RunRequest) -> Iterator[str]:
         yield line.rstrip("\n")
     proc.wait()
     yield f"[จบ — exit code {proc.returncode}]"
+
+
+# ---------------------------------------------------------------------------
+# .set parsing + neighbor-grid construction — automates the "อย่าเชื่อผู้ชนะ
+# โดดเดี่ยว" (never trust a lone winner) rule this project already enforces by
+# hand: MT5's genetic optimizer only samples a random slice of the full grid
+# (a few hundred passes out of possibly tens of thousands of combos), so a
+# single genetic run's top score can land on a fluke. After genetic search
+# finds a promising region, we run a small EXHAUSTIVE grid around that one
+# winner (±1 step per varied parameter, same step size) to check whether it
+# sits on a real plateau or an isolated spike — mirroring the multi-stage
+# process (wide search -> narrow verification) used when this project's EAs
+# were tuned by hand.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SetEntry:
+    name: str
+    ranged: bool
+    value: str = ""           # ค่าคงที่ ถ้า ranged=False
+    default: str = ""
+    start: str = ""
+    step: str = ""
+    end: str = ""
+    opt_flag: str = "Y"
+
+
+def parse_set_file(path: Path) -> list[SetEntry]:
+    """อ่าน .set เป็นรายการเรียงตามลำดับบรรทัด (ลำดับเดียวกับที่ EA ประกาศ input ไว้
+    ซึ่งตรงกับลำดับคอลัมน์พารามิเตอร์ใน DumpPass() ของทุก Core.mqh ในโปรเจกต์นี้)"""
+    entries: list[SetEntry] = []
+    for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        name, val = line.split("=", 1)
+        parts = val.split("||")
+        if len(parts) == 5:
+            default, start, step, end, opt = parts
+            entries.append(SetEntry(name=name, ranged=True, default=default,
+                                     start=start, step=step, end=end, opt_flag=opt))
+        else:
+            entries.append(SetEntry(name=name, ranged=False, value=val))
+    return entries
+
+
+def _is_float_like(s: str) -> bool:
+    return "." in s
+
+
+def build_neighbor_set(entries: list[SetEntry], winner_values: list[str], n_params: int) -> str:
+    """สร้างเนื้อไฟล์ .set ใหม่: พารามิเตอร์ N ตัวแรก (ตัวที่ปรากฏในไฟล์ผล .csv จริง)
+    ถูกบีบช่วงให้แคบลงเหลือ ±1 step รอบค่าที่ชนะจากรอบ genetic (ยังอยู่ในขอบเขตเดิม)
+    ส่วนที่เหลือ (พารามิเตอร์ควบคุม เช่น Magic/MinTrades ที่ไม่ถูกจูน) คงค่าเดิมจากไฟล์
+    ทั้งหมด — ผลคือกริดเล็กพอจะไล่แบบ exhaustive (Optimization=1) ได้ครบทุกจุดจริง
+    ไม่ใช่การสุ่มแบบ genetic อีกต่อไป
+    """
+    out_lines = []
+    for i, e in enumerate(entries):
+        if i < n_params and e.ranged:
+            w = float(winner_values[i])
+            step = float(e.step)
+            lo, hi = float(e.start), float(e.end)
+            new_lo = max(lo, w - step)
+            new_hi = min(hi, w + step)
+            fmt = "%.4f" if (_is_float_like(e.step) or _is_float_like(str(w))) else "%d"
+            out_lines.append(
+                f"{e.name}={fmt % w}||{fmt % new_lo}||{fmt % step}||{fmt % new_hi}||{e.opt_flag}"
+            )
+        elif i < n_params and not e.ranged:
+            out_lines.append(f"{e.name}={winner_values[i]}")
+        elif e.ranged:
+            out_lines.append(f"{e.name}={e.default}||{e.start}||{e.step}||{e.end}||{e.opt_flag}")
+        else:
+            out_lines.append(f"{e.name}={e.value}")
+    return "\n".join(out_lines) + "\n"

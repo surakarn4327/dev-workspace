@@ -29,6 +29,12 @@ CORE_TO_DUMPDIR = {
     "SmartIndicatorCore.mqh": "smartind_opt",
 }
 
+# ทุก DumpPass() ในโปรเจกต์นี้ (MARibbon/AmdPo3/SATS/SmartIndicator) เขียน _Symbol แล้วก็ tf
+# เป็น 2 คอลัมน์แรกเสมอ ก่อนพารามิเตอร์ตัวแรกที่มาจาก .set จริงๆ — ไม่ใช่ input ที่ปรับผ่าน
+# .set ได้ (มาจาก -Symbol/-Period ของ run-opt.ps1 เอง) ต้องข้าม 2 คอลัมน์นี้เวลาจับคู่
+# ค่าจากไฟล์ผล .csv กลับไปที่บรรทัดใน .set (ดู runner.build_neighbor_set)
+PARAM_PREFIX_COLS = 2  # [symbol, timeframe]
+
 TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
 MODELS = [
     ("0", "Every tick (ละเอียดสุด, ช้าสุด)"),
