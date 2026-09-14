@@ -345,7 +345,7 @@ void SatsOpen(const int dir, const double atrValue, const double tqi, const doub
 
    gTradeRiskUsd = SatsRiskUsd();
    if(PL_Open(dir, tSl, tp1, tp2, tp3, gTradeRiskUsd, InpRiskPointUnit,
-              InpMagic, "SATS", true, gBar))
+              InpMagic, "SATS", false, gBar))
       gCnt_Entry++;
 }
 
@@ -550,7 +550,7 @@ void OnTick()
    if(gMtDir != 0 && !PL_HasPosition(InpMagic))
       SatsRecordClosedPosition();
 
-   PL_Manage(InpMagic, true, false, false);
+   PL_Manage(InpMagic, false, false, false);
 
    datetime t = iTime(_Symbol, PERIOD_CURRENT, 0);
    if(t == gLastBar) return;

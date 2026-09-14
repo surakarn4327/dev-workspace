@@ -1,4 +1,9 @@
-# optimizer — ไล่หาค่าตั้งต้นที่ดีที่สุดของ MARibbonEA
+# optimizer — ไล่หาค่าตั้งต้นที่ดีที่สุด
+
+> **รีเซ็ตโปรเจกต์ 2026-09-14**: เหลือแค่ AMD Po3 + SATS ผลของ MA Ribbon/Range Fade/SMC/
+> SmartIndicator/FibStructure/LiquidityPools/MirageLiquiditySweep/PrecisionSniper ที่เคยอยู่ใน
+> `results\` และ `sets\` ถูกลบไปแล้ว (บทเรียน/เหตุผลที่ตกยังอ่านได้ในเนื้อหาด้านล่างของไฟล์นี้
+> แม้ไฟล์ผลจะไม่อยู่แล้ว — ดู `CLAUDE.md` หัวข้อ "โครงสร้าง" สำหรับรายการที่ลบ)
 
 ทุกอย่างที่ต้องใช้ในการรัน optimization ซ้ำบนเครื่องไหนก็ได้ อยู่ในโฟลเดอร์นี้
 

@@ -12,8 +12,8 @@ param(
   [Parameter(Mandatory = $true)][string]$SetName,
   [Parameter(Mandatory = $true)][string]$OutPrefix,
   [Parameter(Mandatory = $true)][string]$Period,
-  [string]$Expert = 'MARibbonEA',
-  [string]$DumpDir = 'ribbon_opt',
+  [string]$Expert = 'BestM5_SelfAwareTrend',
+  [string]$DumpDir = 'sats_opt',
   [string]$Model = '1'   # ส่งต่อให้ run-opt.ps1 — ต้องตรงกับโมเดลที่ใช้ตอนจูนถึงเทียบกันได้
 )
 

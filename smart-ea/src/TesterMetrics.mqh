@@ -209,7 +209,11 @@ double ConsistencyScore(const int minTrades, const double minProfit)
    double fConc  = MathMin(TGT_MAX_WIN_SHARE / MathMax(gStShareNet, 1e-6), 1.0);
    double fFreq  = MathMin(((double)gStTrades / (double)gStMonths) / TGT_TRADES_MONTH, 1.0);
 
-   return (profit / dd) * fWin * fMonth * fConc * fFreq;
+   // cap recovery factor ที่ 10 — กัน DD จิ๋วบังเอิญ (มักไม้น้อย/ไม่ทนทาน) ดันคะแนนพุ่งหลักร้อย
+   // แล้วลอยขึ้นอันดับต้นของผลออปติไมซ์ทั้งที่ใช้งานจริงไม่ได้ (ตกลงกับผู้ใช้ 2026-09-14)
+   double recovery = MathMin(profit / dd, 10.0);
+
+   return recovery * fWin * fMonth * fConc * fFreq;
 }
 
 //+------------------------------------------------------------------+

@@ -5,18 +5,19 @@
 # โมเดล tick และเกณฑ์ให้คะแนน ต้องตั้งใน GUI ครั้งเดียวก่อน (ดู README.md)
 # และไฟล์ ini ต้องเป็น UTF-16 + CRLF เท่านั้น ไม่งั้น MT5 อ่านไม่ออกเงียบๆ
 #
-# ผลของแต่ละ pass มาจาก OnTester() ใน MARibbonEA.mq5 ที่เขียนไฟล์ลง
-# <Terminal Common>\Files\ribbon_opt\ เอง — ไม่ได้พึ่งระบบรายงานของ MT5
+# ผลของแต่ละ pass มาจาก OnTester() ในไฟล์ EA ที่เลือก ที่เขียนไฟล์ลง
+# <Terminal Common>\Files\<DumpDir>\ เอง — ไม่ได้พึ่งระบบรายงานของ MT5
+# (เปลี่ยน -DumpDir ให้ตรงกับโฟลเดอร์ที่ EA ตัวนั้นเขียนจริง เช่น sats_opt, amdpo3_opt)
 #
 # ตัวอย่าง:
-#   .\run-opt.ps1 -Period M15 -SetName RibbonStage2_M15b -OutName stage2_M15b
+#   .\run-opt.ps1 -Period M5 -SetName sats_stage1_M5 -OutName sats_stage1
 
 param(
   [Parameter(Mandatory = $true)][string]$Period,     # M1 / M5 / M15 ...
   [Parameter(Mandatory = $true)][string]$SetName,    # ชื่อไฟล์ .set (ไม่ต้องใส่นามสกุล)
   [Parameter(Mandatory = $true)][string]$OutName,    # ชื่อไฟล์ผลลัพธ์ที่จะเขียนลง results\
-  [string]$Symbol = 'XAUUSDm',
-  [string]$Expert = 'MARibbonEA',                    # ชื่อ EA ใน MQL5\Experts (ไม่ต้องใส่ .ex5)
+  [string]$Symbol = 'XAUUSDc',
+  [string]$Expert = 'BestM5_SelfAwareTrend',          # ชื่อ EA ใน MQL5\Experts (ไม่ต้องใส่ .ex5)
   [ValidateSet('0', '1', '2')][string]$Optimization = '1',  # 0=รันเดียว 1=ไล่ครบ 2=genetic
   [string]$Terminal = 'C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe',
   [string]$DataDir,                                  # โฟลเดอร์ข้อมูลของ terminal (เดาให้ถ้าไม่ระบุ)
@@ -25,7 +26,7 @@ param(
   [string]$Model = '1',                              # 0=every tick 1=1 min OHLC 2=open prices 4=real ticks
   [string]$ExecutionMode = '37',                     # หน่วง ms จำลอง slippage — 0 = ได้ราคาดีเกินจริง
   [string]$Deposit = '10000',                        # เงินฝากตั้งต้น — ต้องเท่ากันทุกรอบถึงเทียบกันได้
-  [string]$DumpDir = 'ribbon_opt',                    # โฟลเดอร์ที่ OnTester() ของ EA นั้นเขียนผลลง
+  [string]$DumpDir = 'sats_opt',                      # โฟลเดอร์ที่ OnTester() ของ EA นั้นเขียนผลลง
   [switch]$SkipPreflight                             # ข้ามด่านตรวจค่าใน GUI
 )
 
@@ -34,7 +35,7 @@ $root = Split-Path -Parent $PSScriptRoot
 
 if (-not (Test-Path $Terminal)) { throw "ไม่พบ terminal64.exe ที่ $Terminal — ส่ง -Terminal มาเอง" }
 
-# หาโฟลเดอร์ข้อมูลของ terminal: ตัวที่มี MQL5\Experts\MARibbonEA.ex5 อยู่
+# หาโฟลเดอร์ข้อมูลของ terminal: ตัวที่มี MQL5\Experts\<Expert>.ex5 อยู่
 if (-not $DataDir) {
   $DataDir = Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal" -Directory |
     Where-Object { Test-Path "$($_.FullName)\MQL5\Experts\$Expert.ex5" } |
