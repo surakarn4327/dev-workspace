@@ -190,15 +190,39 @@ def _strategy_key(ea_name: str) -> str:
     return re.sub(r"EA$", "", strategy, flags=re.IGNORECASE).lower()
 
 
+def _dump_nickname(ea_name: str) -> str | None:
+    """ชื่อเล่นของกลยุทธ์ตาม `CORE_TO_DUMPDIR` (เช่น 'sats' สำหรับ SelfAwareTrendCore.mqh) —
+    2026-09-14 พบว่า `_strategy_key` เพียงอย่างเดียวจับคู่ .set ผิดสำหรับ SATS: EA ชื่อ
+    'SelfAwareTrendEA' ให้ strategy key ว่า 'selfawaretrend' แต่ทุกไฟล์ `.set` ของกลยุทธ์นี้ในโปรเจกต์
+    ตั้งชื่อด้วยนามแฝง 'sats_*' เสมอ (ตามโฟลเดอร์ dump `sats_opt` ที่ `CORE_TO_DUMPDIR` กำหนดไว้)
+    ทำให้ dropdown ว่างเปล่าแม้มีไฟล์ `.set` อยู่จริง — คืนนามแฝงนี้ (ตัด `_opt` ออก) ให้
+    `list_sets_for_ea` ลองจับคู่เพิ่มอีกทาง"""
+    ea_file = SRC_DIR / f"{ea_name}.mq5"
+    if not ea_file.exists():
+        return None
+    text = ea_file.read_text(encoding="utf-8", errors="ignore")
+    m = re.search(r'#include\s+"(\w+Core\.mqh)"', text)
+    if not m:
+        return None
+    dump_dir = CORE_TO_DUMPDIR.get(m.group(1))
+    if not dump_dir:
+        return None
+    return dump_dir.removesuffix("_opt").lower()
+
+
 def list_sets_for_ea(ea_name: str) -> list[str]:
     """คืนเฉพาะไฟล์ `.set` ที่เป็นกลยุทธ์เดียวกับ EA ที่เลือก (ไม่ใช่ทุกไฟล์ในโปรเจกต์) — คำขอ
     ผู้ใช้ 2026-09-12: ไม่อยากเห็น .set ของ EA อื่นปนอยู่ในตัวเลือก ไม่กรอง TF ด้วย (ต่างจาก
     guess_set_for_ea ที่ต้องเดาแค่ตัวเดียว) เพราะอยากให้เห็นทุก TF variant ของกลยุทธ์นั้นให้เลือกเอง
-    ถ้าไม่มีไฟล์กลยุทธ์ไหนตรงเลย คืน list ว่าง (ไม่ fallback ไปโชว์ทุกไฟล์ กันสับสนกับ EA อื่น)"""
-    strategy = _strategy_key(ea_name)
-    if not strategy:
+    ถ้าไม่มีไฟล์กลยุทธ์ไหนตรงเลย คืน list ว่าง (ไม่ fallback ไปโชว์ทุกไฟล์ กันสับสนกับ EA อื่น)
+
+    เช็คทั้ง `_strategy_key` (จากชื่อไฟล์ EA) และ `_dump_nickname` (นามแฝงจาก CORE_TO_DUMPDIR)
+    เพราะบางกลยุทธ์ (SATS) ตั้งชื่อ `.set` ด้วยนามแฝงที่ไม่ตรงกับชื่อไฟล์ EA/Core ตรงๆ — ดูเหตุผล
+    เต็มใน `_dump_nickname` (2026-09-14)"""
+    keys = {k for k in (_strategy_key(ea_name), _dump_nickname(ea_name)) if k}
+    if not keys:
         return []
-    return [s for s in list_sets() if strategy in s.lower()]
+    return [s for s in list_sets() if any(k in s.lower() for k in keys)]
 
 
 def guess_set_for_ea(ea_name: str) -> str | None:

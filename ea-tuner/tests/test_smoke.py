@@ -178,6 +178,18 @@ def test_list_sets_for_ea_filters_by_strategy(tmp_path, monkeypatch) -> None:
     assert config.list_sets_for_ea("SmartIndicatorEA") == []
 
 
+def test_list_sets_for_ea_matches_dump_nickname_for_sats(tmp_path, monkeypatch) -> None:
+    # 2026-09-14 — พบว่า _strategy_key("SelfAwareTrendEA") ให้ "selfawaretrend" แต่ไฟล์ .set
+    # ของกลยุทธ์นี้ทุกไฟล์ในโปรเจกต์ตั้งชื่อด้วยนามแฝง "sats_*" (ตาม CORE_TO_DUMPDIR ที่ผูก
+    # SelfAwareTrendCore.mqh กับโฟลเดอร์ dump "sats_opt") ทำให้ dropdown ว่างเปล่าแม้มีไฟล์จริง —
+    # ต้องจับคู่ผ่านนามแฝงนี้ได้ด้วย ไม่ใช่แค่ _strategy_key จากชื่อไฟล์ EA
+    (tmp_path / "sats_stage1_M5.set").write_text("InpA=1||1||1||2||Y\n", encoding="utf-8")
+    (tmp_path / "amdpo3_clean2025_M5.set").write_text("InpA=1||1||1||2||Y\n", encoding="utf-8")
+    monkeypatch.setattr(config, "SETS_DIR", tmp_path)
+    assert config._dump_nickname("SelfAwareTrendEA") == "sats"
+    assert config.list_sets_for_ea("SelfAwareTrendEA") == ["sats_stage1_M5"]
+
+
 def test_guess_set_for_ea_prefers_matching_timeframe(tmp_path, monkeypatch) -> None:
     # จำลองสถานการณ์จริงที่เจอบั๊ก 2026-09-12: กลยุทธ์เดียวกันมี .set แยกคนละ TF
     # ("M15" เรียงก่อน "M5" ตามตัวอักษรเสมอ) ต้องเลือกไฟล์ที่ TF ตรงกับที่เดาไว้ ไม่ใช่ตัวแรกตามลำดับ
