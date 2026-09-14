@@ -17,7 +17,7 @@ param(
   [Parameter(Mandatory = $true)][string]$SetName,    # ชื่อไฟล์ .set (ไม่ต้องใส่นามสกุล)
   [Parameter(Mandatory = $true)][string]$OutName,    # ชื่อไฟล์ผลลัพธ์ที่จะเขียนลง results\
   [string]$Symbol = 'XAUUSDc',
-  [string]$Expert = 'SelfAwareTrendEA',               # ชื่อ EA ใน MQL5\Experts (ไม่ต้องใส่ .ex5)
+  [string]$Expert = 'BestM5_SelfAwareTrend',          # ชื่อ EA ใน MQL5\Experts (ไม่ต้องใส่ .ex5)
   [ValidateSet('0', '1', '2')][string]$Optimization = '1',  # 0=รันเดียว 1=ไล่ครบ 2=genetic
   [string]$Terminal = 'C:\Program Files\MetaTrader 5 EXNESS\terminal64.exe',
   [string]$DataDir,                                  # โฟลเดอร์ข้อมูลของ terminal (เดาให้ถ้าไม่ระบุ)
