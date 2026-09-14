@@ -21,7 +21,7 @@ Strategy Tester ใช้ backtest ได้โดยไม่ต้องเท
 compile จากคอมมานด์ไลน์ได้ ไม่ต้องเปิด GUI:
 
 ```bash
-"C:\Program Files\MetaTrader 5 EXNESS\metaeditor64.exe" /compile:"C:\dev\smart-ea\src\BestM5_SelfAwareTrend.mq5" /log:"%TEMP%\c.log"
+"C:\Program Files\MetaTrader 5 EXNESS\metaeditor64.exe" /compile:"C:\dev\smart-ea\src\SelfAwareTrendEA.mq5" /log:"%TEMP%\c.log"
 ```
 
 process คืนค่าก่อนเขียน log เสร็จ — รอสัก 5 วินาทีแล้วค่อยอ่าน log หา `Result: 0 errors`
@@ -55,29 +55,31 @@ process คืนค่าก่อนเขียน log เสร็จ — �
   (จูนบน M15: `CompressionPct=60 RangeTolerance=0.15 StopBufAtr=0.80 FibExt=1.80 SweepReturnBars=14
   HTF bias เปิด H1` ผ่านช่วงตรวจสอบ 85 ไม้ · +7,558 · PF 1.70 · winrate 47% · กำไร 6/8 เดือน —
   ผ่านเกณฑ์ถอนเงิน 2/5 ข้อ ขาด trades/เดือนเป็นหลัก) ตัวที่ใช้จริงของ AMD Po3 ตอนนี้คือ M5 เท่านั้น
-- `src\BestM5_AmdPo3.mq5` — **ตัวที่ดีที่สุดของ AMD Po3 ตอนนี้** จูนบน M5 (`CompressionPct=40
-  RangeTolerance=0.15 StopBufAtr=0.80 FibExt=2.00 SweepReturnBars=40 HTF bias ปิด`) ผ่านช่วงตรวจสอบ:
-  210 ไม้ (26/เดือน) · +22,455 · PF 1.48 · winrate 37% · **กำไรครบทุกเดือน 8/8 (100%)** —
-  **ผ่านเกณฑ์ถอนเงิน 4/5** (โครงสร้าง R:R>1 เคยวัดปิดคำถามนี้ไว้แล้ว) **คำเตือน**: วัดบนข้อมูลเก่ากว่า
-  (มิ.ย.2565-มิ.ย.2568)
-  แล้วพบว่า edge ผูกกับ regime ตลาดทองช่วงหลัง (กริดกำไรแค่ 26-28% ปีเก่า vs 78% ปีล่าสุด บนฝั่ง M15)
-  รายละเอียดทั้งหมดใน `optimizer\README.md` หัวข้อ "AMD Po3"
+- **ลบไปแล้ว 2026-09-14 ตามคำสั่งผู้ใช้ (เคย commit ไว้ กู้จาก git history ได้)** `src\BestM5_AmdPo3.mq5`
+  — เดิมเป็นไฟล์ hardcode ค่า M5 ที่ดีที่สุด (`CompressionPct=40 RangeTolerance=0.15 StopBufAtr=0.80
+  FibExt=2.00 SweepReturnBars=40 HTF bias ปิด`) ผ่านช่วงตรวจสอบ: 210 ไม้ (26/เดือน) · +22,455 · PF 1.48 ·
+  winrate 37% · **กำไรครบทุกเดือน 8/8 (100%)** · **ผ่านเกณฑ์ถอนเงิน 4/5** **คำเตือน**: วัดบนข้อมูลเก่ากว่า
+  (มิ.ย.2565-มิ.ย.2568) พบว่า edge ผูกกับ regime ตลาดทองช่วงหลัง (กริดกำไรแค่ 26-28% ปีเก่า vs 78% ปีล่าสุด
+  บนฝั่ง M15) — ผู้ใช้ตัดสินใจเลิกใช้ไฟล์แยกต่อ EA ตัวเดียว **ตอนนี้ใช้ `AmdPo3EA.mq5` (ไฟล์เดียว) +
+  โหลดค่าจาก `optimizer\sets\amdpo3_best_M5.set` แทน** ไม่ต้อง maintain ไฟล์ hardcode คู่ขนานอีกต่อไป
+  รายละเอียดผลทั้งหมดใน `optimizer\README.md` หัวข้อ "AMD Po3"
 
 - `src\SelfAwareTrendCore.mqh` + `Types.mqh` + `EA.mq5` — พอร์ตจาก Pine "Self-Aware Trend System"
   จูนครบ 5 สเตจบน M5 ครั้งแรก (2026-09-11, ช่วงจูน 2568) ผ่าน 5/5 ในช่วงจูนแต่เหลือ **2/5**
   บนช่วงตรวจสอบ ม.ค.-ก.ย. 2569 (PF 1.09, winrate 45%, DD เท่ากำไร 7.3 เดือน) — ชุดนั้นเก็บไว้ที่
   `optimizer\sets\sats_best_M5.set` เป็นประวัติ **ตัวที่ใช้จริงตอนนี้คือชุดจูนใหม่ด้านล่าง**
   รายละเอียดทุกสเตจอยู่ใน `optimizer\README.md` หัวข้อ "Self-Aware Trend System (SATS)"
-- `src\BestM5_SelfAwareTrend.mq5` — **ตัวที่ดีที่สุดของ SATS ตอนนี้** จูนรอบ walk-forward
-  2026-09-11 ด้วยข้อมูล **2025.01.01–2026.09.11 ทั้งก้อน** (`InpPreset=1 InpBaseMult=9.0
-  InpSlAtrMult=2.5 InpAsymStrength=1.0 InpCharFlipMinAge=10 InpCharFlipHigh=0.80
-  InpCharFlipLow=0.45 InpTp=0.5/1/4 InpRiskMode=USD คงที่ $100`) ผลบนช่วงจูน: 2,662 ไม้
-  (127/เดือน) · +14,967 · DD 1,172 · PF 1.27 · winrate 49.6% · กำไร 18/21 เดือน (86%) ·
-  ไม้ใหญ่สุด 7.0% → **ผ่านเกณฑ์ถอนเงิน 4/5** (ตกแค่ winrate แบบเฉียด)
-  **หมายเหตุสำคัญ: รอบนี้ไม่มีช่วง out-of-sample เลยตามกฎ walk-forward ใหม่** ตัวเลขทั้งหมด
-  เป็น in-sample ต้องอ่านแบบมองบน — ควรจูนซ้ำราว มี.ค. 2570 (~6 เดือน) และเช็คผลจริงของช่วง
-  หลัง ก.ย. 2569 ก่อนจูนทับทุกครั้ง รายละเอียดใน `optimizer\README.md` หัวข้อ
-  "SATS — รอบ walk-forward 2026-09"
+- **ลบไปแล้ว 2026-09-14 ตามคำสั่งผู้ใช้ (เคย commit ไว้ กู้จาก git history ได้)** `src\BestM5_SelfAwareTrend.mq5`
+  — เดิมเป็นไฟล์ hardcode ค่าจูนรอบ walk-forward 2026-09-11 ด้วยข้อมูล **2025.01.01–2026.09.11 ทั้งก้อน**
+  (`InpPreset=1 InpBaseMult=9.0 InpSlAtrMult=2.5 InpAsymStrength=1.0 InpCharFlipMinAge=10
+  InpCharFlipHigh=0.80 InpCharFlipLow=0.45 InpTp=0.5/1/4 InpRiskMode=USD คงที่ $100`) ผลบนช่วงจูน:
+  2,662 ไม้ (127/เดือน) · +14,967 · DD 1,172 · PF 1.27 · winrate 49.6% · กำไร 18/21 เดือน (86%) ·
+  ไม้ใหญ่สุด 7.0% → **ผ่านเกณฑ์ถอนเงิน 4/5** (ตกแค่ winrate แบบเฉียด) **หมายเหตุสำคัญ: รอบนี้ไม่มีช่วง
+  out-of-sample เลยตามกฎ walk-forward ใหม่** ตัวเลขทั้งหมดเป็น in-sample ต้องอ่านแบบมองบน — ควรจูนซ้ำราว
+  มี.ค. 2570 (~6 เดือน) และเช็คผลจริงของช่วงหลัง ก.ย. 2569 ก่อนจูนทับทุกครั้ง — ผู้ใช้ตัดสินใจเลิกใช้ไฟล์
+  แยกต่อ EA ตัวเดียว **ตอนนี้ใช้ `SelfAwareTrendEA.mq5` (ไฟล์เดียว) + โหลดค่าจาก
+  `optimizer\sets\sats_best_M5.set` (หรือ `sats_wf_best_M5.set`) แทน** ไม่ต้อง maintain ไฟล์ hardcode
+  คู่ขนานอีกต่อไป รายละเอียดทุกสเตจอยู่ใน `optimizer\README.md` หัวข้อ "SATS — รอบ walk-forward 2026-09"
 (`PrecisionSniper/FibStructure/MirageLiquiditySweep/LiquidityPools` ที่เคยพอร์ตพร้อม SATS รอบเดียวกัน
 ก็ไม่เคย commit เข้า repo เหมือนกัน — ลบไปแล้วตั้งแต่ 2026-09-11 ก่อนหน้านี้)
 
@@ -157,7 +159,7 @@ copy ทั้ง `.mq5` และ `.ex5` ไปที่ `MQL5\Experts\` ขอ
    optimizer ควรไล่หาค่า เช่น ATR length, threshold, SL/TP multiplier) หรือ `[ไม่จูน]` (ค่าที่ตั้งครั้งเดียว
    ตามการตัดสินใจของผู้ใช้ ไม่ใช่ค่าที่ optimize หาให้ เช่น โหมดความเสี่ยง %/fix + จำนวนเงิน, magic number,
    เปิด/ปิดกฎคัตไม้เที่ยงคืน, เกณฑ์ `InpMinTrades`/`InpMinProfit` ตอน optimize) ตกลงกับผู้ใช้ 2026-09-14 —
-   ดู `BestM5_SelfAwareTrend.mq5`/`BestM5_AmdPo3.mq5` เป็นตัวอย่างการแท็กที่ถูกต้อง
+   ดู `SelfAwareTrendEA.mq5`/`AmdPo3EA.mq5` เป็นตัวอย่างการแท็กที่ถูกต้อง
 
 **ข้อ 1-2, 4, 7 ไม่มีกลไกภาษาบังคับข้ามไฟล์ — MQL5 ไม่มี inheritance ระหว่าง EA** ต้องเขียนซ้ำ/เรียก
 ฟังก์ชันที่มีอยู่แล้วด้วยมือทุกครั้งที่สร้างไฟล์ `.mq5` ใหม่ ข้อ 3, 5 ก็เช่นกัน (ต้องประกาศ input เองทุกไฟล์)
