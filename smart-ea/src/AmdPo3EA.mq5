@@ -27,7 +27,7 @@
 #property strict
 #include "AmdPo3Types.mqh"
 
-input group "ช่วงสะสม (Range/Accumulation)"
+input group "[จูน] ช่วงสะสม (Range/Accumulation)"
 input int    InpMinRangeBars    = 12;   // อายุขั้นต่ำก่อนถือว่าการแหกขอบเป็น sweep (ไม่งั้นคือ reset)
 input int    InpMaxRangeBars    = 96;   // อายุสูงสุดของ range ก่อนหมดเวลา
 input int    InpCompressionPct  = 25;   // Donchian(20) width ต้องอยู่ percentile ล่างสุด N% นี้
@@ -37,18 +37,18 @@ input double InpMinRangeWidthPct = 0.15; // ความกว้าง range �
 input ENUM_BOUNDARY_MODE InpBoundaryMode = BOUNDARY_PIVOT; // วิธีหาขอบ range
 input int    InpTrimTailPct     = 15;   // ตัดหางแท่งเก่าที่ถ่วงความกว้างออก (0 = ปิด)
 
-input group "การกวาดสภาพคล่อง (Manipulation/Sweep)"
+input group "[จูน] การกวาดสภาพคล่อง (Manipulation/Sweep)"
 input int  InpSweepReturnBars    = 8;     // ต้องกลับเข้า range ภายในกี่แท่ง ไม่งั้นคือ BREAKOUT
 input bool InpRequireLiquidity   = false; // ต้องมี EQH/EQL อย่างน้อย 2 จุดเลยขอบก่อนถึงนับเป็น sweep
 input int  InpSweepDepthPct      = 100;   // เพดานความลึกของ sweep เป็น percentile ของ TR (100 = ปิด)
 input bool InpAllowRearm         = true;  // HTF bias ปฏิเสธทิศแล้ว รอกวาดฝั่งตรงข้ามอีกรอบ
 
-input group "การกระจายและเป้าหมาย (Distribution)"
+input group "[จูน] การกระจายและเป้าหมาย (Distribution)"
 input int    InpDistTimeoutBars = 64;  // ปิดไม้เองถ้ายังไม่ถึง SL/TP ภายในกี่แท่ง
 input double InpStopBufAtr      = 0.4; // ระยะเผื่อ stop เลยจุดกวาดสุดขั้ว หน่วย x ATR(14)
 input double InpFibExt          = 1.5; // fib extension ของขาที่กวาด (0=จุดกวาด, 1=ขอบตรงข้าม)
 
-input group "ตัวกรอง (Filters)"
+input group "[จูน] ตัวกรอง (Filters)"
 input bool  InpUseKillzones   = false;    // กวาดนับเฉพาะในช่วง killzone
 input int   InpKzLdnFromHour  = 7;        // London killzone เริ่ม (ชั่วโมงตาม server time ของ broker)
 input int   InpKzLdnToHour    = 10;       // London killzone จบ
@@ -57,14 +57,18 @@ input int   InpKzNyToHour     = 16;       // New York killzone จบ
 input bool  InpUseHtfBias      = false;   // กรองทิศทางด้วย EMA50 บน timeframe สูงกว่า
 input ENUM_TIMEFRAMES InpHtfTf = PERIOD_H1; // timeframe สำหรับ HTF bias
 
-input group "ความเสี่ยงและการเข้าออก"
+input group "[ไม่จูน] ความเสี่ยงและการเข้าออก"
 input ENUM_RISK_MODE InpRiskMode = RISK_PERCENT_EQUITY; // โหมดทุนเสี่ยง: % ของ equity (ทบต้น) หรือคงที่ USD
 input double InpRiskPct        = 2.0;  // ทุนเสี่ยงต่อไม้ เป็น % ของ equity (ใช้เมื่อ RiskMode = PercentEquity)
 input double InpRiskFixedUsd   = 200;  // ทุนเสี่ยงต่อไม้ คงที่ USD (ใช้เมื่อ RiskMode = FixedUsd)
 input double InpRiskPointUnit  = 0.01; // ขนาด 1 จุดในสูตร lot (ราคา) — XAUUSD ใช้ 0.01
 input int    InpMagic          = 20260920; // magic number
 
-input group "เกณฑ์ให้คะแนนตอน optimize"
+input group "[ไม่จูน] Day-trade เท่านั้น (ห้ามถือไม้ข้ามคืน)"
+input bool   InpUseCutoff        = true; // เปิด/ปิดกฎคัตไม้เที่ยงคืน — true = คัตไม้+ห้ามเปิดใหม่ตามเวลา, false = ปิดกฎนี้ทั้งหมด (ถือไม้ข้ามคืนได้ตามปกติของกลยุทธ์)
+input int    InpCutoffServerHour = 17;   // ชั่วโมง server ที่ถือว่าเลยเที่ยงคืนไทยแล้ว (ใช้เมื่อ InpUseCutoff=true) — วัดจริง 2026-09-14: server ช้ากว่าไทย 7 ชม. ปรับเลขนี้ถ้า server เปลี่ยน timezone/DST
+
+input group "[ไม่จูน] เกณฑ์ให้คะแนนตอน optimize"
 input int    InpMinTrades  = 30;   // ไม้ขั้นต่ำ ต่ำกว่านี้ให้คะแนน 0
 input double InpMinProfit  = 0;    // กำไรสุทธิขั้นต่ำ ต่ำกว่านี้ให้คะแนน 0
 input bool   InpDumpPasses = true; // เขียนผลทุก pass ลงไฟล์ Common\amdpo3_opt\

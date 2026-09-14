@@ -17,7 +17,22 @@ const int COOLDOWN_BARS     = 10;   // กันชนระหว่างจ�
 const int ATR_ANCHOR_PERIOD = 14;   // ATR สำหรับ stop buffer (เท่า Pine ta.atr(14))
 
 CTrade   trade;
+int      gCnt_CutoffClose = 0;
 datetime gLastBarTime = 0;
+
+//+------------------------------------------------------------------+
+//| เลยเวลาตัดรอบวันหรือยัง — ใช้ทำ day-trade/scalping จบในวัน ห้ามถือ    |
+//| ข้ามคืน (ผู้ใช้ตกลง 2026-09-14) เทียบจาก server hour ตรงๆ เพราะเวลา  |
+//| server ไม่ใช่เวลาไทยเสมอไป (วัดจริงแล้ว 2026-09-14 server ช้ากว่าไทย  |
+//| ~7 ชม. เที่ยงคืนไทยจึงตรงกับ server ~17:00 — ปรับได้ผ่าน cutoffHour   |
+//| ถ้า server เปลี่ยน timezone/DST ทีหลัง)                              |
+//+------------------------------------------------------------------+
+bool PastCutoff(const int cutoffServerHour)
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   return dt.hour >= cutoffServerHour;
+}
 int      gBarIndex    = 0;  // มิเรอร์ bar_index ของ Pine — เพิ่มทีละ 1 ต่อแท่งที่ยืนยันแล้ว
 
 int hAtrAnchor = INVALID_HANDLE; // ATR(14) — ใช้เป็น stop buffer anchor
@@ -111,10 +126,10 @@ void OnDeinit(const int reason)
 {
    PrintFormat("diag: rangeDetected=%d sweepConfirmed=%d manipConfirmed=%d distOpened=%d "
                "hitTarget=%d hitStop=%d timeout=%d failedManip=%d breakout=%d "
-               "openFail=%d noRisk=%d lotTooSmall=%d",
+               "openFail=%d noRisk=%d lotTooSmall=%d cutoffClose=%d",
                gCnt_RangeDetected, gCnt_SweepConfirmed, gCnt_ManipConfirmed, gCnt_DistOpened,
                gCnt_HitTarget, gCnt_HitStop, gCnt_Timeout, gCnt_FailedManip, gCnt_Breakout,
-               gCnt_OpenFail, gCnt_NoRisk, gCnt_LotTooSmall);
+               gCnt_OpenFail, gCnt_NoRisk, gCnt_LotTooSmall, gCnt_CutoffClose);
 }
 
 //+------------------------------------------------------------------+
@@ -334,6 +349,9 @@ double NormalizeVolume(double vol)
 //+------------------------------------------------------------------+
 void OpenTrade(const int dir, const double stopPrice, const double tgtPrice)
 {
+   if(InpUseCutoff && PastCutoff(InpCutoffServerHour))
+      return; // day-trade เท่านั้น ห้ามเปิดไม้ใหม่หลังเลยเวลาตัดรอบ (ปิดได้ที่ InpUseCutoff)
+
    bool isLong = dir == 1;
    double entry = isLong ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double risk = MathAbs(entry - stopPrice);
@@ -423,6 +441,18 @@ void ManageOpen()
       return;
    }
    if(gDir == 0) return;
+
+   // day-trade เท่านั้น ห้ามถือข้ามคืน — เลยเวลาตัดรอบแล้วคัตไม้ที่เหลือทั้งหมดทันที (ปิดได้ที่ InpUseCutoff)
+   if(InpUseCutoff && PastCutoff(InpCutoffServerHour))
+   {
+      if(trade.PositionClose(ticket))
+      {
+         gCnt_CutoffClose++;
+         gDir = 0;
+         gPosTicket = 0;
+      }
+      return;
+   }
 
    if(gBarIndex - gDistStartBar > InpDistTimeoutBars)
    {

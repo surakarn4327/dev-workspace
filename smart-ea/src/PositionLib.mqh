@@ -15,6 +15,20 @@
 
 CTrade gTrade;
 
+//+------------------------------------------------------------------+
+//| เลยเวลาตัดรอบวันหรือยัง — ใช้ทำ day-trade/scalping จบในวัน ห้ามถือ    |
+//| ข้ามคืน (ผู้ใช้ตกลง 2026-09-14) เทียบจาก server hour ตรงๆ เพราะเวลา  |
+//| server ไม่ใช่เวลาไทยเสมอไป (วัดจริงแล้ว 2026-09-14 server ช้ากว่าไทย  |
+//| ~7 ชม. เที่ยงคืนไทยจึงตรงกับ server ~17:00 — ปรับได้ผ่าน cutoffHour   |
+//| ถ้า server เปลี่ยน timezone/DST ทีหลัง)                              |
+//+------------------------------------------------------------------+
+bool PL_PastCutoff(const int cutoffServerHour)
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   return dt.hour >= cutoffServerHour;
+}
+
 // ── สถานะไม้ที่ถืออยู่ (EA ทุกตัวในชุดนี้ถือได้ไม้เดียว) ──
 int    gMtDir     = 0;     // 1 = long, -1 = short, 0 = ไม่มีไม้
 ulong  gMtPosId   = 0;     // position identifier ของไม้ที่เปิดอยู่

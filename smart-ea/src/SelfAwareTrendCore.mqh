@@ -60,7 +60,7 @@ double gTradeRiskUsd = 0;
 
 // ── diagnostic ──
 int gCnt_FlipUp = 0, gCnt_FlipDown = 0, gCnt_CharFlip = 0;
-int gCnt_Entry = 0, gCnt_FlipExit = 0, gCnt_Timeout = 0, gCnt_NotWarm = 0;
+int gCnt_Entry = 0, gCnt_FlipExit = 0, gCnt_Timeout = 0, gCnt_NotWarm = 0, gCnt_CutoffClose = 0;
 
 //+------------------------------------------------------------------+
 double SatsClamp(const double v, const double lo, const double hi)
@@ -133,9 +133,9 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   PrintFormat("diag: flipUp=%d flipDown=%d charFlip=%d entry=%d flipExit=%d timeout=%d notWarm=%d | %s",
+   PrintFormat("diag: flipUp=%d flipDown=%d charFlip=%d entry=%d flipExit=%d timeout=%d notWarm=%d cutoffClose=%d | %s",
                gCnt_FlipUp, gCnt_FlipDown, gCnt_CharFlip, gCnt_Entry,
-               gCnt_FlipExit, gCnt_Timeout, gCnt_NotWarm, PL_DiagString());
+               gCnt_FlipExit, gCnt_Timeout, gCnt_NotWarm, gCnt_CutoffClose, PL_DiagString());
 }
 
 //+------------------------------------------------------------------+
@@ -539,7 +539,7 @@ void SatsOnBar()
       gCnt_FlipExit++;
    }
 
-   if(gMtDir == 0 && (flipUp || flipDown))
+   if(gMtDir == 0 && (flipUp || flipDown) && !(InpUseCutoff && PL_PastCutoff(InpCutoffServerHour)))
       SatsOpen(flipUp ? 1 : -1, atrValue, tqi, volRatio);
 }
 
@@ -549,6 +549,15 @@ void OnTick()
    // ไม้ปิดเองโดย broker (SL/TP) → บันทึกผลเข้า self-learning ก่อนรีเซ็ต
    if(gMtDir != 0 && !PL_HasPosition(InpMagic))
       SatsRecordClosedPosition();
+
+   // day-trade เท่านั้น ห้ามถือข้ามคืน — เลยเวลาตัดรอบแล้วคัตไม้ที่เหลือทั้งหมดทันที (ปิดได้ที่ InpUseCutoff)
+   if(InpUseCutoff && gMtDir != 0 && PL_PastCutoff(InpCutoffServerHour))
+   {
+      PL_CloseAll(InpMagic);
+      SatsRecordClosedPosition();
+      gMtPosId = 0;
+      gCnt_CutoffClose++;
+   }
 
    PL_Manage(InpMagic, false, false, false);
 

@@ -46,18 +46,18 @@
 #property strict
 #include "SelfAwareTrendTypes.mqh"
 
-input group "หลัก (Main)"
+input group "[จูน] หลัก (Main)"
 input ENUM_SATS_PRESET InpPreset = SATS_CUSTOM; // preset — ต้องเป็น Custom ไม่งั้น Scalping ทับทุกค่า
 input int    InpAtrLen    = 14;   // ATR Length
 input double InpBaseMult  = 9.0;  // ความกว้างแบนด์ฐาน x ATR (จูนแล้ว — Pine default 2.0)
 
-input group "Adaptive Engine (ER แบบเดิม)"
+input group "[จูน] Adaptive Engine (ER แบบเดิม)"
 input bool   InpUseAdaptive   = true;
 input int    InpErLength      = 20;
 input double InpAdaptStrength = 0.5;
 input int    InpAtrBaselineLen = 100;
 
-input group "Trend Quality Engine"
+input group "[จูน] Trend Quality Engine"
 input bool   InpUseTqi         = true;
 input double InpQualityStrength = 0.4;
 input double InpQualityCurve    = 1.5;
@@ -77,7 +77,7 @@ input int    InpTqiStructLen    = 20;
 input int    InpTqiMomLen       = 10;
 input int    InpVolLen          = 20;
 
-input group "ความเสี่ยงและเป้าหมาย"
+input group "[จูน] ความเสี่ยงและเป้าหมาย (SL/TP)"
 input int    InpPivotLen    = 3;
 input double InpSlAtrMult   = 2.5;  // จูนแล้ว (Pine default 1.5) — แกนนี้แบนราบ 1.5-3.5
 input double InpSlMaxDist   = 4.0;
@@ -87,7 +87,7 @@ input double InpTp2R        = 1.0;  // จูนแล้ว (Pine default 2.0)
 input double InpTp3R        = 4.0;  // จูนแล้ว (Pine default 3.0)
 input int    InpTradeMaxAge = 100;
 
-input group "Dynamic TP (ไม่ได้ใช้ในชุดนี้)"
+input group "[จูน] Dynamic TP (ไม่ได้ใช้ในชุดนี้)"
 input double InpDynTpTqiWeight = 0.6;
 input double InpDynTpVolWeight = 0.4;
 input double InpDynTpMinScale  = 0.5;
@@ -95,7 +95,7 @@ input double InpDynTpMaxScale  = 2.0;
 input double InpDynTpFloorR1   = 0.5;
 input double InpDynTpCeilR3    = 8.0;
 
-input group "Self-Learning (ปิดไว้ เหมือน Pine)"
+input group "[จูน] Self-Learning (ปิดไว้ เหมือน Pine)"
 input bool   InpUseAutoCalib  = false;
 input int    InpCalibWindow   = 20;
 input double InpCalibBadR     = 0.0;
@@ -105,14 +105,18 @@ input int    InpCalibCooldown = 5;
 input double InpCalibMinQ     = 0.1;
 input double InpCalibMaxQ     = 0.9;
 
-input group "ทุนเสี่ยงและการส่งคำสั่ง"
+input group "[ไม่จูน] ทุนเสี่ยงและการส่งคำสั่ง"
 input ENUM_SATS_RISK InpRiskMode = SATS_RISK_USD; // USD คงที่ — % equity ทำให้ตัวเลขพองจนอ่านไม่ได้
 input double InpRiskPct       = 2.0;
 input double InpRiskFixedUsd  = 100;   // ทุนเสี่ยงต่อไม้ที่ใช้จูนทั้งหมด
 input double InpRiskPointUnit = 0.01;
 input int    InpMagic         = 20260941; // ต่างจาก SelfAwareTrendEA กันชนกันถ้ารันพร้อมกัน
 
-input group "เกณฑ์ให้คะแนนตอน optimize"
+input group "[ไม่จูน] Day-trade เท่านั้น (ห้ามถือไม้ข้ามคืน)"
+input bool   InpUseCutoff        = true; // เปิด/ปิดกฎคัตไม้เที่ยงคืน — true = คัตไม้+ห้ามเปิดใหม่ตามเวลา, false = ปิดกฎนี้ทั้งหมด (ถือไม้ข้ามคืนได้ตามปกติของกลยุทธ์)
+input int    InpCutoffServerHour = 17;   // ชั่วโมง server ที่ถือว่าเลยเที่ยงคืนไทยแล้ว (ใช้เมื่อ InpUseCutoff=true) — วัดจริง 2026-09-14: server ช้ากว่าไทย 7 ชม. ปรับเลขนี้ถ้า server เปลี่ยน timezone/DST
+
+input group "[ไม่จูน] เกณฑ์ให้คะแนนตอน optimize"
 input int    InpMinTrades  = 50;
 input double InpMinProfit  = 0;
 input bool   InpDumpPasses = true;

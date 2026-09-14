@@ -24,18 +24,18 @@
 #property strict
 #include "SelfAwareTrendTypes.mqh"
 
-input group "หลัก (Main)"
+input group "[จูน] หลัก (Main)"
 input ENUM_SATS_PRESET InpPreset = SATS_AUTO; // preset (Auto = เลือกตาม timeframe เหมือน Pine)
 input int    InpAtrLen    = 13;   // ATR Length (ใช้เมื่อ preset = Custom)
 input double InpBaseMult  = 2.0;  // ความกว้างแบนด์ฐาน x ATR (ใช้เมื่อ preset = Custom)
 
-input group "Adaptive Engine (ER แบบเดิม)"
+input group "[จูน] Adaptive Engine (ER แบบเดิม)"
 input bool   InpUseAdaptive   = true; // เปิดการปรับแบนด์ตาม efficiency ratio
 input int    InpErLength      = 20;   // หน้าต่าง efficiency (ใช้เมื่อ preset = Custom)
 input double InpAdaptStrength = 0.5;  // ความแรงของการปรับ
 input int    InpAtrBaselineLen = 100; // หน้าต่างค่าเฉลี่ย ATR สำหรับ volatility regime
 
-input group "Trend Quality Engine"
+input group "[จูน] Trend Quality Engine"
 input bool   InpUseTqi         = true; // เปิด TQI
 input double InpQualityStrength = 0.4; // TQI บีบ/ขยายแบนด์แรงแค่ไหน
 input double InpQualityCurve    = 1.5; // ความไม่เชิงเส้นของการขยาย
@@ -55,7 +55,7 @@ input int    InpTqiStructLen    = 20;  // หน้าต่าง structure
 input int    InpTqiMomLen       = 10;  // หน้าต่าง momentum
 input int    InpVolLen          = 20;  // หน้าต่าง z-score ของ volume
 
-input group "ความเสี่ยงและเป้าหมาย"
+input group "[จูน] ความเสี่ยงและเป้าหมาย (SL/TP)"
 input int    InpPivotLen    = 3;    // ความแรง pivot ที่ใช้เป็นฐาน SL
 input double InpSlAtrMult   = 1.5;  // SL buffer x ATR (ใช้เมื่อ preset = Custom)
 input double InpSlMaxDist   = 4.0;  // เพดานระยะ SL x ATR
@@ -65,7 +65,7 @@ input double InpTp2R        = 2.0;  // TP2 (R)
 input double InpTp3R        = 3.0;  // TP3 (R)
 input int    InpTradeMaxAge = 100;  // ปิดไม้เองถ้าเกินกี่แท่ง
 
-input group "Dynamic TP (ใช้เมื่อ TP Mode = Dynamic)"
+input group "[จูน] Dynamic TP (ใช้เมื่อ TP Mode = Dynamic)"
 input double InpDynTpTqiWeight = 0.6; // TQI มีผลต่อ TP แค่ไหน
 input double InpDynTpVolWeight = 0.4; // volatility มีผลต่อ TP แค่ไหน
 input double InpDynTpMinScale  = 0.5; // ตัวคูณต่ำสุด
@@ -73,7 +73,7 @@ input double InpDynTpMaxScale  = 2.0; // ตัวคูณสูงสุด
 input double InpDynTpFloorR1   = 0.5; // พื้นของ TP1 (R)
 input double InpDynTpCeilR3    = 8.0; // เพดานของทุก TP (R)
 
-input group "Self-Learning (ทดลอง — Pine ปิดไว้เป็น default)"
+input group "[จูน] Self-Learning (ทดลอง — Pine ปิดไว้เป็น default)"
 input bool   InpUseAutoCalib  = false; // ปรับ Quality Influence อัตโนมัติ
 input int    InpCalibWindow   = 20;    // หน้าต่างคำนวณ avgR
 input double InpCalibBadR     = 0.0;   // ต่ำกว่านี้ถือว่าขอบแย่ ให้ขยับค่า
@@ -83,14 +83,18 @@ input int    InpCalibCooldown = 5;     // เว้นกี่ไม้ก่�
 input double InpCalibMinQ     = 0.1;   // พื้น
 input double InpCalibMaxQ     = 0.9;   // เพดาน
 
-input group "ทุนเสี่ยงและการส่งคำสั่ง"
+input group "[ไม่จูน] ทุนเสี่ยงและการส่งคำสั่ง"
 input ENUM_SATS_RISK InpRiskMode = SATS_RISK_PCT; // โหมดทุนเสี่ยง
 input double InpRiskPct       = 2.0;   // ทุนเสี่ยงต่อไม้ (% ของ equity)
 input double InpRiskFixedUsd  = 200;   // ทุนเสี่ยงต่อไม้ (USD คงที่)
 input double InpRiskPointUnit = 0.01;  // ขนาด 1 จุดในสูตร lot — XAUUSD ใช้ 0.01
 input int    InpMagic         = 20260921; // magic number
 
-input group "เกณฑ์ให้คะแนนตอน optimize"
+input group "[ไม่จูน] Day-trade เท่านั้น (ห้ามถือไม้ข้ามคืน)"
+input bool   InpUseCutoff        = true; // เปิด/ปิดกฎคัตไม้เที่ยงคืน — true = คัตไม้+ห้ามเปิดใหม่ตามเวลา, false = ปิดกฎนี้ทั้งหมด (ถือไม้ข้ามคืนได้ตามปกติของกลยุทธ์)
+input int    InpCutoffServerHour = 17;   // ชั่วโมง server ที่ถือว่าเลยเที่ยงคืนไทยแล้ว (ใช้เมื่อ InpUseCutoff=true) — วัดจริง 2026-09-14: server ช้ากว่าไทย 7 ชม. ปรับเลขนี้ถ้า server เปลี่ยน timezone/DST
+
+input group "[ไม่จูน] เกณฑ์ให้คะแนนตอน optimize"
 input int    InpMinTrades  = 30;
 input double InpMinProfit  = 0;
 input bool   InpDumpPasses = true;

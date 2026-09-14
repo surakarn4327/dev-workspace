@@ -30,7 +30,7 @@
 #property strict
 #include "AmdPo3Types.mqh"
 
-input group "ช่วงสะสม (Range/Accumulation)"
+input group "[จูน] ช่วงสะสม (Range/Accumulation)"
 input int    InpMinRangeBars    = 30;
 input int    InpMaxRangeBars    = 96;
 input int    InpCompressionPct  = 40;
@@ -40,18 +40,18 @@ input double InpMinRangeWidthPct = 0.15;
 input ENUM_BOUNDARY_MODE InpBoundaryMode = BOUNDARY_PIVOT;
 input int    InpTrimTailPct     = 15;
 
-input group "การกวาดสภาพคล่อง (Manipulation/Sweep)"
+input group "[จูน] การกวาดสภาพคล่อง (Manipulation/Sweep)"
 input int  InpSweepReturnBars    = 40;
 input bool InpRequireLiquidity   = false;
 input int  InpSweepDepthPct      = 100;
 input bool InpAllowRearm         = true;
 
-input group "การกระจายและเป้าหมาย (Distribution)"
+input group "[จูน] การกระจายและเป้าหมาย (Distribution)"
 input int    InpDistTimeoutBars = 150;
 input double InpStopBufAtr      = 0.80;
 input double InpFibExt          = 2.00;
 
-input group "ตัวกรอง (Filters)"
+input group "[จูน] ตัวกรอง (Filters)"
 input bool  InpUseKillzones   = false;
 input int   InpKzLdnFromHour  = 7;
 input int   InpKzLdnToHour    = 10;
@@ -60,14 +60,18 @@ input int   InpKzNyToHour     = 16;
 input bool  InpUseHtfBias      = false;
 input ENUM_TIMEFRAMES InpHtfTf = PERIOD_H1;
 
-input group "ความเสี่ยงและการเข้าออก"
+input group "[ไม่จูน] ความเสี่ยงและการเข้าออก"
 input ENUM_RISK_MODE InpRiskMode = RISK_PERCENT_EQUITY; // โหมดทุนเสี่ยง: % ของ equity (ทบต้น) หรือคงที่ USD
 input double InpRiskPct        = 2.0;
 input double InpRiskFixedUsd   = 200;  // ใช้เมื่อ RiskMode = FixedUsd
 input double InpRiskPointUnit  = 0.01;
 input int    InpMagic          = 20260931; // ต่างจาก AmdPo3EA/BestM15_AmdPo3 กันชนกันถ้ารันพร้อมกัน
 
-input group "เกณฑ์ให้คะแนนตอน optimize"
+input group "[ไม่จูน] Day-trade เท่านั้น (ห้ามถือไม้ข้ามคืน)"
+input bool   InpUseCutoff        = true; // เปิด/ปิดกฎคัตไม้เที่ยงคืน — true = คัตไม้+ห้ามเปิดใหม่ตามเวลา, false = ปิดกฎนี้ทั้งหมด (ถือไม้ข้ามคืนได้ตามปกติของกลยุทธ์)
+input int    InpCutoffServerHour = 17;   // ชั่วโมง server ที่ถือว่าเลยเที่ยงคืนไทยแล้ว (ใช้เมื่อ InpUseCutoff=true) — วัดจริง 2026-09-14: server ช้ากว่าไทย 7 ชม. ปรับเลขนี้ถ้า server เปลี่ยน timezone/DST
+
+input group "[ไม่จูน] เกณฑ์ให้คะแนนตอน optimize"
 input int    InpMinTrades  = 15;
 input double InpMinProfit  = 0;
 input bool   InpDumpPasses = true;

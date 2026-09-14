@@ -3,6 +3,14 @@
 
 int OnInit()
 {
+   datetime srv = TimeCurrent();   // เวลา server ของ broker
+   datetime loc = TimeLocal();     // เวลาเครื่องนี้ (ตามที่ Windows ตั้งไว้)
+   datetime gmt = TimeGMT();       // เวลา GMT จริง
+   PrintFormat("TIMECHECK server=%s local=%s gmt=%s server_minus_local_hours=%.2f",
+      TimeToString(srv, TIME_DATE|TIME_SECONDS),
+      TimeToString(loc, TIME_DATE|TIME_SECONDS),
+      TimeToString(gmt, TIME_DATE|TIME_SECONDS),
+      (double)(srv - loc) / 3600.0);
    PrintFormat("ACCOUNTDUMP currency=%s balance=%.2f equity=%.2f leverage=%d company=%s server=%s",
       AccountInfoString(ACCOUNT_CURRENCY),
       AccountInfoDouble(ACCOUNT_BALANCE),
