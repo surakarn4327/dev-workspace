@@ -11,6 +11,7 @@ from __future__ import annotations
 import html
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 import config
@@ -397,8 +398,109 @@ def render_report(
     return html_out
 
 
-def write_report(html_str: str, out_dir: Path) -> Path:
+def write_report(html_str: str, out_dir: Path, prefix: str = "report") -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"report_{time.strftime('%Y%m%d_%H%M%S')}.html"
+    # ใช้ datetime.now() ไม่ใช่ time.strftime — %f (ไมโครวินาที) ไม่รองรับใน time.strftime ของ C
+    # runtime บน Windows (raise "ValueError: Invalid format string") datetime.strftime รองรับ %f
+    # ปกติ ต้องมีความละเอียดระดับนี้เพราะ "รันทุก .set" เรียก write_report ติดกันหลายครั้งในไม่กี่
+    # วินาที ถ้าใช้แค่ระดับวินาทีไฟล์จะทับกันเอง (เจอจริง 2026-09-12 ตอนทดสอบปุ่มนี้)
+    path = out_dir / f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.html"
     path.write_text(html_str, encoding="utf-8")
     return path
+
+
+def render_comparison_report(
+    *,
+    ea_name: str,
+    symbol: str,
+    period: str,
+    date_from: str,
+    date_to: str,
+    results: list[dict],
+) -> str:
+    """สรุปเทียบผลการจูนของทุก .set ของ EA เดียวกันในตารางเดียว (ใช้ตอนกด "รันทุก .set")
+
+    แต่ละ entry ใน results คือ dict: set_name, best_verified (dict หรือ None),
+    holdout_row (dict หรือ None), report_path (ชื่อไฟล์ report เดี่ยวของชุดนั้น หรือ None),
+    error (str ถ้ารันพัง) — เรียงให้ชุดที่ "ผ่าน holdout" และคะแนนสูงสุดขึ้นก่อนเสมอ
+    """
+
+    def sort_key(r: dict) -> tuple:
+        if r.get("error") or not r.get("holdout_row"):
+            return (0, 0.0)
+        h = r["holdout_row"]
+        passed = h["profit"] > 0 and h["pf"] >= 1.0
+        score = r["best_verified"]["score"] if r.get("best_verified") else 0.0
+        return (1 if passed else 0, score)
+
+    ordered = sorted(results, key=sort_key, reverse=True)
+
+    rows_html = []
+    for r in ordered:
+        name = html.escape(r["set_name"])
+        if r.get("error"):
+            rows_html.append(
+                f'<tr><td>{name}</td>'
+                f'<td colspan="6" class="neg">รันล้มเหลว: {html.escape(r["error"])}</td></tr>'
+            )
+            continue
+
+        v = r.get("best_verified")
+        h = r.get("holdout_row")
+        score_s = f"{v['score']:.3f}" if v else "-"
+        train_profit_s = _fmt_money(v["profit"]) if v else "-"
+        train_pf_s = f"{v['pf']:.2f}" if v else "-"
+        hold_profit_s = _fmt_money(h["profit"]) if h else "-"
+        hold_pf_s = f"{h['pf']:.2f}" if h else "-"
+
+        if not h:
+            verdict, verdict_cls = "ไม่มีผล holdout", ""
+        elif h["profit"] > 0 and h["pf"] >= 1.0:
+            verdict, verdict_cls = "ผ่าน", "pos"
+        else:
+            verdict, verdict_cls = "ไม่ผ่าน", "neg"
+
+        link = (
+            f'<a href="{html.escape(r["report_path"])}">{name}</a>'
+            if r.get("report_path") else name
+        )
+        rows_html.append(
+            f'<tr><td>{link}</td><td>{score_s}</td><td>{train_profit_s}</td>'
+            f'<td>{train_pf_s}</td><td>{hold_profit_s}</td><td>{hold_pf_s}</td>'
+            f'<td class="{verdict_cls}">{verdict}</td></tr>'
+        )
+
+    table = f"""
+    <table class="plain">
+      <thead><tr>
+        <th>.set</th><th>คะแนน (verify)</th><th>กำไร train</th><th>PF train</th>
+        <th>กำไร holdout</th><th>PF holdout</th><th>ผลตรวจสอบ</th>
+      </tr></thead>
+      <tbody>{''.join(rows_html)}</tbody>
+    </table>
+    <p class="note">เรียงชุดที่ "ผ่าน" holdout และคะแนนสูงสุดไว้บนสุด — กดชื่อ .set เพื่อเปิดรายงาน
+      เต็มของชุดนั้น (ตารางพารามิเตอร์ทุกชุดที่จูน) ค่าที่ควรใช้จริงต้องดูจากชุดที่ "ผ่าน" เท่านั้น
+      ห้ามเลือกจากคะแนน train อย่างเดียวเพราะยังไม่ผ่านการตรวจสอบด้วยข้อมูลที่ไม่เคยใช้จูน</p>
+    """
+
+    title = f"เทียบผลจูนทุก .set — {ea_name} ({symbol} {period})"
+    return f"""<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<title>{html.escape(title)}</title>
+<style>{_CSS}</style></head>
+<body><div class="wrap">
+<header>
+  <h1>{html.escape(title)}</h1>
+  <div class="runbar">
+    <span>EA <b>{html.escape(ea_name)}</b></span>
+    <span>สัญลักษณ์ <b>{html.escape(symbol)}</b></span>
+    <span>TF <b>{html.escape(period)}</b></span>
+    <span>ช่วง <b>{html.escape(date_from)} – {html.escape(date_to)}</b></span>
+    <span>สร้างเมื่อ <b>{time.strftime('%Y-%m-%d %H:%M')}</b></span>
+  </div>
+</header>
+<section>
+  <h2>สรุปเทียบทุก .set ของ {html.escape(ea_name)} ({len(results)} ชุด)</h2>
+  <div class="card">{table}</div>
+</section>
+</div></body></html>"""

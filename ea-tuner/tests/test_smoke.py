@@ -82,10 +82,23 @@ def test_split_train_holdout_uses_fixed_days() -> None:
     assert (hold_to - hold_from).days == 45
 
 
-def test_default_optimize_date_range_ends_last_month() -> None:
+def test_default_optimize_date_range_ends_today() -> None:
+    # 2026-09-14 ผู้ใช้ขอให้โหมดจูนกินข้อมูลถึงวันปัจจุบันเสมอ (คู่กับปิด holdout) แทนที่จะตัด
+    # เดือนปัจจุบันทิ้งแบบเดิม
     start, end = config.default_optimize_date_range()
     assert start == config.OPTIMIZE_TRAIN_START
-    assert end < date.today().replace(day=1)  # ตัดเดือนปัจจุบันทิ้งเสมอ
+    assert end == date.today()
+
+
+def test_split_train_holdout_disabled_when_zero_days() -> None:
+    # 2026-09-14 — holdout_days=0 ต้องไม่กันวันไหนไว้เลย (train_to == date_to) และคืนช่วง
+    # holdout ว่าง (from == to) เป็นสัญญาณให้ผู้เรียกข้ามขั้น holdout ทั้งขั้น
+    train_from, train_to, hold_from, hold_to = runner.split_train_holdout(
+        date(2025, 1, 1), date(2026, 9, 14), holdout_days=0
+    )
+    assert train_from == date(2025, 1, 1)
+    assert train_to == date(2026, 9, 14)
+    assert hold_from == hold_to == date(2026, 9, 14)
 
 
 def test_parse_set_file_and_build_neighbor_set(tmp_path) -> None:

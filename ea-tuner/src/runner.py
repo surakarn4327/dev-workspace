@@ -275,10 +275,15 @@ def split_train_holdout(
 
     holdout เป็น "ท้ายสุด N วัน" ของช่วงที่ขอมาเสมอ (ไม่ใช่ปีเก่าคงที่แบบตรึงไว้) — ตาม
     เหตุผลที่ผู้ใช้ให้ไว้ 2026-09-12: ตลาดเปลี่ยน regime ตลอด ค่าที่จูนจากข้อมูลเก่าอาจใช้ไม่ได้
-    กับตอนนี้ ดังนั้นทุกครั้งที่ date_to ขยับมาใหม่ (โหมดจูนคำนวณเป็นสิ้นเดือนก่อนหน้าให้เองเสมอ
-    ดู config.default_optimize_date_range) ช่วง holdout ก็จะขยับตามมาเป็น "ช่วงล่าสุดที่สุด"
+    กับตอนนี้ ดังนั้นทุกครั้งที่ date_to ขยับมาใหม่ ช่วง holdout ก็จะขยับตามมาเป็น "ช่วงล่าสุดที่สุด"
     โดยอัตโนมัติ ไม่ใช่ช่วงที่ถูกแช่แข็งไว้ตายตัว — ใช้จำนวนวันคงที่ (ไม่ใช่ %) เพราะช่วงข้อมูล
     ยาวขึ้นเรื่อยๆ ตามเวลา ถ้าใช้ % ระยะ holdout จะบวมขึ้นเรื่อยๆ ทั้งที่ไม่จำเป็น
+
+    holdout_days=0 (2026-09-14 ผู้ใช้ปิด safeguard นี้เอง) → train_to = date_to ตรงๆ (ไม่กันวันใด
+    ไว้เลย) และคืน holdout_from == holdout_to == date_to (ช่วงว่าง) เป็นสัญญาณให้ผู้เรียก
+    (`gui._tune_one_set`) ข้ามขั้น 3/3 ทั้งขั้นไปเลย ไม่ใช่พยายามรัน backtest บนช่วง 0 วัน
     """
-    split_date = date_to - timedelta(days=max(1, holdout_days))
+    if holdout_days <= 0:
+        return date_from, date_to, date_to, date_to
+    split_date = date_to - timedelta(days=holdout_days)
     return date_from, split_date, split_date, date_to

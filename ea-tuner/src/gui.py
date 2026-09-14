@@ -103,6 +103,25 @@ class App(tk.Tk):
         ttk.Button(row1, text="แก้ไฟล์ .set", command=self._open_set_editor).pack(side="left", padx=4)
         ttk.Button(row1, text="รีเฟรชรายการ", command=self._refresh_lists).pack(side="left", padx=4)
 
+        # แถว 1b: ติ๊กเลือกว่าจะรันเฉพาะ .set ไหนบ้างตอนกด "รันทุก/รันที่เลือก" (คำขอผู้ใช้
+        # 2026-09-12 — เดิมกดปุ่มเดียวรันทุกไฟล์ของ EA หมด ไม่มีทางเลือกรันบางไฟล์) ไม่ติ๊กเลย
+        # = พฤติกรรมเดิมทุกประการ (รันทุกไฟล์ของ EA ที่เลือก)
+        set_check_outer = ttk.LabelFrame(top, text="เลือก .set ที่จะรัน (ไม่ติ๊กเลย = รันทุกไฟล์ของ EA นี้)")
+        set_check_outer.pack(fill="x", **pad)
+        self.set_check_canvas = tk.Canvas(set_check_outer, height=90, highlightthickness=0)
+        set_check_scroll = ttk.Scrollbar(set_check_outer, orient="vertical",
+                                          command=self.set_check_canvas.yview)
+        self.set_check_frame = ttk.Frame(self.set_check_canvas)
+        self.set_check_frame.bind(
+            "<Configure>",
+            lambda e: self.set_check_canvas.configure(scrollregion=self.set_check_canvas.bbox("all")),
+        )
+        self.set_check_canvas.create_window((0, 0), window=self.set_check_frame, anchor="nw")
+        self.set_check_canvas.configure(yscrollcommand=set_check_scroll.set)
+        self.set_check_canvas.pack(side="left", fill="both", expand=True)
+        set_check_scroll.pack(side="right", fill="y")
+        self.set_check_vars: dict[str, tk.BooleanVar] = {}
+
         # แถว 2: symbol / period / deposit — โมเดล tick ไม่มีช่องให้เลือกแล้ว (คำขอผู้ใช้
         # 2026-09-12 + เป็นบั๊กเสี่ยงจริงถ้าเลือกผิด — ดู config.MODEL_GRID/MODEL_ACCURATE)
         row2 = ttk.Frame(top)
@@ -183,11 +202,16 @@ class App(tk.Tk):
         # ควรตั้งค่าที่ดีที่สุดเป็นค่าเริ่มต้น") ไม่มีช่องให้ปรับเลยสักช่อง แค่โชว์ค่าที่ใช้จริงเฉยๆ
         row4b = ttk.Frame(top)
         row4b.pack(fill="x", **pad)
+        _holdout_note = (
+            f"กันช่วงท้ายสุด {config.OPTIMIZE_HOLDOUT_DAYS} วันไว้ตรวจสอบ"
+            if config.OPTIMIZE_HOLDOUT_DAYS > 0
+            else "ไม่กัน holdout ไว้เลย (ปิดไว้ตามคำขอผู้ใช้ 2026-09-14 — ไปรัน holdout เองแยก)"
+        )
         ttk.Label(
             row4b,
             text=(
                 f"(โหมดจูนเท่านั้น) ล็อกไว้ตายตัวทั้งหมด — genetic {config.OPTIMIZE_GENETIC_REPS} รอบ "
-                f"· กันช่วงท้ายสุด {config.OPTIMIZE_HOLDOUT_DAYS} วันไว้ตรวจสอบ"
+                f"· {_holdout_note}"
             ),
             foreground="#666",
         ).pack(side="left")
@@ -197,6 +221,9 @@ class App(tk.Tk):
         row5.pack(fill="x", **pad)
         self.run_btn = ttk.Button(row5, text="▶  รัน", command=self._on_run)
         self.run_btn.pack(side="left")
+        self.run_all_btn = ttk.Button(row5, text="▶▶  รันทุก .set ของ EA นี้ (เทียบผล)",
+                                       command=self._on_run_all)
+        self.run_all_btn.pack(side="left", padx=(6, 0))
         self.status_var = tk.StringVar(value="พร้อม")
         ttk.Label(row5, textvariable=self.status_var, foreground="#666").pack(side="left", padx=10)
         self.open_report_btn = ttk.Button(row5, text="เปิดหน้าสรุปผลล่าสุด",
@@ -230,6 +257,28 @@ class App(tk.Tk):
             self.set_var.set(matching_sets[0])
         else:
             self.set_var.set("")
+        self._rebuild_set_checklist(matching_sets)
+
+    def _rebuild_set_checklist(self, names: list[str]):
+        """สร้างติ๊กเลือกใหม่ทุกครั้งที่เปลี่ยน EA หรือกดรีเฟรช — ล้างของเก่าทิ้งก่อนเสมอ
+        กันไม่ให้ค้างติ๊กของ EA อื่นปนมา"""
+        for child in self.set_check_frame.winfo_children():
+            child.destroy()
+        self.set_check_vars = {}
+        for name in names:
+            var = tk.BooleanVar(value=False)
+            var.trace_add("write", lambda *_args: self._update_run_all_label())
+            ttk.Checkbutton(self.set_check_frame, text=name, variable=var).pack(anchor="w")
+            self.set_check_vars[name] = var
+        self._update_run_all_label()
+
+    def _update_run_all_label(self):
+        """เปลี่ยนข้อความปุ่มตามจำนวนที่ติ๊กไว้ — ไม่ติ๊กเลย = ปุ่มเดิม (รันทุกไฟล์)"""
+        checked = sum(1 for v in self.set_check_vars.values() if v.get())
+        if checked > 0:
+            self.run_all_btn.configure(text=f"▶▶  รัน .set ที่เลือก ({checked} ไฟล์)")
+        else:
+            self.run_all_btn.configure(text="▶▶  รันทุก .set ของ EA นี้ (เทียบผล)")
 
     def _on_symbol_change(self, event=None):
         """เดาขนาด 1 จุดใหม่ทุกครั้งที่แก้ช่องสัญลักษณ์เสร็จ (ออกจากช่อง) — ยังแก้เองทับได้เสมอ"""
@@ -244,9 +293,14 @@ class App(tk.Tk):
             self.to_var.set(range_end.isoformat())
             self.from_entry.configure(state="disabled")
             self.to_entry.configure(state="disabled")
+            _holdout_note = (
+                f"กันท้ายสุด {config.OPTIMIZE_HOLDOUT_DAYS} วันไว้ตรวจสอบ"
+                if config.OPTIMIZE_HOLDOUT_DAYS > 0
+                else "ไม่กัน holdout ไว้เลย"
+            )
             self.date_note_var.set(
-                f"  ล็อกอัตโนมัติ: {range_start.isoformat()} ถึงสิ้นเดือนก่อนหน้า "
-                f"(กันท้ายสุด {config.OPTIMIZE_HOLDOUT_DAYS} วันไว้ตรวจสอบ ไม่ต้องปรับเอง)"
+                f"  ล็อกอัตโนมัติ: {range_start.isoformat()} ถึงวันปัจจุบัน "
+                f"({_holdout_note} ไม่ต้องปรับเอง)"
             )
         else:
             self.from_entry.configure(state="normal")
@@ -258,7 +312,9 @@ class App(tk.Tk):
         names = [e["name"] for e in self.eas]
         self.ea_combo["values"] = names
         ea = self._current_ea()
-        self.set_combo["values"] = config.list_sets_for_ea(ea["name"]) if ea else []
+        matching_sets = config.list_sets_for_ea(ea["name"]) if ea else []
+        self.set_combo["values"] = matching_sets
+        self._rebuild_set_checklist(matching_sets)
 
     def _open_set_editor(self):
         SetEditor(self, self.set_var.get().strip() or None,
@@ -376,6 +432,249 @@ class App(tk.Tk):
         self.worker = threading.Thread(target=target, args=(req,), daemon=True)
         self.worker.start()
 
+    def _on_run_all(self):
+        """รันทุก .set ที่ตรงกับ EA ที่เลือกทีละไฟล์ (โหมดจูน 3 ขั้นเหมือนปุ่ม 'รัน' ปกติ) แล้ว
+        ประกอบหน้าสรุปเทียบผล holdout ของทุกชุดในตารางเดียว (คำขอผู้ใช้ 2026-09-12: กดครั้งเดียว
+        อยากได้ผลของทุก .set พร้อมกัน ไม่ต้องมาสลับรันเองทีละไฟล์แล้วจำผลเปรียบเทียบเอง)"""
+        ea = self._current_ea()
+        if not ea:
+            messagebox.showerror("ผิดพลาด", "เลือก EA ก่อน")
+            return
+        if self.mode_var.get() != "optimize":
+            messagebox.showerror("ผิดพลาด", "รันทุก .set ใช้ได้เฉพาะโหมด 'จูน' เท่านั้น (เลือกโหมดจูนก่อน)")
+            return
+        # ติ๊กไว้บางไฟล์ -> รันเฉพาะไฟล์ที่ติ๊ก ไม่ติ๊กเลย -> รันทุกไฟล์ของ EA นี้เหมือนเดิม
+        # (คำขอผู้ใช้ 2026-09-12 — เดิมกดปุ่มนี้รันทุกไฟล์เสมอ ไม่มีทางเลือกรันบางไฟล์)
+        checked_sets = [name for name, var in self.set_check_vars.items() if var.get()]
+        set_names = checked_sets if checked_sets else config.list_sets_for_ea(ea["name"])
+        if not set_names:
+            messagebox.showerror("ผิดพลาด", f"ไม่พบไฟล์ .set ของ {ea['name']} เลย")
+            return
+        try:
+            risk_value = float(self.risk_value_var.get().strip())
+            point_unit = float(self.point_unit_var.get().strip())
+        except ValueError:
+            messagebox.showerror("ผิดพลาด", "'ความเสี่ยงต่อไม้' และ 'ขนาด 1 จุด' ต้องเป็นตัวเลข")
+            return
+        term_dir = config.find_terminal_data_dir(ea["expert_path"])
+        if not term_dir:
+            messagebox.showerror(
+                "ผิดพลาด",
+                f"หาโฟลเดอร์ MT5 terminal ที่มี {ea['expert_path']}.ex5 ไม่เจอ — "
+                f"compile + copy ไฟล์ .ex5 ไป MQL5\\Experts\\Advisors\\ ก่อน",
+            )
+            return
+
+        date_from, date_to = config.default_optimize_date_range()
+        self.from_var.set(date_from.isoformat())
+        self.to_var.set(date_to.isoformat())
+
+        self.run_btn.configure(state="disabled")
+        self.run_all_btn.configure(state="disabled")
+        self.open_report_btn.configure(state="disabled")
+        which = "ที่เลือก" if checked_sets else "ทุก"
+        self.status_var.set(f"กำลังรัน {len(set_names)} ชุด...")
+        self._log(
+            f"\n===== รันเทียบ .set {which}ไฟล์ของ {ea['name']} ({len(set_names)} ไฟล์: "
+            f"{', '.join(set_names)}) ====="
+        )
+
+        self.worker = threading.Thread(
+            target=self._run_worker_all,
+            args=(ea, set_names, date_from, date_to, risk_value, point_unit, str(term_dir)),
+            daemon=True,
+        )
+        self.worker.start()
+
+    def _run_worker_all(self, ea, set_names, date_from, date_to, risk_value, point_unit, term_dir):
+        risk_mode_key = self._risk_mode_key()
+        symbol = self.symbol_var.get().strip()
+        period = self.period_var.get()
+        deposit = self.deposit_var.get().strip()
+        out_dir = Path(__file__).resolve().parents[1] / "output"
+
+        comparison_entries: list[dict] = []
+        for i, set_name in enumerate(set_names, start=1):
+            self.log_queue.put(f"\n########## ชุดที่ {i}/{len(set_names)}: {set_name} ##########")
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            out_name = f"eatuner_{ea['name']}_{symbol}_{period}_{ts}"
+            try:
+                entries = runner.parse_set_file(config.SETS_DIR / f"{set_name}.set")
+                risk_text, risk_warnings = runner.apply_risk_overrides(
+                    entries, risk_mode=risk_mode_key, risk_value=risk_value, point_unit=point_unit
+                )
+                working_set_name = f"{set_name}__risk_{ts}"
+                (config.SETS_DIR / f"{working_set_name}.set").write_text(risk_text, encoding="utf-8")
+                for w in risk_warnings:
+                    self.log_queue.put(f"[คำเตือน] {w}")
+
+                req = runner.RunRequest(
+                    ea_name=ea["name"], expert_path=ea["expert_path"], dump_dir=ea["dump_dir"],
+                    set_name=working_set_name, symbol=symbol, period=period,
+                    model=config.MODEL_ACCURATE, deposit=deposit,
+                    date_from=date_from, date_to=date_to, mode="optimize", out_name=out_name,
+                    terminal_data_dir=term_dir,
+                    genetic_reps=config.OPTIMIZE_GENETIC_REPS, holdout_days=config.OPTIMIZE_HOLDOUT_DAYS,
+                )
+                result = self._tune_one_set(req)
+
+                best_verified = (
+                    max(result["verified_rows"], key=lambda r: r["score"])
+                    if result["verified_rows"] else None
+                )
+                report_path = None
+                if result["pass_rows"] or result["verified_rows"]:
+                    model_label = "1 minute OHLC (genetic/exhaustive) + Every tick (holdout)"
+                    title = f"ผลทดสอบ {ea['name']} — {symbol} {period} ({set_name})"
+                    html_str = report.render_report(
+                        title=title, ea_name=ea["name"], symbol=symbol, period=period,
+                        mode=dict(config.RUN_MODES)["optimize"],
+                        date_from=date_from.isoformat(), date_to=date_to.isoformat(),
+                        model_label=model_label, pass_rows=result["pass_rows"],
+                        verified_rows=result["verified_rows"], holdout_row=result["holdout_row"],
+                    )
+                    report_full_path = report.write_report(html_str, out_dir, prefix=f"report_{set_name}")
+                    report_path = report_full_path.name
+
+                comparison_entries.append({
+                    "set_name": set_name,
+                    "best_verified": best_verified,
+                    "holdout_row": result["holdout_row"],
+                    "report_path": report_path,
+                })
+            except Exception as exc:  # noqa: BLE001
+                self.log_queue.put(f"[เกิดข้อผิดพลาดกับ {set_name}] {exc}")
+                comparison_entries.append({"set_name": set_name, "error": str(exc)})
+
+        try:
+            compare_html = report.render_comparison_report(
+                ea_name=ea["name"], symbol=symbol, period=period,
+                date_from=date_from.isoformat(), date_to=date_to.isoformat(),
+                results=comparison_entries,
+            )
+            self._compare_report_path = report.write_report(compare_html, out_dir, prefix="compare")
+        except Exception as exc:  # noqa: BLE001
+            self.log_queue.put(f"[สร้างหน้าเทียบผลล้มเหลว] {exc}")
+            self._compare_report_path = None
+        self.log_queue.put("__DONE_ALL__")
+
+    def _tune_one_set(self, req: runner.RunRequest) -> dict:
+        """แกนของ pipeline 3 ขั้น (genetic -> exhaustive -> holdout) แยกออกมาจาก
+        `_run_worker_optimize` เพื่อให้ทั้งปุ่ม 'รัน' เดี่ยวและปุ่ม 'รันทุก .set' เรียกใช้ตรรกะ
+        เดียวกัน ไม่ก็อปโค้ดซ้ำ — คืน pass_rows/verified_rows/holdout_row เสมอ (list ว่าง/None
+        ถ้าขั้นนั้นไม่มีผล) ให้ผู้เรียกไปประกอบรายงานเอง"""
+        train_from, train_to, hold_from, hold_to = runner.split_train_holdout(
+            req.date_from, req.date_to, req.holdout_days
+        )
+        holdout_enabled = req.holdout_days > 0
+        if holdout_enabled:
+            self.log_queue.put(
+                f"ช่วง train (ใช้จูนเท่านั้น): {train_from} – {train_to}\n"
+                f"ช่วง holdout (ล่าสุดที่สุดของช่วงที่ขอ — ไม่แตะเลยจนกว่าจะยืนยันตอนท้าย): "
+                f"{hold_from} – {hold_to}"
+            )
+        else:
+            self.log_queue.put(
+                f"ช่วง train (ใช้ข้อมูลทั้งหมดถึงวันที่ขอ ไม่กัน holdout — ปิดไว้ตามคำขอผู้ใช้ "
+                f"2026-09-14): {train_from} – {train_to}"
+            )
+
+        all_rows: list[dict] = []
+        for rep in range(1, req.genetic_reps + 1):
+            self.log_queue.put(f"\n----- ขั้น 1/3 — รอบ genetic {rep}/{req.genetic_reps} (ช่วง train) -----")
+            rep_req = runner.RunRequest(
+                ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
+                set_name=req.set_name, symbol=req.symbol, period=req.period,
+                model=config.MODEL_GRID,
+                deposit=req.deposit, date_from=train_from, date_to=train_to,
+                mode="optimize", out_name=f"{req.out_name}_gen{rep}",
+                terminal_data_dir=req.terminal_data_dir,
+            )
+            for line in runner.run_streaming(rep_req):
+                self.log_queue.put(line)
+            rep_rows = report.parse_pass_csv(config.RESULTS_DIR / f"{rep_req.out_name}.csv")
+            if rep_rows:
+                rep_best = max(rep_rows, key=lambda r: r["score"])
+                self.log_queue.put(f"ผู้ชนะรอบที่ {rep}: คะแนน {rep_best['score']:.3f}")
+            all_rows.extend(rep_rows)
+
+        if not all_rows:
+            self.log_queue.put("[ไม่มีผลจากรอบ genetic เลยสักรอบ — หยุดที่นี่]")
+            return {"pass_rows": [], "verified_rows": [], "holdout_row": None,
+                    "stage2_out_name": None, "holdout_out_name": None}
+
+        best = max(all_rows, key=lambda r: r["score"])
+        tunable_values = best["params"][config.PARAM_PREFIX_COLS:]
+        n_params = len(tunable_values)
+        self.log_queue.put(
+            f"\nผู้ชนะรวมทุกรอบ genetic ({req.genetic_reps} รอบ, {len(all_rows)} ชุดรวม): "
+            f"คะแนน {best['score']:.3f} — {best['params']}"
+        )
+
+        entries = runner.parse_set_file(config.SETS_DIR / f"{req.set_name}.set")
+        neighbor_text = runner.build_neighbor_set(entries, tunable_values, n_params)
+        neighbor_name = f"{req.set_name}__neighbor_{req.out_name[-15:]}"
+        (config.SETS_DIR / f"{neighbor_name}.set").write_text(neighbor_text, encoding="utf-8")
+        self.log_queue.put(f"สร้างไฟล์ตรวจสอบเพื่อนบ้าน: {neighbor_name}.set")
+
+        stage2_out = f"{req.out_name}_neighbor"
+        stage2_req = runner.RunRequest(
+            ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
+            set_name=neighbor_name, symbol=req.symbol, period=req.period,
+            model=config.MODEL_GRID,
+            deposit=req.deposit, date_from=train_from, date_to=train_to,
+            mode="optimize", out_name=stage2_out, terminal_data_dir=req.terminal_data_dir,
+            opt_override="1",
+        )
+        self.log_queue.put("\n----- ขั้น 2/3 — exhaustive รอบเพื่อนบ้าน (ช่วง train) -----")
+        for line in runner.run_streaming(stage2_req):
+            self.log_queue.put(line)
+
+        verified_rows = report.parse_pass_csv(config.RESULTS_DIR / f"{stage2_out}.csv")
+        if not verified_rows:
+            self.log_queue.put("[ไม่มีผลจากรอบตรวจสอบเพื่อนบ้าน — ข้ามขั้น holdout]")
+            return {"pass_rows": all_rows, "verified_rows": [], "holdout_row": None,
+                    "stage2_out_name": stage2_out, "holdout_out_name": None}
+
+        verified_best = max(verified_rows, key=lambda r: r["score"])
+        verified_values = verified_best["params"][config.PARAM_PREFIX_COLS:]
+        self.log_queue.put(
+            f"ผู้ชนะรอบตรวจสอบเพื่อนบ้าน (ค่าที่ควรใช้จริง): คะแนน {verified_best['score']:.3f} "
+            f"— {verified_best['params']}"
+        )
+
+        fixed_text = runner.build_fixed_set(entries, verified_values, n_params)
+        fixed_name = f"{req.set_name}__final_{req.out_name[-15:]}"
+        (config.SETS_DIR / f"{fixed_name}.set").write_text(fixed_text, encoding="utf-8")
+
+        if not holdout_enabled:
+            self.log_queue.put(
+                "\n----- ขั้น 3/3 ข้าม (holdout ปิดไว้ตามคำขอผู้ใช้ 2026-09-14 — ไปรัน "
+                "holdout เองแยกต่างหากด้วยโหมด 'รันเดี่ยว') -----"
+            )
+            return {"pass_rows": all_rows, "verified_rows": verified_rows, "holdout_row": None,
+                    "stage2_out_name": stage2_out, "holdout_out_name": None}
+
+        stage3_out = f"{req.out_name}_holdout"
+        stage3_req = runner.RunRequest(
+            ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
+            set_name=fixed_name, symbol=req.symbol, period=req.period,
+            model=config.MODEL_ACCURATE,
+            deposit=req.deposit, date_from=hold_from, date_to=hold_to,
+            mode="single", out_name=stage3_out, terminal_data_dir=req.terminal_data_dir,
+            opt_override="0",
+        )
+        self.log_queue.put(
+            f"\n----- ขั้น 3/3 — ตรวจสอบ holdout ({hold_from}–{hold_to}, ไม่เคยใช้จูนเลย) -----"
+        )
+        for line in runner.run_streaming(stage3_req):
+            self.log_queue.put(line)
+        holdout_rows = report.parse_pass_csv(config.RESULTS_DIR / f"{stage3_out}.csv")
+        holdout_row = holdout_rows[0] if holdout_rows else None
+
+        return {"pass_rows": all_rows, "verified_rows": verified_rows, "holdout_row": holdout_row,
+                "stage2_out_name": stage2_out, "holdout_out_name": stage3_out}
+
     def _run_worker(self, req: runner.RunRequest):
         try:
             for line in runner.run_streaming(req):
@@ -400,101 +699,14 @@ class App(tk.Tk):
         ค่าที่ควรใช้จริงคือผู้ชนะของขั้น 2 เสมอ ขั้น 3 มีไว้ "ยืนยัน/ปฏิเสธ" เท่านั้น ไม่ได้ใช้
         เลือกค่าต่อ (ถ้าเอาผล holdout กลับไปเลือกค่าใหม่ ช่วงนั้นก็จะกลายเป็นข้อมูลที่ใช้จูนไปด้วย
         แล้วจะไม่เหลืออะไรไว้ตรวจสอบอีก)
+
+        ตรรกะจริงอยู่ใน `_tune_one_set` (ใช้ร่วมกับปุ่ม "รันทุก .set") — ตรงนี้แค่เรียกแล้วเก็บผลลง
+        self.stage2_out_name/self.holdout_out_name ให้ _build_report() อ่านต่อ (คงพฤติกรรมเดิม)
         """
         try:
-            train_from, train_to, hold_from, hold_to = runner.split_train_holdout(
-                req.date_from, req.date_to, req.holdout_days
-            )
-            self.log_queue.put(
-                f"ช่วง train (ใช้จูนเท่านั้น): {train_from} – {train_to}\n"
-                f"ช่วง holdout (ล่าสุดที่สุดของช่วงที่ขอ — ไม่แตะเลยจนกว่าจะยืนยันตอนท้าย): "
-                f"{hold_from} – {hold_to}"
-            )
-
-            all_rows: list[dict] = []
-            for rep in range(1, req.genetic_reps + 1):
-                self.log_queue.put(f"\n----- ขั้น 1/3 — รอบ genetic {rep}/{req.genetic_reps} (ช่วง train) -----")
-                rep_req = runner.RunRequest(
-                    ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
-                    set_name=req.set_name, symbol=req.symbol, period=req.period,
-                    model=config.MODEL_GRID,  # หลายร้อยชุด — ต้อง 1-minute OHLC เท่านั้น (ดู bugs.md)
-                    deposit=req.deposit, date_from=train_from, date_to=train_to,
-                    mode="optimize", out_name=f"{req.out_name}_gen{rep}",
-                    terminal_data_dir=req.terminal_data_dir,
-                )
-                for line in runner.run_streaming(rep_req):
-                    self.log_queue.put(line)
-                rep_rows = report.parse_pass_csv(config.RESULTS_DIR / f"{rep_req.out_name}.csv")
-                if rep_rows:
-                    rep_best = max(rep_rows, key=lambda r: r["score"])
-                    self.log_queue.put(f"ผู้ชนะรอบที่ {rep}: คะแนน {rep_best['score']:.3f}")
-                all_rows.extend(rep_rows)
-
-            if not all_rows:
-                self.log_queue.put("[ไม่มีผลจากรอบ genetic เลยสักรอบ — หยุดที่นี่]")
-                self.log_queue.put("__DONE__")
-                return
-
-            best = max(all_rows, key=lambda r: r["score"])
-            tunable_values = best["params"][config.PARAM_PREFIX_COLS:]
-            n_params = len(tunable_values)
-            self.log_queue.put(
-                f"\nผู้ชนะรวมทุกรอบ genetic ({req.genetic_reps} รอบ, {len(all_rows)} ชุดรวม): "
-                f"คะแนน {best['score']:.3f} — {best['params']}"
-            )
-
-            entries = runner.parse_set_file(config.SETS_DIR / f"{req.set_name}.set")
-            neighbor_text = runner.build_neighbor_set(entries, tunable_values, n_params)
-            neighbor_name = f"{req.set_name}__neighbor_{req.out_name[-15:]}"
-            (config.SETS_DIR / f"{neighbor_name}.set").write_text(neighbor_text, encoding="utf-8")
-            self.log_queue.put(f"สร้างไฟล์ตรวจสอบเพื่อนบ้าน: {neighbor_name}.set")
-
-            stage2_out = f"{req.out_name}_neighbor"
-            stage2_req = runner.RunRequest(
-                ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
-                set_name=neighbor_name, symbol=req.symbol, period=req.period,
-                model=config.MODEL_GRID,  # ยังหลายร้อยชุด (exhaustive) — เหตุผลเดียวกับขั้น 1
-                deposit=req.deposit, date_from=train_from, date_to=train_to,
-                mode="optimize", out_name=stage2_out, terminal_data_dir=req.terminal_data_dir,
-                opt_override="1",  # exhaustive — กริดแคบพอจะไล่ครบทุกจุดได้แล้ว
-            )
-            self.log_queue.put("\n----- ขั้น 2/3 — exhaustive รอบเพื่อนบ้าน (ช่วง train) -----")
-            for line in runner.run_streaming(stage2_req):
-                self.log_queue.put(line)
-            self.stage2_out_name = stage2_out
-
-            verified_rows = report.parse_pass_csv(config.RESULTS_DIR / f"{stage2_out}.csv")
-            if not verified_rows:
-                self.log_queue.put("[ไม่มีผลจากรอบตรวจสอบเพื่อนบ้าน — ข้ามขั้น holdout]")
-                self.log_queue.put("__DONE__")
-                return
-
-            verified_best = max(verified_rows, key=lambda r: r["score"])
-            verified_values = verified_best["params"][config.PARAM_PREFIX_COLS:]
-            self.log_queue.put(
-                f"ผู้ชนะรอบตรวจสอบเพื่อนบ้าน (ค่าที่ควรใช้จริง): คะแนน {verified_best['score']:.3f} "
-                f"— {verified_best['params']}"
-            )
-
-            fixed_text = runner.build_fixed_set(entries, verified_values, n_params)
-            fixed_name = f"{req.set_name}__final_{req.out_name[-15:]}"
-            (config.SETS_DIR / f"{fixed_name}.set").write_text(fixed_text, encoding="utf-8")
-
-            stage3_out = f"{req.out_name}_holdout"
-            stage3_req = runner.RunRequest(
-                ea_name=req.ea_name, expert_path=req.expert_path, dump_dir=req.dump_dir,
-                set_name=fixed_name, symbol=req.symbol, period=req.period,
-                model=config.MODEL_ACCURATE,  # แค่ 1 pass — ใช้ Every tick เอาความแม่นยำสูงสุด
-                deposit=req.deposit, date_from=hold_from, date_to=hold_to,
-                mode="single", out_name=stage3_out, terminal_data_dir=req.terminal_data_dir,
-                opt_override="0",
-            )
-            self.log_queue.put(
-                f"\n----- ขั้น 3/3 — ตรวจสอบ holdout ({hold_from}–{hold_to}, ไม่เคยใช้จูนเลย) -----"
-            )
-            for line in runner.run_streaming(stage3_req):
-                self.log_queue.put(line)
-            self.holdout_out_name = stage3_out
+            result = self._tune_one_set(req)
+            self.stage2_out_name = result["stage2_out_name"]
+            self.holdout_out_name = result["holdout_out_name"]
         except Exception as exc:  # noqa: BLE001
             self.log_queue.put(f"[เกิดข้อผิดพลาด] {exc}")
         self.log_queue.put("__DONE__")
@@ -505,6 +717,8 @@ class App(tk.Tk):
                 line = self.log_queue.get_nowait()
                 if line == "__DONE__":
                     self._on_run_finished()
+                elif line == "__DONE_ALL__":
+                    self._on_run_all_finished()
                 else:
                     self._log(line)
         except queue.Empty:
@@ -523,6 +737,18 @@ class App(tk.Tk):
         except Exception as exc:  # noqa: BLE001
             self.status_var.set("รันเสร็จ แต่สร้างหน้าสรุปผลไม่สำเร็จ")
             self._log(f"[สร้างรายงานล้มเหลว] {exc}")
+
+    def _on_run_all_finished(self):
+        self.run_btn.configure(state="normal")
+        self.run_all_btn.configure(state="normal")
+        path = getattr(self, "_compare_report_path", None)
+        if path and path.exists():
+            self._last_report_path = path
+            self.open_report_btn.configure(state="normal")
+            self.status_var.set(f"เสร็จแล้ว — {path.name}")
+            webbrowser.open(path.as_uri())
+        else:
+            self.status_var.set("รันทุก .set เสร็จแล้ว แต่สร้างหน้าเทียบผลไม่สำเร็จ")
 
     def _build_report(self) -> Path:
         req = self.last_req
