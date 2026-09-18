@@ -10,10 +10,10 @@ EA (Expert Advisor) เทรด XAUUSD อัตโนมัติบน MetaTr
 | กลยุทธ์ | แนวคิด | สถานะ |
 |---|---|---|
 | `AmdPo3EA` + `BestM5_AmdPo3` | ICT liquidity-sweep-reversal (สะสม→กวาดสภาพคล่อง→กระจาย) | `BestM5_AmdPo3` = **ตัวที่ใช้จริง** ผ่านเกณฑ์ถอนกำไร 4/5 ข้อ |
-| `SelfAwareTrendEA` + `BestM5_SelfAwareTrend` | เทรนด์ + trend-quality index ปรับแบนด์ตาม regime | `BestM5_SelfAwareTrend` = **ตัวที่ใช้จริง** ผ่านเกณฑ์ถอนกำไร 4/5 ข้อ (in-sample รอบล่าสุด) |
+| `SelfAwareTrendEA` + `BestSATS` | เทรนด์ + trend-quality index ปรับแบนด์ตาม regime | `BestSATS` = **ตัวที่ใช้จริง** ผ่านเกณฑ์ถอนกำไร 4/5 ข้อ (in-sample รอบล่าสุด) |
 
-`AmdPo3EA.mq5`/`SelfAwareTrendEA.mq5` เป็นฐาน (ใช้จูนหาค่าใหม่ผ่าน ea-tuner + `.set`), `BestM5_*.mq5`
-คือค่าที่ hardcode ไว้ใช้จริงตอนนี้ — ทั้งคู่ต้องแก้พร้อมกันเวลาเปลี่ยนกฎ (input ภาษาไทย, day-trade
+`AmdPo3EA.mq5`/`SelfAwareTrendEA.mq5` เป็นฐาน (ใช้จูนหาค่าใหม่ผ่าน ea-tuner + `.set`), `BestM5_AmdPo3.mq5`/
+`BestSATS.mq5` คือค่าที่ hardcode ไว้ใช้จริงตอนนี้ — ทั้งคู่ต้องแก้พร้อมกันเวลาเปลี่ยนกฎ (input ภาษาไทย, day-trade
 cutoff, TP mode ฯลฯ) รายละเอียดที่มาของการตัดสินใจอยู่ใน `CLAUDE.md`
 
 ตัววัดผลและสูตรให้คะแนนตอน optimize อยู่ที่ `src\TesterMetrics.mqh` ใช้ร่วมกันทั้งสองกลยุทธ์
@@ -24,7 +24,7 @@ cutoff, TP mode ฯลฯ) รายละเอียดที่มาขอ�
 MQL ไม่มี dev server — compile แล้วแนบ EA เข้ากับ chart หรือรันใน Strategy Tester
 
 ```powershell
-& "C:\Program Files\MetaTrader 5 EXNESS\metaeditor64.exe" /compile:"C:\dev\smart-ea\src\BestM5_SelfAwareTrend.mq5" /log:"$env:TEMP\c.log"
+& "C:\Program Files\MetaTrader 5 EXNESS\metaeditor64.exe" /compile:"C:\dev\smart-ea\src\BestSATS.mq5" /log:"$env:TEMP\c.log"
 ```
 
 process คืนค่าก่อนเขียน log เสร็จ รอสัก 5 วินาทีแล้วอ่าน log หาบรรทัด `Result: 0 errors`

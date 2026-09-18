@@ -11,7 +11,10 @@
 //|                                                                    |
 //| ต่างจาก Pine อย่างไร (อ่านก่อนเทียบตัวเลข):                          |
 //| - Pine เป็น indicator ติดตามสถิติเฉยๆ ที่นี่เปิดออร์เดอร์จริงด้วย CTrade|
-//|   ที่ entry/SL/TP เดียวกัน แบ่งปิด 1/3 ที่ TP1 และ TP2 ที่เหลือถึง TP3   |
+//|   ที่ entry/SL/TP เดียวกัน แบ่งปิด 1/3 ที่ TP1 + เลื่อน BE, อีก 1/3     |
+//|   ที่ TP2, ที่เหลือวิ่งถึง TP3 (เปิด/ปิดแยกได้ทีละอย่างผ่าน               |
+//|   InpUsePartials/InpUseBe — ก่อน 2026-09-14 สองอันนี้ถูก hardcode      |
+//|   ปิดไว้ตลอด ทั้งที่คอมเมนต์นี้อ้างว่าทำงานอยู่ ดู bugs.md)             |
 //|   (โมเดลสถิติของ Pine ก็คิดเป็นสามส่วนเท่ากันเหมือนกัน)                |
 //| - entry จริงคือราคาตลาดตอนบาร์ถัดไปเปิด ไม่ใช่ close เป๊ะๆ เหมือน Pine |
 //| - ส่วน visual (label/line/dashboard/alert) กับคะแนน "score" 0-100     |
@@ -64,6 +67,8 @@ input double InpTp1R        = 1.0;  // TP1 (R)
 input double InpTp2R        = 2.0;  // TP2 (R)
 input double InpTp3R        = 3.0;  // TP3 (R)
 input int    InpTradeMaxAge = 100;  // ปิดไม้เองถ้าเกินกี่แท่ง
+input bool   InpUsePartials = true; // แตะ TP1 ปิด 1/3 ของไม้, แตะ TP2 ปิดอีก 1/3 (ที่เหลือวิ่งถึง TP3) — false = ปิดเต็มไม้ที่ TP3 อย่างเดียวเหมือนเดิม
+input bool   InpUseBe       = true; // แตะ TP1 แล้วเลื่อน SL มาที่ราคาเปิด (breakeven) — ต้องมี InpUsePartials หรือไม่ก็ได้ ทำงานอิสระกัน
 
 input group "[จูน] Dynamic TP (ใช้เมื่อ TP Mode = Dynamic)"
 input double InpDynTpTqiWeight = 0.6; // TQI มีผลต่อ TP แค่ไหน
@@ -93,10 +98,16 @@ input int    InpMagic         = 20260921; // magic number
 input group "[ไม่จูน] Day-trade เท่านั้น (ห้ามถือไม้ข้ามคืน)"
 input bool   InpUseCutoff        = true; // เปิด/ปิดกฎคัตไม้เที่ยงคืน — true = คัตไม้+ห้ามเปิดใหม่ตามเวลา, false = ปิดกฎนี้ทั้งหมด (ถือไม้ข้ามคืนได้ตามปกติของกลยุทธ์)
 input int    InpCutoffServerHour = 17;   // ชั่วโมง server ที่ถือว่าเลยเที่ยงคืนไทยแล้ว (ใช้เมื่อ InpUseCutoff=true) — วัดจริง 2026-09-14: server ช้ากว่าไทย 7 ชม. ปรับเลขนี้ถ้า server เปลี่ยน timezone/DST
+input int    InpTradeStartServerHour = 23; // ชั่วโมง server ที่เริ่มเปิดไม้ได้ (ใช้เมื่อ InpUseCutoff=true) — ค่านี้ตรงกับ 06:00 เช้าไทย (server ช้ากว่าไทย 7 ชม.) ก่อนถึงชั่วโมงนี้ (แต่ยังไม่ถึง cutoff) จะยังไม่เปิดไม้ใหม่ให้ ปรับตาม server ถ้า timezone เปลี่ยน
 
 input group "[ไม่จูน] เกณฑ์ให้คะแนนตอน optimize"
 input int    InpMinTrades  = 30;
 input double InpMinProfit  = 0;
 input bool   InpDumpPasses = true;
+
+input group "[ไม่จูน] แสดงผลบนกราฟ"
+input bool InpShowChartObjects = true; // วาดลูกศรจุดเข้า + เส้น SL/TP1-3 + เส้นแบนด์ฝั่ง trend (เส้นที่ราคาต้องทะลุถึงจะ flip) บนชาร์ต — ปิดได้ถ้าไม่อยากให้ object เกะกะ
+input int    InpChartBandBars   = 300;  // จำนวนท่อนเส้นแบนด์ที่เก็บไว้บนชาร์ต (วนซ้ำชื่อ object เมื่อเกิน กันพอกพูนไม่จำกัด) ไม่กระทบตรรกะเทรด
+input bool InpShowDashboard = true; // แสดงพาเนลสรุปสถานะมุมซ้ายบนของชาร์ต (ไม้/ความเสี่ยง/balance-equity/เวลาเทรดเหลือ/สัญญาณรอ/ปัญหาล่าสุด) รวม Trade tab + Experts tab ไว้ที่เดียว ไม่กระทบตรรกะเทรด
 
 #include "SelfAwareTrendCore.mqh"

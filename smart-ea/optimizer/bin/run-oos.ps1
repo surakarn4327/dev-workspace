@@ -12,7 +12,7 @@ param(
   [Parameter(Mandatory = $true)][string]$SetName,
   [Parameter(Mandatory = $true)][string]$OutPrefix,
   [Parameter(Mandatory = $true)][string]$Period,
-  [string]$Expert = 'BestM5_SelfAwareTrend',
+  [string]$Expert = 'BestSATS',
   [string]$DumpDir = 'sats_opt',
   [string]$Model = '1'   # ส่งต่อให้ run-opt.ps1 — ต้องตรงกับโมเดลที่ใช้ตอนจูนถึงเทียบกันได้
 )

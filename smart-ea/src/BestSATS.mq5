@@ -1,8 +1,10 @@
 //+------------------------------------------------------------------+
-//| BestM5_SelfAwareTrend.mq5                                          |
+//| BestSATS.mq5                                                       |
 //| Self-Aware Trend System ชุดที่จูนบน M5 แล้ว — ใช้                    |
 //| SelfAwareTrendCore.mqh ร่วมกับ SelfAwareTrendEA.mq5                 |
 //| ไฟล์นี้มีแต่บล็อก input ไม่มีตรรกะของตัวเอง                          |
+//| (เดิมชื่อ BestM5_SelfAwareTrend.mq5 — เปลี่ยนชื่อ 2026-09-16 ตามคำขอ  |
+//| ผู้ใช้ ให้เหลือไฟล์ live-trading ตัวเดียวชัดเจน ไม่สับสน)              |
 //|                                                                    |
 //| ค่าที่ตั้งไว้ (ต่างจาก default ของ Pine):                            |
 //|   Preset=Custom, AtrLen=14, BaseMult=9.0, SlAtrMult=2.5,            |
@@ -42,6 +44,11 @@
 //|                                                                    |
 //| รายละเอียดทุกสเตจอยู่ใน optimizer/README.md หัวข้อ                   |
 //| "SATS — รอบ walk-forward 2026-09"                                   |
+//|                                                                    |
+//| **2026-09-14 เพิ่ม InpUsePartials/InpUseBe (default = true ทั้งคู่)** |
+//| ตัวเลขผลทั้งหมดด้านบนวัดตอนที่สองอันนี้ถูก hardcode ปิดไว้ (ปิดเต็มไม้  |
+//| ที่ TP3 อย่างเดียว) — เปิด default ใหม่แล้วพฤติกรรมจริงต่างจากที่จูนไว้  |
+//| ต้อง backtest ซ้ำก่อนเชื่อตัวเลขชุดนี้อีกครั้ง                         |
 //+------------------------------------------------------------------+
 #property strict
 #include "SelfAwareTrendTypes.mqh"
@@ -86,6 +93,8 @@ input double InpTp1R        = 0.5;  // จูนแล้ว (Pine default 1.0)
 input double InpTp2R        = 1.0;  // จูนแล้ว (Pine default 2.0)
 input double InpTp3R        = 4.0;  // จูนแล้ว (Pine default 3.0)
 input int    InpTradeMaxAge = 100;
+input bool   InpUsePartials = true; // แตะ TP1 ปิด 1/3 ของไม้, แตะ TP2 ปิดอีก 1/3 (ที่เหลือวิ่งถึง TP3) — false = ปิดเต็มไม้ที่ TP3 อย่างเดียวเหมือนที่จูนไว้เดิม
+input bool   InpUseBe       = true; // แตะ TP1 แล้วเลื่อน SL มาที่ราคาเปิด (breakeven)
 
 input group "[จูน] Dynamic TP (ไม่ได้ใช้ในชุดนี้)"
 input double InpDynTpTqiWeight = 0.6;
@@ -115,10 +124,16 @@ input int    InpMagic         = 20260941; // ต่างจาก SelfAwareTren
 input group "[ไม่จูน] Day-trade เท่านั้น (ห้ามถือไม้ข้ามคืน)"
 input bool   InpUseCutoff        = true; // เปิด/ปิดกฎคัตไม้เที่ยงคืน — true = คัตไม้+ห้ามเปิดใหม่ตามเวลา, false = ปิดกฎนี้ทั้งหมด (ถือไม้ข้ามคืนได้ตามปกติของกลยุทธ์)
 input int    InpCutoffServerHour = 17;   // ชั่วโมง server ที่ถือว่าเลยเที่ยงคืนไทยแล้ว (ใช้เมื่อ InpUseCutoff=true) — วัดจริง 2026-09-14: server ช้ากว่าไทย 7 ชม. ปรับเลขนี้ถ้า server เปลี่ยน timezone/DST
+input int    InpTradeStartServerHour = 23; // ชั่วโมง server ที่เริ่มเปิดไม้ได้ (ใช้เมื่อ InpUseCutoff=true) — ค่านี้ตรงกับ 06:00 เช้าไทย (server ช้ากว่าไทย 7 ชม.) ก่อนถึงชั่วโมงนี้ (แต่ยังไม่ถึง cutoff) จะยังไม่เปิดไม้ใหม่ให้ ปรับตาม server ถ้า timezone เปลี่ยน
 
 input group "[ไม่จูน] เกณฑ์ให้คะแนนตอน optimize"
 input int    InpMinTrades  = 50;
 input double InpMinProfit  = 0;
 input bool   InpDumpPasses = true;
+
+input group "[ไม่จูน] แสดงผลบนกราฟ"
+input bool InpShowChartObjects = true; // วาดลูกศรจุดเข้า + เส้น SL/TP1-3 + เส้นแบนด์ฝั่ง trend (เส้นที่ราคาต้องทะลุถึงจะ flip) บนชาร์ต — ปิดได้ถ้าไม่อยากให้ object เกะกะ
+input int    InpChartBandBars   = 300;  // จำนวนท่อนเส้นแบนด์ที่เก็บไว้บนชาร์ต (วนซ้ำชื่อ object เมื่อเกิน กันพอกพูนไม่จำกัด) ไม่กระทบตรรกะเทรด
+input bool InpShowDashboard = true; // แสดงพาเนลสรุปสถานะมุมซ้ายบนของชาร์ต (ไม้/ความเสี่ยง/balance-equity/เวลาเทรดเหลือ/สัญญาณรอ/ปัญหาล่าสุด) รวม Trade tab + Experts tab ไว้ที่เดียว ไม่กระทบตรรกะเทรด
 
 #include "SelfAwareTrendCore.mqh"
