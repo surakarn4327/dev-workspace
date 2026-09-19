@@ -5,9 +5,6 @@
 | โปรเจกต์ | ชนิด | พอร์ต | เกิดเมื่อ | คำอธิบาย |
 |---|---|---|---|---|
 <!-- PROJECTS:START -->
-| [ea-tuner](ea-tuner/) | python | 8000 | 2026-09-12 | โปรแกรม desktop (Python) ควบคุมการจูน/ทดสอบ EA ของ MT5 ในโปรเจกต์ smart-ea |
-| [ma-ribbon](ma-ribbon/) | blank | - | 2026-09-07 | Pine Script indicator: MA Ribbon + signal + SL/TP พร้อม dashboard สถิติ winrate ของ SL/TP1/TP2/TP3 |
-| [trade-lab](trade-lab/) | python | 8000 | 2026-09-05 | นักวิจัยตลาด: หาว่าแนวคิดเทคนิคไหนทำกำไรได้จริง ด้วยสถิติจากข้อมูลจริง |
 | [smart-ea](smart-ea/) | blank | - | 2026-09-04 | EA (Expert Advisor) เทรด forex บน Exness (MetaTrader) |
 | [game-dev-simulator](game-dev-simulator/) | blank | - | 2026-08-28 | Roblox tycoon: dev ผันตัวจากศูนย์ - สร้างเกม, ขาย, ปั้นทุน, ซื้อบริษัท, จ้างคน, แข่งกับสตูดิโออื่น (ใช้ Studio built-in MCP แทน Rojo-only) |
 | [claude-hooks](claude-hooks/) | blank | - | 2026-08-28 | hook ของ Claude Code ที่ใช้ร่วมกันทุกโปรเจกต์ — บังคับตั้งชื่อ session อัตโนมัติ |
