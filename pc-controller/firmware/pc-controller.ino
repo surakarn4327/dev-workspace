@@ -9,22 +9,25 @@
 // First boot (or after a "forget wifi" reset): the board opens its own
 // access point named AP_NAME. Connect a phone to it, a captive-portal
 // setup page pops up automatically (or open http://192.168.4.1). Fill in
-// home wifi, HiveMQ Cloud credentials, device id/name and ntfy.sh topic.
+// home wifi, HiveMQ Cloud credentials, device id/name, PC's LAN IP, and
+// the Gmail account + app password used to send notification emails.
 // Values are persisted to flash; the board then reboots and connects to
 // the configured wifi + broker directly on every subsequent boot.
 //
 // Required libraries (Arduino Library Manager):
 //   - WiFiManager (tzapu/WiFiManager)
 //   - PubSubClient (knolleary/PubSubClient)
+//   - ESP Mail Client (mobizt/ESP-Mail-Client) — SMTP send via Gmail
+//   - ESP32Ping (marian-craciunescu/ESP32Ping)
 // Board: "ESP32 Dev Module" (esp32 core by Espressif)
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 #include <PubSubClient.h>
-#include <HTTPClient.h>
-#include <ESP32Ping.h> // library: "ESP32Ping" by marian-craciunescu
+#include <ESP32Ping.h>
 #include <Preferences.h>
+#include <ESP_Mail_Client.h>
 
 // ---------- config ----------
 
@@ -44,7 +47,9 @@ char cfgMqttUser[64] = "";
 char cfgMqttPass[64] = "";
 char cfgDeviceId[32] = "pc01";
 char cfgPcIp[16] = "192.168.1.100";
-char cfgNtfyTopic[64] = "";
+char cfgGmailUser[64] = "";     // full address, e.g. you@gmail.com
+char cfgGmailAppPass[32] = "";  // 16-char Google "app password", not the real password
+char cfgNotifyTo[64] = "";      // where to send notifications; defaults to cfgGmailUser if left blank
 
 String topicStatus, topicAvailability, topicCmd;
 
@@ -77,18 +82,30 @@ void serviceRelay() {
   }
 }
 
-// ---------- ntfy.sh ----------
+// ---------- email notifications (Gmail SMTP) ----------
 
-void notify(const String& message) {
-  if (strlen(cfgNtfyTopic) == 0) return;
-  WiFiClientSecure client;
-  client.setInsecure(); // ntfy.sh's public CA chain; fine for a best-effort notification
-  HTTPClient http;
-  String url = "https://ntfy.sh/" + String(cfgNtfyTopic);
-  if (http.begin(client, url)) {
-    http.POST(message);
-    http.end();
-  }
+SMTPSession smtp;
+
+void notify(const String& subject, const String& body) {
+  if (strlen(cfgGmailUser) == 0 || strlen(cfgGmailAppPass) == 0) return;
+
+  ESP_Mail_Session session;
+  session.server.host_name = "smtp.gmail.com";
+  session.server.port = 465; // SMTPS (implicit TLS)
+  session.login.email = cfgGmailUser;
+  session.login.password = cfgGmailAppPass; // Google "app password", NOT the account password
+  session.login.user_domain = "";
+
+  SMTP_Message message;
+  message.sender.name = "PC Controller";
+  message.sender.email = cfgGmailUser;
+  message.subject = subject;
+  message.addRecipient("me", strlen(cfgNotifyTo) ? cfgNotifyTo : cfgGmailUser);
+  message.text.content = body;
+
+  if (!smtp.connect(&session)) return;
+  MailClient.sendMail(&smtp, &message);
+  smtp.closeSession();
 }
 
 // ---------- PC status via ping ----------
@@ -102,7 +119,8 @@ void checkPcStatus() {
   if (!pcOnlineKnown || online != pcOnlineLast) {
     publishRetained(topicStatus, online ? "online" : "offline");
     if (pcOnlineKnown) {
-      notify(online ? "PC เปิดสำเร็จ" : "PC ปิดสำเร็จ");
+      notify(online ? "PC เปิดสำเร็จ" : "PC ปิดสำเร็จ",
+             String("อุปกรณ์ ") + cfgDeviceId + (online ? " เปิดแล้ว" : " ปิดแล้ว"));
     }
     pcOnlineLast = online;
     pcOnlineKnown = true;
@@ -140,7 +158,8 @@ void mqttConnect() {
     if (!wasConnected) {
       // Best-effort only: we can't send anything while actually offline,
       // so this fires the moment we're back, not the moment we dropped.
-      notify("ESP32 กลับมาออนไลน์แล้ว (เพิ่งหลุด wifi/MQTT ก่อนหน้านี้)");
+      notify("ESP32 หลุดการเชื่อมต่อ (กลับมาแล้ว)",
+             String("อุปกรณ์ ") + cfgDeviceId + " เพิ่งหลุด wifi/MQTT ไปช่วงหนึ่ง แล้วกลับมาออนไลน์แล้ว");
     }
     wasConnected = true;
   } else {
@@ -159,7 +178,9 @@ void setupWifi() {
   WiFiManagerParameter pPass("pass", "MQTT password", cfgMqttPass, sizeof(cfgMqttPass));
   WiFiManagerParameter pDevice("device", "Device ID (a-z0-9, no spaces)", cfgDeviceId, sizeof(cfgDeviceId));
   WiFiManagerParameter pPcIp("pcip", "PC's LAN IP address", cfgPcIp, sizeof(cfgPcIp));
-  WiFiManagerParameter pNtfy("ntfy", "ntfy.sh topic name", cfgNtfyTopic, sizeof(cfgNtfyTopic));
+  WiFiManagerParameter pGmailUser("gmailuser", "Gmail address (sends notifications)", cfgGmailUser, sizeof(cfgGmailUser));
+  WiFiManagerParameter pGmailPass("gmailpass", "Gmail app password (16 chars, not your real password)", cfgGmailAppPass, sizeof(cfgGmailAppPass));
+  WiFiManagerParameter pNotifyTo("notifyto", "Send notifications to (blank = same as Gmail address)", cfgNotifyTo, sizeof(cfgNotifyTo));
 
   wm.addParameter(&pHost);
   wm.addParameter(&pPort);
@@ -167,7 +188,9 @@ void setupWifi() {
   wm.addParameter(&pPass);
   wm.addParameter(&pDevice);
   wm.addParameter(&pPcIp);
-  wm.addParameter(&pNtfy);
+  wm.addParameter(&pGmailUser);
+  wm.addParameter(&pGmailPass);
+  wm.addParameter(&pNotifyTo);
 
   wm.setConfigPortalTimeout(300); // 5 min, then reboot and retry rather than block forever
 
@@ -183,7 +206,9 @@ void setupWifi() {
   strlcpy(cfgMqttPass, pPass.getValue(), sizeof(cfgMqttPass));
   strlcpy(cfgDeviceId, pDevice.getValue(), sizeof(cfgDeviceId));
   strlcpy(cfgPcIp, pPcIp.getValue(), sizeof(cfgPcIp));
-  strlcpy(cfgNtfyTopic, pNtfy.getValue(), sizeof(cfgNtfyTopic));
+  strlcpy(cfgGmailUser, pGmailUser.getValue(), sizeof(cfgGmailUser));
+  strlcpy(cfgGmailAppPass, pGmailPass.getValue(), sizeof(cfgGmailAppPass));
+  strlcpy(cfgNotifyTo, pNotifyTo.getValue(), sizeof(cfgNotifyTo));
 
   // WiFiManager only persists the wifi SSID/password itself. The custom
   // params above are read back into cfg* here and saved to NVS via
@@ -200,7 +225,9 @@ void loadPrefs() {
   prefs.getString("pass", cfgMqttPass, sizeof(cfgMqttPass));
   prefs.getString("device", cfgDeviceId, sizeof(cfgDeviceId));
   prefs.getString("pcip", cfgPcIp, sizeof(cfgPcIp));
-  prefs.getString("ntfy", cfgNtfyTopic, sizeof(cfgNtfyTopic));
+  prefs.getString("gmailuser", cfgGmailUser, sizeof(cfgGmailUser));
+  prefs.getString("gmailpass", cfgGmailAppPass, sizeof(cfgGmailAppPass));
+  prefs.getString("notifyto", cfgNotifyTo, sizeof(cfgNotifyTo));
   prefs.end();
 }
 
@@ -212,7 +239,9 @@ void savePrefs() {
   prefs.putString("pass", cfgMqttPass);
   prefs.putString("device", cfgDeviceId);
   prefs.putString("pcip", cfgPcIp);
-  prefs.putString("ntfy", cfgNtfyTopic);
+  prefs.putString("gmailuser", cfgGmailUser);
+  prefs.putString("gmailpass", cfgGmailAppPass);
+  prefs.putString("notifyto", cfgNotifyTo);
   prefs.end();
 }
 

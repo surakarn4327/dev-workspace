@@ -11,7 +11,7 @@
    (GitHub Pages)                            (ฟรี, ไม่ผูกบัตร)             เมนบอร์ด + ping เช็คสถานะ
                                                                               |
                                                                               v
-                                                                          ntfy.sh (push แจ้งเตือน)
+                                                                    Gmail SMTP (ส่งอีเมลแจ้งเตือน)
 ```
 
 ไม่มี backend ของตัวเอง ไม่ต้อง port-forward — ทั้งเว็บแอปและ ESP32 ต่อออกไปหา broker กลาง
@@ -45,20 +45,23 @@ pc-controller/
 เก็บ 4 อย่างนี้ไว้ใช้ทั้งฝั่ง ESP32 และเว็บแอป: **host, username, password** และ **device ID** ที่จะตั้งเอง
 (เช่น `pc01` — ตัวเล็ก ไม่มีเว้นวรรค ใช้ชื่อเดียวกันทั้งสองฝั่ง)
 
-### 2. ตั้งค่า ntfy.sh (ฟรี ไม่ต้องสมัครสมาชิก)
+### 2. สร้าง Gmail App Password (ฟรี ไม่ต้องสมัครอะไรใหม่)
 
-1. ติดตั้งแอป **ntfy** บนมือถือ (มีใน App Store / Play Store)
-2. ตั้งชื่อ topic ที่ไม่ซ้ำใคร (topic ของ ntfy.sh เป็นสาธารณะ ใครรู้ชื่อ topic ก็ subscribe อ่านได้ —
-   ตั้งชื่อยาวๆ สุ่มๆ กันคนอื่นเดาถูก เช่น `pc-ctrl-a7f2c91`)
-3. เปิดแอป ntfy กด "+" subscribe topic ชื่อนั้น
-4. เอาชื่อ topic นี้ไปกรอกตอนตั้งค่า ESP32 (ขั้นตอนถัดไป)
+ใช้ Gmail ที่มีอยู่แล้วให้ ESP32 ส่งอีเมลแจ้งเตือนแทนตัวเองได้ ไม่ต้องพึ่งบริการภายนอกเพิ่ม
+แต่ Google ไม่ให้แอปภายนอกใช้รหัสผ่านจริงส่งอีเมล ต้องสร้าง "app password" แยกต่างหาก:
+
+1. เปิด 2-Step Verification ก่อน (ถ้ายังไม่ได้เปิด) ที่ https://myaccount.google.com/security
+2. ไปที่ https://myaccount.google.com/apppasswords
+3. ตั้งชื่ออะไรก็ได้ (เช่น `pc-controller`) แล้วกด Create
+4. Google จะโชว์รหัส 16 หลัก (เช่น `abcd efgh ijkl mnop`) — **คัดลอกเก็บไว้ ปิดหน้าแล้วจะดูซ้ำไม่ได้**
+5. เก็บอีเมล Gmail + รหัส 16 หลักนี้ไว้ ใช้ตอนตั้งค่า ESP32 (ขั้นตอนถัดไป) — **อย่าใช้รหัสผ่านจริงของบัญชี Google**
 
 ### 3. Flash + ตั้งค่า ESP32
 
 ดูรายละเอียดทั้งหมด (ไลบรารี, การต่อสาย, ขั้นตอน captive portal) ที่ [firmware/README.md](firmware/README.md)
 
 สรุปสั้นๆ: flash `firmware/pc-controller.ino` → เปิดเครื่อง → ต่อมือถือเข้า wifi
-`PC-Controller-Setup` → กรอก wifi บ้าน + HiveMQ host/user/pass + device ID + IP คอม + ntfy topic
+`PC-Controller-Setup` → กรอก wifi บ้าน + HiveMQ host/user/pass + device ID + IP คอม + Gmail address/app password
 
 ### 4. ตั้งค่า + deploy เว็บแอป
 
