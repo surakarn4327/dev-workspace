@@ -1,20 +1,26 @@
-name: CI
+name: pc-controller CI
 
 on:
   push:
     branches: [main]
+    paths: ['pc-controller/**']
   pull_request:
     branches: [main]
+    paths: ['pc-controller/**']
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pc-controller
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: 'pc-controller/.nvmrc'
           cache: 'npm'
+          cache-dependency-path: pc-controller/package-lock.json
       - run: npm ci
       - run: npm run build --if-present
       - run: npm test --if-present
