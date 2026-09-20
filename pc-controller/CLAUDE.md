@@ -31,8 +31,13 @@ npm run preview                 # preview build ที่ build เสร็จ�
   ดูรายละเอียดไลบรารี/การต่อสายที่ [firmware/README.md](firmware/README.md)
 - `scripts/gen-icons.mjs` — สคริปต์ one-off สร้างไอคอน PWA (`public/icon-192.png`, `icon-512.png`)
   รันด้วย `node scripts/gen-icons.mjs` เฉพาะตอนอยากเปลี่ยนไอคอน ไม่ใช่ส่วนของ build ปกติ
-- `.github/workflows/ci.yml` — type-check+build ทุก push/PR ที่แตะไฟล์ในโฟลเดอร์นี้
-- `.github/workflows/pc-controller-deploy.yml` — build+deploy ขึ้น GitHub Pages เมื่อ push `main`
+- workflow files อยู่ที่ **root ของ dev-workspace repo** ไม่ใช่ในโฟลเดอร์นี้ (GitHub Actions มองไม่เห็น
+  `.github/workflows/` ที่อยู่ในโฟลเดอร์ย่อยของ monorepo เลย — เจอเป็นบั๊กจริงตอน deploy ครั้งแรก
+  ดู [bugs.md](bugs.md)): [`../.github/workflows/pc-controller-ci.yml`](../.github/workflows/pc-controller-ci.yml)
+  (type-check+build ทุก push/PR) และ
+  [`../.github/workflows/pc-controller-deploy.yml`](../.github/workflows/pc-controller-deploy.yml)
+  (build+deploy ขึ้น GitHub Pages เมื่อ push `main`) — ทั้งคู่มี `paths: ['pc-controller/**']` กรองไว้
+  แล้ว จะรันเฉพาะตอนแตะไฟล์ในโฟลเดอร์นี้เท่านั้น
 
 ## กฎเฉพาะของโปรเจกต์นี้
 

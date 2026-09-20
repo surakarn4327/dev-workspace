@@ -67,3 +67,24 @@ wifi storage ของตัวชิปเอง (คนละที่กั�
   [firmware/README.md](firmware/README.md#เช็คสถานะเปิดปิดด้วย-arp-แทน-ping) — อุปกรณ์ปฏิเสธ ARP
   ไม่ได้ (ต่างจาก ICMP ที่ Windows เลือกเพิกเฉยได้) เลยไม่ต้องพึ่งการตั้งค่า firewall ของเครื่องเป้าหมาย
   เลย ทนทานกว่าเดิมมาก โดยเฉพาะกรณีลง Windows ใหม่หรือย้าย ESP32 ไปคอมเครื่องอื่น
+
+---
+
+## 5. GitHub Actions มองไม่เห็น workflow ที่อยู่ในโฟลเดอร์ย่อยของ monorepo
+
+**อาการ**: push ขึ้น GitHub แล้ว รอ workflow deploy รันแต่ไม่มีอะไรเกิดขึ้นเลย เช็คผ่าน
+`gh api repos/.../actions/runs` และ `.../actions/workflows` เจอ `"total_count": 0` ทั้งคู่ —
+GitHub ไม่รู้จัก workflow นี้อยู่เลย ทั้งที่ push ไฟล์ `.yml` ขึ้นไปแล้วจริง (เช็คด้วย
+`gh api repos/.../contents/pc-controller/.github/workflows` ยืนยันว่าไฟล์อยู่บน remote จริง)
+
+**สาเหตุ**: `new-project.ps1` (สคริปต์ scaffold กลางของ workspace) สร้าง `.github/workflows/ci.yml`
+ไว้ **ข้างในโฟลเดอร์ของแต่ละโปรเจกต์** (เช่น `pc-controller/.github/workflows/`) แต่ **GitHub Actions
+จะอ่าน workflow เฉพาะจาก `.github/workflows/` ที่ root ของ repo เท่านั้น** — ไม่มองเข้าไปในโฟลเดอร์ย่อย
+เลยแม้แต่น้อย นี่คือข้อจำกัดของ GitHub เอง ไม่ใช่บั๊กที่แก้ผ่าน config ได้ ปัญหานี้น่าจะกระทบ **ทุก
+โปรเจกต์อื่นในเดียวกัน**ที่ใช้ scaffold script เดียวกันนี้ด้วย (ยังไม่ได้ไปเช็ค/แก้โปรเจกต์อื่น)
+
+**วิธีแก้**: ย้าย `pc-controller/.github/workflows/*.yml` ไปไว้ที่
+[`dev-workspace/.github/workflows/`](../.github/workflows/) (root ของ repo) ตั้งชื่อไฟล์แบบมี prefix
+`pc-controller-` กันชนกับ workflow ของโปรเจกต์อื่นในอนาคต และใส่ `paths: ['pc-controller/**']` +
+`defaults.run.working-directory: pc-controller` ไว้ในแต่ละ workflow เพื่อให้รันเฉพาะตอนแตะไฟล์ใน
+โฟลเดอร์นี้ และ build ในโฟลเดอร์ที่ถูกต้อง
