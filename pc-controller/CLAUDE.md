@@ -31,13 +31,14 @@ npm run preview                 # preview build ที่ build เสร็จ�
   ดูรายละเอียดไลบรารี/การต่อสายที่ [firmware/README.md](firmware/README.md)
 - `scripts/gen-icons.mjs` — สคริปต์ one-off สร้างไอคอน PWA (`public/icon-192.png`, `icon-512.png`)
   รันด้วย `node scripts/gen-icons.mjs` เฉพาะตอนอยากเปลี่ยนไอคอน ไม่ใช่ส่วนของ build ปกติ
-- workflow files อยู่ที่ **root ของ dev-workspace repo** ไม่ใช่ในโฟลเดอร์นี้ (GitHub Actions มองไม่เห็น
+- CI workflow อยู่ที่ **root ของ dev-workspace repo** ไม่ใช่ในโฟลเดอร์นี้ (GitHub Actions มองไม่เห็น
   `.github/workflows/` ที่อยู่ในโฟลเดอร์ย่อยของ monorepo เลย — เจอเป็นบั๊กจริงตอน deploy ครั้งแรก
-  ดู [bugs.md](bugs.md)): [`../.github/workflows/pc-controller-ci.yml`](../.github/workflows/pc-controller-ci.yml)
-  (type-check+build ทุก push/PR) และ
-  [`../.github/workflows/pc-controller-deploy.yml`](../.github/workflows/pc-controller-deploy.yml)
-  (build+deploy ขึ้น GitHub Pages เมื่อ push `main`) — ทั้งคู่มี `paths: ['pc-controller/**']` กรองไว้
-  แล้ว จะรันเฉพาะตอนแตะไฟล์ในโฟลเดอร์นี้เท่านั้น
+  ดู [bugs.md](bugs.md)):
+  [`../.github/workflows/pc-controller-ci.yml`](../.github/workflows/pc-controller-ci.yml)
+  (type-check+build ทุก push/PR ที่แตะไฟล์ในโฟลเดอร์นี้ — มี `paths: ['pc-controller/**']` กรองไว้แล้ว)
+- **deploy ใช้ Vercel** (ไม่ใช่ GitHub Pages) เพราะ `dev-workspace` เป็น private repo และ GitHub Pages
+  ไม่รองรับ private repo บน free tier — Vercel เชื่อม git แล้ว auto-deploy เอง ไม่มี workflow แยก
+  ดูขั้นตอนตั้งค่าที่ [README.md](README.md)
 
 ## กฎเฉพาะของโปรเจกต์นี้
 
@@ -48,7 +49,7 @@ npm run preview                 # preview build ที่ build เสร็จ�
   เล็กน้อย (ดูเหตุผลใน README.md) — อย่าเปลี่ยนกลับไปใช้ broker แบบมี credential โดยไม่ถามก่อน
 - เช็คสถานะคอมด้วย **ARP** (`arpCheckOnline()` ใน firmware) ไม่ใช่ ICMP ping ธรรมดา เพราะ Windows
   บล็อก ping โดย default — อย่าเปลี่ยนกลับไปใช้ ping ตรงๆ โดยไม่ถามก่อน (จะพังเงียบๆ บน Windows)
-- `vite.config.ts` มี `base: '/dev-workspace/pc-controller/'` ตาม GitHub Pages URL ที่คาดไว้ —
-  ถ้า URL จริงต่างไป ต้องแก้ค่านี้ก่อน deploy จะใช้งานได้ถูกพาธ
+- `vite.config.ts` ไม่มี `base` กำหนดไว้ (default `/`) เพราะ Vercel เสิร์ฟที่ root ของโดเมนตัวเอง
+  ไม่ใช่ subpath แบบ GitHub Pages — ถ้าย้าย hosting ไปที่อื่นที่เสิร์ฟใน subpath ต้องเพิ่มค่านี้กลับ
 - ขอบเขตยังไม่รวม MT5 auto-start/กด Algo Trading อัตโนมัติ — เป็นเฟสถัดไปที่ตั้งใจแยกไว้
   อย่าขยายสโคปเข้ามาที่นี่โดยไม่ถามก่อน

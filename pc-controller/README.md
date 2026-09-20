@@ -8,7 +8,7 @@
 ```
 [เว็บแอป PWA]  <--wss (MQTT/WebSocket)-->  [broker.emqx.io]  <--mqtts-->  [ESP32 + relay]
    มือถือ                                    broker สาธารณะ                ต่อกับสวิตช์ power
-   (GitHub Pages)                            (ฟรี ไม่ต้องสมัคร             เมนบอร์ด + เช็คสถานะ
+   (Vercel)                                  (ฟรี ไม่ต้องสมัคร             เมนบอร์ด + เช็คสถานะ
                                               ไม่มี username/password)      ด้วย ARP (ไม่ใช่ ping)
                                                                               |
                                                                               v
@@ -31,9 +31,12 @@
 pc-controller/
 ├── src/            เว็บแอป PWA (Vite + TypeScript, ไม่มี framework)
 ├── firmware/       โค้ด ESP32 (Arduino .ino) — เปิดด้วย Arduino IDE แยกต่างหาก ไม่ใช่ npm
-├── scripts/        สคริปต์ one-off (เช่น gen-icons.mjs สร้างไอคอน PWA)
-└── .github/workflows/   CI + deploy ขึ้น GitHub Pages
+└── scripts/        สคริปต์ one-off (เช่น gen-icons.mjs สร้างไอคอน PWA)
 ```
+
+CI (type-check+build) อยู่ที่ [`../.github/workflows/pc-controller-ci.yml`](../.github/workflows/pc-controller-ci.yml)
+(root ของ repo — ดูเหตุผลใน [bugs.md](bugs.md)) ส่วน deploy ใช้ Vercel's git integration เอง
+ไม่มี workflow แยกสำหรับ deploy
 
 ## ตั้งค่าใช้งานจริง (ทำตามลำดับ)
 
@@ -71,17 +74,22 @@ npm run dev -- --port 5170     # ทดสอบก่อน deploy จริง
 กับตั้งชื่ออุปกรณ์ที่อยากให้แสดงบนหน้าจอ ไม่ต้องกรอก host/พอร์ต/รหัสผ่านอะไรเลย (broker เป็นค่าคงที่
 ในโค้ดอยู่แล้ว)
 
-deploy ขึ้น GitHub Pages (workflow จะรันอัตโนมัติเมื่อ push ขึ้น `main` ที่แตะไฟล์ในโฟลเดอร์นี้):
+**deploy ผ่าน Vercel** (ไม่ใช้ GitHub Pages เพราะ `dev-workspace` เป็น private repo — GitHub Pages
+ต้องการ repo public หรืออัปเกรดเป็นเสียเงินถึงจะใช้ได้ ส่วน Vercel free tier รองรับ private repo
+ได้ตรงๆ ดู [bugs.md](bugs.md)):
 
-```bash
-npm run build
-```
-
-**ขั้นตอนเดียวที่ต้องทำเองครั้งแรกบน GitHub**: ไปที่ repo `dev-workspace` → Settings → Pages →
-Source เลือก **"GitHub Actions"** (ไม่ใช่ "Deploy from a branch") มิฉะนั้น workflow deploy จะรันไม่ได้
-
-URL ที่ได้ควรเป็น `https://<username>.github.io/dev-workspace/pc-controller/` — ถ้า URL จริงต่างจากนี้
-ให้แก้ค่า `base` ใน [vite.config.ts](vite.config.ts) ให้ตรงกับพาธจริง แล้ว build+deploy ใหม่
+1. เข้า https://vercel.com → **Add New → Project**
+2. เลือก repo `dev-workspace` จากรายการ GitHub ที่เชื่อมไว้แล้ว
+3. ตั้งค่า:
+   - **Root Directory** → กด Edit เลือก `pc-controller` (สำคัญมาก — ไม่งั้น Vercel จะพยายาม build
+     ทั้ง monorepo ที่ root ซึ่งไม่มี `package.json`)
+   - **Framework Preset** → Vercel ควร detect เป็น "Vite" อัตโนมัติหลังตั้ง Root Directory ถูก
+   - Build Command / Output Directory ปล่อยเป็นค่า default ของ Vite preset ได้เลย (`npm run build`,
+     `dist`)
+4. กด **Deploy** — เสร็จแล้ว Vercel จะ auto-deploy ทุกครั้งที่ push ขึ้น `main` ที่แตะไฟล์ในโฟลเดอร์นี้
+   เอง ไม่ต้องตั้ง GitHub Actions อะไรเพิ่ม
+5. ได้ URL แบบ `https://pc-controller-xxxx.vercel.app` (หรือตั้งชื่อโปรเจกต์เองใน Vercel ให้ URL
+   สั้นลงได้)
 
 ### 5. ติดตั้งเป็นไอคอนบนหน้าจอมือถือ (PWA)
 

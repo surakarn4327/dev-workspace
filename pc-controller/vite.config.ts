@@ -1,11 +1,9 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// Base path matches this project's GitHub Pages URL:
-// https://<user>.github.io/dev-workspace/pc-controller/
-// Adjust if the Pages source/path is set up differently.
+// Deployed on Vercel with the project root set to this folder (see README.md),
+// so it's served at its own domain root — no subpath base needed.
 export default defineConfig({
-  base: '/dev-workspace/pc-controller/',
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',

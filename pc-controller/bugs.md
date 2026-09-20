@@ -88,3 +88,22 @@ GitHub ไม่รู้จัก workflow นี้อยู่เลย ท�
 `pc-controller-` กันชนกับ workflow ของโปรเจกต์อื่นในอนาคต และใส่ `paths: ['pc-controller/**']` +
 `defaults.run.working-directory: pc-controller` ไว้ในแต่ละ workflow เพื่อให้รันเฉพาะตอนแตะไฟล์ใน
 โฟลเดอร์นี้ และ build ในโฟลเดอร์ที่ถูกต้อง
+
+---
+
+## 6. GitHub Pages ใช้กับ private repo ไม่ได้ (ต้อง public หรืออัปเกรดเสียเงิน)
+
+**อาการ**: workflow deploy รันผ่าน build สำเร็จ แต่ step `actions/deploy-pages@v4` fail ด้วย
+`Failed to create deployment (status: 404) ... Ensure GitHub Pages has been enabled` — เข้าไปดูหน้า
+repo Settings → Pages เจอข้อความ "Upgrade or make this repository public to enable Pages"
+
+**สาเหตุ**: GitHub Pages (ฟรี) ใช้ได้เฉพาะกับ **public repo** เท่านั้น ส่วน private repo ต้องอัปเกรด
+เป็นแผนเสียเงินถึงจะเปิด Pages ได้ — `dev-workspace` เป็น private repo โดยตั้งใจตามกฎ workspace
+(มีโค้ดโปรเจกต์อื่นที่ไม่อยากเปิดเผย) เลยเปิด Pages ไม่ได้เลยไม่ว่าจะตั้งค่า workflow ถูกแค่ไหนก็ตาม
+เป็นข้อจำกัดของ GitHub เอง ไม่ใช่บั๊กที่แก้ผ่าน workflow config ได้
+
+**วิธีแก้**: เปลี่ยนไปใช้ **Vercel** แทน — ฟรี ไม่ผูกบัตร รองรับ deploy จาก private repo ได้ตรงๆ
+(เชื่อมผ่าน GitHub App ที่ขอสิทธิ์เฉพาะ repo ไม่ทำให้ repo เป็น public) ตั้งค่า **Root Directory**
+เป็น `pc-controller` ในหน้า Vercel project settings แล้วปล่อยให้ Vercel auto-deploy ทุกครั้งที่ push
+เอง ไม่ต้องมี GitHub Actions workflow สำหรับ deploy อีกต่อไป (ลบ `pc-controller-deploy.yml` ทิ้ง
+เหลือแค่ `pc-controller-ci.yml` ไว้ type-check) — ดูขั้นตอนเต็มใน [README.md](README.md)
