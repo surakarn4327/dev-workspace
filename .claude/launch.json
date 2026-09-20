@@ -1,4 +1,19 @@
 {
     "version":  "0.0.1",
-    "configurations":  []
+    "configurations":  [
+                           {
+                               "name":  "pc-controller",
+                               "runtimeExecutable":  "npm",
+                               "runtimeArgs":  [
+                                                   "--prefix",
+                                                   "pc-controller",
+                                                   "run",
+                                                   "dev",
+                                                   "--",
+                                                   "--port",
+                                                   "5170"
+                                               ],
+                               "port":  5170
+                           }
+                       ]
 }
