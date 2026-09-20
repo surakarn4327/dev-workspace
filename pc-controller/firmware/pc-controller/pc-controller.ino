@@ -44,7 +44,7 @@ extern "C" {
 
 static const char* AP_NAME = "PC-Controller-Setup";
 static const int RELAY_PIN = 23;
-static const bool RELAY_ACTIVE_HIGH = true;
+static const bool RELAY_ACTIVE_HIGH = false; // most low-cost single-channel relay modules trigger on LOW, not HIGH
 static const unsigned long HOLD_MS = 1000; // relay contact-closure duration (not the app's hold-to-confirm gesture, that's separate in src/main.ts)
 
 static const unsigned long PING_INTERVAL_MS = 60000;
