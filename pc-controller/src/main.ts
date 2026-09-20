@@ -1,6 +1,6 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import './style.css';
-import { loadSettings, saveSettings, clearSettings, topics, type BrokerSettings } from './settings';
+import { loadSettings, saveSettings, clearSettings, topics, MQTT_HOST, MQTT_WSS_PORT, MQTT_WSS_PATH, type BrokerSettings } from './settings';
 import { registerSW } from 'virtual:pwa-register';
 
 registerSW({ immediate: true });
@@ -26,13 +26,9 @@ function renderSetup(existing?: BrokerSettings): HTMLElement {
   wrap.className = 'screen setup';
   wrap.innerHTML = `
     <h1>+ เพิ่มอุปกรณ์</h1>
-    <p class="hint">กรอกข้อมูล HiveMQ Cloud cluster เดียวกับที่ตั้งค่าไว้บน ESP32</p>
+    <p class="hint">ใส่ Device ID เดียวกับที่ตั้งค่าไว้บน ESP32 (broker เป็นแบบสาธารณะ ไม่ต้องกรอก host/รหัสผ่านเอง)</p>
     <form id="setup-form">
-      <label>Broker host <input name="host" required placeholder="xxxxxxxx.s1.eu.hivemq.cloud" value="${existing?.host ?? ''}"></label>
-      <label>Port (WebSocket TLS) <input name="port" required type="number" placeholder="8884" value="${existing?.port ?? 8884}"></label>
-      <label>Username <input name="username" required value="${existing?.username ?? ''}"></label>
-      <label>Password <input name="password" required type="password" value="${existing?.password ?? ''}"></label>
-      <label>Device ID <input name="deviceId" required placeholder="pc01" value="${existing?.deviceId ?? ''}"></label>
+      <label>Device ID <input name="deviceId" required placeholder="pc-x9f3k2m8q1" value="${existing?.deviceId ?? ''}"></label>
       <label>ชื่ออุปกรณ์ (แสดงบนหน้าจอ) <input name="deviceName" required placeholder="คอมห้องทำงาน" value="${existing?.deviceName ?? ''}"></label>
       <button type="submit">บันทึกและเชื่อมต่อ</button>
       ${existing ? '<button type="button" id="reset-btn" class="danger">ลบการตั้งค่าอุปกรณ์นี้</button>' : ''}
@@ -49,10 +45,6 @@ function renderSetup(existing?: BrokerSettings): HTMLElement {
     const form = e.currentTarget as HTMLFormElement;
     const data = new FormData(form);
     const settings: BrokerSettings = {
-      host: String(data.get('host')).trim(),
-      port: Number(data.get('port')),
-      username: String(data.get('username')).trim(),
-      password: String(data.get('password')),
       deviceId: String(data.get('deviceId')).trim(),
       deviceName: String(data.get('deviceName')).trim(),
     };
@@ -103,9 +95,7 @@ function renderMain(settings: BrokerSettings): HTMLElement {
   setConnState('connecting', connLine);
   const t = topics(settings.deviceId);
 
-  client = mqtt.connect(`wss://${settings.host}:${settings.port}/mqtt`, {
-    username: settings.username,
-    password: settings.password,
+  client = mqtt.connect(`wss://${MQTT_HOST}:${MQTT_WSS_PORT}${MQTT_WSS_PATH}`, {
     protocolVersion: 4,
     reconnectPeriod: 3000,
     clientId: `webapp-${Math.random().toString(16).slice(2)}`,

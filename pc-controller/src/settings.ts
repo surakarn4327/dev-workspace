@@ -1,8 +1,12 @@
+// Public EMQX test broker: free, no account, no credentials. Trades a
+// little privacy (anyone who guesses your device ID could publish to your
+// topics) for a much simpler setup — mitigated by picking a long, random
+// device ID, the same way you'd pick an unguessable ntfy.sh topic name.
+export const MQTT_HOST = 'broker.emqx.io';
+export const MQTT_WSS_PORT = 8084;
+export const MQTT_WSS_PATH = '/mqtt';
+
 export interface BrokerSettings {
-  host: string;
-  port: number;
-  username: string;
-  password: string;
   deviceId: string;
   deviceName: string;
 }
