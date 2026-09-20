@@ -58,7 +58,7 @@ pc-controller/
 
 ดูรายละเอียดทั้งหมด (ไลบรารี, การต่อสาย, ขั้นตอน captive portal) ที่ [firmware/README.md](firmware/README.md)
 
-สรุปสั้นๆ: flash `firmware/pc-controller.ino` → เปิดเครื่อง → ต่อมือถือเข้า wifi
+สรุปสั้นๆ: flash `firmware/pc-controller/pc-controller.ino` → เปิดเครื่อง → ต่อมือถือเข้า wifi
 `PC-Controller-Setup` → กรอก wifi บ้าน + HiveMQ host/user/pass + device ID + IP คอม + Discord webhook URL
 
 ### 4. ตั้งค่า + deploy เว็บแอป

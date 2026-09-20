@@ -25,8 +25,9 @@ npm run preview                 # preview build ที่ build เสร็จ�
 - `src/` — เว็บแอป PWA (Vite + TypeScript vanilla ไม่มี framework) คุยกับ ESP32 ผ่าน MQTT
   over WebSocket (HiveMQ Cloud) ด้วย `mqtt.js`; `src/settings.ts` เก็บ/อ่าน broker config จาก
   `localStorage`, `src/main.ts` เป็น UI ทั้งหมด (หน้าตั้งค่า + หน้าปุ่มกดเปิด/ปิด)
-- `firmware/pc-controller.ino` — โค้ด ESP32 (Arduino) แยกจาก npm/vite build โดยสิ้นเชิง
-  เปิดด้วย Arduino IDE เอง ดูรายละเอียดไลบรารี/การต่อสายที่ [firmware/README.md](firmware/README.md)
+- `firmware/pc-controller/pc-controller.ino` — โค้ด ESP32 (Arduino) แยกจาก npm/vite build โดยสิ้นเชิง
+  (ชื่อโฟลเดอร์ย่อยต้องตรงกับชื่อไฟล์ `.ino` ตามกฎของ Arduino) เปิดด้วย Arduino IDE เอง
+  ดูรายละเอียดไลบรารี/การต่อสายที่ [firmware/README.md](firmware/README.md)
 - `scripts/gen-icons.mjs` — สคริปต์ one-off สร้างไอคอน PWA (`public/icon-192.png`, `icon-512.png`)
   รันด้วย `node scripts/gen-icons.mjs` เฉพาะตอนอยากเปลี่ยนไอคอน ไม่ใช่ส่วนของ build ปกติ
 - `.github/workflows/ci.yml` — type-check+build ทุก push/PR ที่แตะไฟล์ในโฟลเดอร์นี้

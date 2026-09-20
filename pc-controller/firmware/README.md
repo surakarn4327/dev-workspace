@@ -22,7 +22,7 @@
 |---|---|---|
 | WiFiManager | tzapu | captive portal ตั้งค่า wifi + broker ครั้งแรก |
 | PubSubClient | knolleary | MQTT client (ใช้คู่กับ `WiFiClientSecure` เพื่อทำ TLS) |
-| ESP32Ping | marian-craciunescu | ping IP คอมเพื่อเช็คสถานะเปิด/ปิด |
+| ESPping | dvarrel (สืบทอดจาก ESP32Ping เดิมของ marian-craciunescu) | ping IP คอมเพื่อเช็คสถานะเปิด/ปิด |
 
 แจ้งเตือนใช้ Discord webhook ยิง HTTPS POST ตรงๆ ผ่าน `HTTPClient`/`WiFiClientSecure` ที่มากับ esp32 core
 อยู่แล้ว ไม่ต้องลงไลบรารีเพิ่ม

@@ -17,14 +17,14 @@
 // Required libraries (Arduino Library Manager):
 //   - WiFiManager (tzapu/WiFiManager)
 //   - PubSubClient (knolleary/PubSubClient)
-//   - ESP32Ping (marian-craciunescu/ESP32Ping)
+//   - ESPping (dvarrel/ESPping — successor to the original ESP32Ping)
 // Board: "ESP32 Dev Module" (esp32 core by Espressif)
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 #include <PubSubClient.h>
-#include <ESP32Ping.h>
+#include <ESPping.h>
 #include <Preferences.h>
 #include <HTTPClient.h>
 
