@@ -1,19 +1,4 @@
 {
     "version":  "0.0.1",
-    "configurations":  [
-                           {
-                               "name":  "trader-helper",
-                               "runtimeExecutable":  "npm",
-                               "runtimeArgs":  [
-                                                   "--prefix",
-                                                   "trader-helper",
-                                                   "run",
-                                                   "dev",
-                                                   "--",
-                                                   "-p",
-                                                   "3000"
-                                               ],
-                               "port":  3000
-                           }
-                       ]
+    "configurations":  []
 }
