@@ -107,3 +107,24 @@ repo Settings → Pages เจอข้อความ "Upgrade or make this rep
 เป็น `pc-controller` ในหน้า Vercel project settings แล้วปล่อยให้ Vercel auto-deploy ทุกครั้งที่ push
 เอง ไม่ต้องมี GitHub Actions workflow สำหรับ deploy อีกต่อไป (ลบ `pc-controller-deploy.yml` ทิ้ง
 เหลือแค่ `pc-controller-ci.yml` ไว้ type-check) — ดูขั้นตอนเต็มใน [README.md](README.md)
+
+---
+
+## 7. กดปุ่ม power ครั้งเดียว แต่คอมเปิดแล้วดับเองภายในไม่กี่วินาที
+
+**อาการ**: ทดสอบจริงบน production (`pc-controller-eight.vercel.app`) กดปุ่ม power ค้าง 3 วิครั้งเดียว
+— คอมเปิดติดจริง แต่ดับไปเองอีกครั้งภายในไม่กี่วินาทีถัดมา ทั้งที่ไม่ได้กดปุ่มซ้ำ
+
+**สาเหตุ** (ยังไม่ยืนยัน root cause 100% เพราะเหตุการณ์จริงไม่มี serial log คาอยู่ตอนนั้น แต่ระหว่าง
+ทดสอบก่อนหน้านี้ในเซสชันเดียวกัน เคยสังเกตว่า log `[mqtt] message ... toggle` / `[relay] pulse
+triggered` ขึ้น **ซ้ำ 2 ครั้ง** จากการจำลองกดปุ่มแค่ 1 ครั้งเหมือนกัน) — ตั้งสมมติฐานว่า ESP32 ได้รับ
+คำสั่ง `"toggle"` ซ้ำจาก MQTT (อาจเพราะ broker สาธารณะ `broker.emqx.io` ส่งข้อความซ้ำ หรือ resubscribe
+ซ้อนตอน reconnect) ทำให้ relay กดปุ่ม power **สองครั้งติดกัน** — ครั้งแรกเปิดเครื่อง ครั้งที่สอง (ที่ไม่
+ตั้งใจ) เหมือนไปกดปุ่ม power ซ้ำตอนเครื่องเปิดอยู่แล้ว ซึ่งเมนบอร์ด/Windows ส่วนใหญ่ตีความเป็นคำสั่ง
+shutdown ทันที
+
+**วิธีแก้**: [`firmware/pc-controller/pc-controller.ino`](firmware/pc-controller/pc-controller.ino)
+`onMqttMessage()` — เพิ่ม debounce ระดับเฟิร์มแวร์ (`TOGGLE_DEBOUNCE_MS = 2000`) เพิกเฉยคำสั่ง
+`"toggle"` ที่มาซ้ำภายใน 2 วินาทีจากครั้งก่อนหน้า ป้องกันปัญหานี้ได้ไม่ว่าสาเหตุจริงจะมาจากไหน (MQTT
+ส่งซ้ำ, เว็บแอป publish ซ้ำ, หรือผู้ใช้กดซ้ำโดยไม่ตั้งใจ) เพราะการกดค้าง 1 ครั้งไม่มีทางตั้งใจสั่ง toggle
+สองครั้งภายใน 2 วินาทีอยู่แล้ว

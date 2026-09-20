@@ -158,11 +158,24 @@ void publishRetained(const String& topic, const char* payload) {
   mqtt.publish(topic.c_str(), payload, true);
 }
 
+unsigned long lastToggleAt = 0;
+static const unsigned long TOGGLE_DEBOUNCE_MS = 2000; // ignore a second "toggle" this soon after the last one
+
 void onMqttMessage(char* topic, byte* payload, unsigned int len) {
   String msg;
   for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
   Serial.printf("[mqtt] message on %s: %s\n", topic, msg.c_str());
   if (String(topic) == topicCmd && msg == "toggle") {
+    // Debounced: a duplicate/retried MQTT delivery of the same command would
+    // otherwise press the power button a second time — which most
+    // motherboards read as "shut down" if the PC just turned on. One real
+    // button hold should never produce two toggles within 2 seconds.
+    unsigned long now = millis();
+    if (now - lastToggleAt < TOGGLE_DEBOUNCE_MS) {
+      Serial.println("[relay] duplicate toggle ignored (debounce)");
+      return;
+    }
+    lastToggleAt = now;
     triggerRelayPulse();
   }
 }
