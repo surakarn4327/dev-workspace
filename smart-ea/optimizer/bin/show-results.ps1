@@ -14,7 +14,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$OutName,
   [int]$Top = 20,
-  [ValidateSet('auto', 'ribbon', 'ribbon14', 'rangefade', 'rangefade15', 'sats')][string]$Layout = 'auto',
+  [ValidateSet('auto', 'ribbon', 'ribbon14', 'rangefade', 'rangefade15', 'sats', 'sdpaadx')][string]$Layout = 'auto',
   [switch]$All,          # คืนทุกแถวเป็นออบเจกต์ ไม่จัดตาราง (เอาไปกรองต่อเอง)
   [switch]$Raw           # ไม่กรองแถวคะแนน 0 ออก
 )
@@ -40,6 +40,9 @@ $layouts = @{
   sats      = @('symbol', 'tf', 'preset', 'atrLen', 'baseMult', 'qStr', 'qCurve', 'slMult',
                 'slMax', 'rr1', 'rr2', 'rr3', 'maxAge', 'tpMode', 'cfAge', 'cfHigh', 'cfLow',
                 'asym', 'riskPct') + $tail
+  sdpaadx   = @('symbol', 'tf', 'swingLeft', 'swingRight', 'zoneLookback', 'zonePips', 'zoneMaxAge',
+                'pinbarRatio', 'adxPeriod', 'minAdx', 'atrPeriod', 'slAtrMult', 'fixRrTp',
+                'tp1Atr', 'tp2Atr', 'tp3Atr', 'dynTpMin', 'dynTpMax', 'tpMode') + $tail
 }
 $shown = @{
   ribbon    = @('atrSL', 'atrMult', 'tpMode', 'rr1', 'rr3', 'be', 'shift', 'ma', 'closeOpp', 'trailAtr', 'trailAfter')
@@ -47,6 +50,8 @@ $shown = @{
   rangefade = @('bandPeriod', 'zEntry', 'tpMult', 'slMult', 'maxBars', 'trendMode', 'useRSI', 'rsiLow', 'rsiHigh', 'needTurn', 'hourFrom', 'hourTo')
   rangefade15 = @('bandPeriod', 'zEntry', 'tpMode', 'tpMult', 'slMult', 'maxBars', 'trendMode', 'useRSI', 'needTurn', 'cooldown')
   sats      = @('baseMult', 'slMult', 'cfAge', 'qStr', 'qCurve', 'asym', 'cfHigh', 'cfLow', 'tpMode', 'rr1', 'rr2', 'rr3', 'maxAge')
+  sdpaadx   = @('swingLeft', 'swingRight', 'zoneLookback', 'zonePips', 'zoneMaxAge', 'pinbarRatio',
+                'adxPeriod', 'minAdx', 'atrPeriod', 'slAtrMult', 'fixRrTp', 'tpMode')
 }
 
 $path = Join-Path (Split-Path -Parent $PSScriptRoot) "results\$OutName.csv"

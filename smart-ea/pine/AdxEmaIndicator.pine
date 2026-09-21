@@ -1,0 +1,96 @@
+// พอร์ตจาก smart-ea/src/AdxEmaCore.mqh (MQL5 EA "AdxEma") มาเป็น Pine indicator
+// สำหรับดูสัญญาณบน TradingView เฉยๆ — ไม่เปิดออร์เดอร์จริง (ไม่มีทุนเสี่ยง/lot/cutoff เหมือน EA)
+// ค่า default ทุกตัวตั้งตามผลรัน backtest จริงของผู้ใช้ที่
+// C:\Users\surak\Downloads\ADX-opt\ReportTester-184151619.html (2026-09-19) — ค่านี้มาจาก
+// optimization รอบใหญ่ ยังเป็น in-sample ล้วนๆ ยังไม่ผ่านการตรวจสอบ out-of-sample เลย — ดู
+// smart-ea/CLAUDE.md หัวข้อ AdxEma ก่อนเชื่อว่าค่านี้มี edge จริง (Net Profit ในรายงานนั้นสูงเกินจริง
+// มาก ~403% ใน 8.7 เดือน จากทุน 10,000 USC — ไม่สะท้อนโลกจริงของบัญชี cent ขนาดเล็ก)
+//
+// ต่างจาก EA อย่างไร: EA เข้าไม้จริงด้วย PositionLib.mqh ที่แนบ SL/TP กับ broker + มีฟีเจอร์ปิดไม้
+// เมื่อโมเมนตัมหมด (InpExitOnMomentumLoss) ตัวนี้แค่วาดลูกศร + เส้น SL/TP1-3 ไว้ดูเฉยๆ ไม่มีการจัดการ
+// exit หลังเข้าไม้แล้ว (indicator ไม่รู้จัก "มีไม้เปิดอยู่ไหม") ตรรกะ ADX/EMA/cross/filter เหมือนกันทุกจุด
+//@version=6
+indicator("AdxEma (ADX + EMA Momentum)", shorttitle = "AdxEma", overlay = true,
+     max_lines_count = 500, max_labels_count = 500)
+
+// ── [จูน] ADX + EMA Momentum Engine ──
+adxPeriod = input.int(8, "period ของ ADX (+DI/-DI/ADX main)", group = "ADX + EMA Momentum Engine")
+emaPeriod = input.int(40, "period ของ EMA ที่คำนวณจากค่า ADX main line เอง (Signal Line)", group = "ADX + EMA Momentum Engine")
+
+// ── [จูน] ตัวกรองสัญญาณ (No-Trade Zone) ──
+minAdxLevel = input.float(29, "ADX ต่ำกว่านี้ = ตลาดเงียบ/วอลลุ่มต่ำเกินไป ไม่นับสัญญาณ", group = "ตัวกรองสัญญาณ (No-Trade Zone)")
+minDiGap    = input.float(9.2, "+DI กับ -DI ต้องห่างกันอย่างน้อยเท่านี้ ไม่งั้นถือว่า sideway", group = "ตัวกรองสัญญาณ (No-Trade Zone)")
+
+// ── [จูน] ATR & SL/TP (โหมด Fix Multiple RR — แบ่งแสดง TP1/TP2/TP3 เหมือนที่ backtest ใช้จริง) ──
+atrPeriod  = input.int(84, "period ของ ATR ใช้คำนวณ SL/TP", group = "ATR & SL/TP")
+slAtrMult  = input.float(8, "SL = ราคาปิดแท่งสัญญาณ ∓ ATR x ค่านี้", group = "ATR & SL/TP")
+tp1AtrMult = input.float(17, "TP1 เป็นเท่าของ ATR", group = "ATR & SL/TP")
+tp2AtrMult = input.float(21, "TP2 เป็นเท่าของ ATR", group = "ATR & SL/TP")
+tp3AtrMult = input.float(15, "TP3 เป็นเท่าของ ATR", group = "ATR & SL/TP")
+
+// ── แสดงผล ──
+showSignals  = input.bool(true, "แสดงลูกศร Buy/Sell ตรงจุดสัญญาณ", group = "แสดงผล")
+showLevels   = input.bool(true, "แสดงเส้น SL/TP1-3 ตอนมีสัญญาณ", group = "แสดงผล")
+levelBarsFwd = input.int(20, "ความยาวเส้น SL/TP ไปข้างหน้า (แท่ง)", group = "แสดงผล")
+
+atrVal = ta.atr(atrPeriod)
+
+// ── ADX มาตรฐาน (+DI/-DI/ADX main) — สูตรเดียวกับ SdPaAdxIndicator.pine ──
+upMove   = ta.change(high)
+downMove = -ta.change(low)
+plusDM   = (upMove > downMove and upMove > 0) ? upMove : 0.0
+minusDM  = (downMove > upMove and downMove > 0) ? downMove : 0.0
+trur     = ta.rma(ta.tr(true), adxPeriod)
+plusDI   = 100 * ta.rma(plusDM, adxPeriod) / trur
+minusDI  = 100 * ta.rma(minusDM, adxPeriod) / trur
+dx       = 100 * math.abs(plusDI - minusDI) / (plusDI + minusDI)
+adxVal   = ta.rma(dx, adxPeriod)
+
+// ── EMA ของ ADX main line เอง (running EMA คำนวณเอง — ตรงกับ WarmupEma()/UpdateEma() ของ
+//    AdxEmaCore.mqh) เก็บค่าก่อนอัปเดตไว้ (emaAdxPrev) สำหรับเทียบ cross กับแท่งก่อนหน้า ──
+var float emaAdx     = na
+var float emaAdxPrev = na
+alpha = 2.0 / (emaPeriod + 1.0)
+
+if barstate.isconfirmed
+    emaAdxPrev := emaAdx
+    emaAdx := na(emaAdx) ? adxVal : alpha * adxVal + (1.0 - alpha) * emaAdx
+
+    // Cross up: แท่งก่อนหน้า ADX <= EMA แล้วแท่งล่าสุด ADX > EMA (โมเมนตัมเพิ่งเร่งตัว) — เงื่อนไข
+    // เดียวกันใช้ทั้ง BUY/SELL ตามที่ไกด์ผู้ใช้อธิบายตรงๆ ทิศทางมาจาก +DI/-DI แยกต่างหาก
+    crossUp = not na(emaAdxPrev) and adxVal[1] <= emaAdxPrev and adxVal > emaAdx
+
+    dir = 0
+    if crossUp and adxVal >= minAdxLevel and math.abs(plusDI - minusDI) >= minDiGap
+        dir := plusDI > minusDI ? 1 : -1
+
+    if dir != 0
+        refPrice = close
+        sl = refPrice - dir * slAtrMult * atrVal
+        // เรียง TP ใกล้→ไกลเสมอ (เหมือนที่แก้ใน EA 2026-09-19 กัน TP1>TP2 สลับลำดับ)
+        lo  = math.min(tp1AtrMult, math.min(tp2AtrMult, tp3AtrMult))
+        hi  = math.max(tp1AtrMult, math.max(tp2AtrMult, tp3AtrMult))
+        mid = tp1AtrMult + tp2AtrMult + tp3AtrMult - lo - hi
+        tp1 = refPrice + dir * lo  * atrVal
+        tp2 = refPrice + dir * mid * atrVal
+        tp3 = refPrice + dir * hi  * atrVal
+
+        if showSignals
+            label.new(bar_index, dir == 1 ? low : high, dir == 1 ? "BUY" : "SELL",
+                 style = dir == 1 ? label.style_label_up : label.style_label_down,
+                 color = dir == 1 ? color.blue : color.orange, textcolor = color.white,
+                 size = size.small, yloc = dir == 1 ? yloc.belowbar : yloc.abovebar)
+
+        if showLevels
+            x2 = bar_index + levelBarsFwd
+            line.new(bar_index, sl, x2, sl, color = color.red, style = line.style_dashed)
+            line.new(bar_index, tp1, x2, tp1, color = color.yellow, style = line.style_dotted)
+            line.new(bar_index, tp2, x2, tp2, color = color.lime, style = line.style_dotted)
+            line.new(bar_index, tp3, x2, tp3, color = color.green, style = line.style_solid)
+
+// ADX/EMA/DI ไม่โชว์เป็น sub-pane (สคริปต์นี้ overlay=true เพื่อวาดลูกศร/เส้นบนราคาได้) — ดูค่าจริง
+// ได้จาก Data Window แทน (คลิกขวาที่ชาร์ต → Data Window หรือกดปุ่มรูปตารางด้านขวา)
+plot(adxVal, "ADX", color = color.gray, display = display.data_window)
+plot(emaAdx, "EMA ของ ADX", color = color.yellow, display = display.data_window)
+plot(plusDI, "+DI", color = color.green, display = display.data_window)
+plot(minusDI, "-DI", color = color.red, display = display.data_window)

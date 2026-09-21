@@ -8,6 +8,11 @@
 #include "PositionLib.mqh"
 #include "TesterMetrics.mqh"
 
+// เวอร์ชันของ core นี้ — โชว์บน dashboard กันสับสนว่า EA ที่รันอยู่บนชาร์ตเป็นโค้ดล่าสุดหรือยัง
+// (อัปเดตคู่กับทุกครั้งที่แก้ SelfAwareTrendCore.mqh/PositionLib.mqh แล้ว compile ใหม่จริง)
+#define SATS_VERSION "1.2"
+#define SATS_UPDATED "18/09/26"
+
 // ค่าคงที่จาก constants section ของ Pine (ไม่ใช่ input เพราะต้นฉบับก็ไม่ใช่)
 const int    SATS_WARMUP_FLOOR  = 50;
 const int    SATS_MAX_HIST_SIGS = 100;
@@ -57,6 +62,9 @@ double   gPendingSl    = 0;
 double   gPendingTp1   = 0;
 double   gPendingTp2   = 0;
 double   gPendingTp3   = 0;
+// เวลาที่แท่งซึ่งเกิดสัญญาณนี้ปิด — ใช้เช็คตอน OnInit ว่ามีไม้จริงเข้าไปแล้วหลังจากนี้หรือยัง (กันบั๊ก
+// สัญญาณ "ฟื้น" ซ้ำหลัง reattach ทั้งที่ไม้จริงจากสัญญาณเดียวกันเคยเข้า+ปิดจบไปแล้ว ดู bugs.md 2026-09-18)
+datetime gPendingSignalTime = 0;
 
 double gActiveMultSm  = 0;
 double gPassiveMultSm = 0;
@@ -182,6 +190,8 @@ void SatsResolvePreset()
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   TG_LoadConfig(); // เช็ค/พิมพ์ log ทันทีว่าหา token/chat id เจอไหม แทนที่จะรอ event แรกเกิดก่อน
+
    SatsResolvePreset();
 
    hAtrMain = iATR(_Symbol, PERIOD_CURRENT, gAtrLen);
@@ -202,17 +212,24 @@ int OnInit()
    gLastTickMs = GetTickCount64();
    EventSetTimer(30); // เช็ค heartbeat ทุก 30 วิ (ไม่ต้องถี่กว่านี้ เกณฑ์ค้างคือ 2 นาที)
 
-   // handle ATR ที่เพิ่งสร้างอาจยังคำนวณ buffer ไม่ครบทันที (พบบ่อยตอน attach ใหม่ๆ) —
-   // รอให้พร้อมก่อน replay ไม่งั้น SatsAtrAt จะได้ 0 แล้วโดนตีความว่า "ไม่มีสัญญาณ" ผิดๆ
-   int wantBars = iBars(_Symbol, PERIOD_CURRENT);
-   int waited = 0;
-   while(BarsCalculated(hAtrMain) < wantBars - 2 && waited < 100)
+   // SatsReplayHistory() มีไว้แก้ปัญหา "ไม้พลาด" ตอน reattach บัญชีจริง/demo เท่านั้น (ไล่ย้อนหลัง
+   // หาสัญญาณที่เกิดช่วง EA ปิดอยู่) — ใน Strategy Tester ไม่มี "ช่วงที่ EA หายไป" ให้ไล่ตามจริง
+   // (เริ่มจากบาร์ 0 ใหม่ทุก pass) รันแบบไม่มีเงื่อนไขจึงเปลืองเวลาทุก pass โดยไม่มีประโยชน์ ยิ่ง
+   // InpTradeMaxAge สูงยิ่งช้า (ดู bugs.md 2026-09-18) — ข้ามทั้ง 2 จุดนี้เมื่อรันใน Tester/Optimization
+   if(!MQLInfoInteger(MQL_TESTER))
    {
-      Sleep(50);
-      waited++;
-   }
+      // handle ATR ที่เพิ่งสร้างอาจยังคำนวณ buffer ไม่ครบทันที (พบบ่อยตอน attach ใหม่ๆ) —
+      // รอให้พร้อมก่อน replay ไม่งั้น SatsAtrAt จะได้ 0 แล้วโดนตีความว่า "ไม่มีสัญญาณ" ผิดๆ
+      int wantBars = iBars(_Symbol, PERIOD_CURRENT);
+      int waited = 0;
+      while(BarsCalculated(hAtrMain) < wantBars - 2 && waited < 100)
+      {
+         Sleep(50);
+         waited++;
+      }
 
-   SatsReplayHistory();
+      SatsReplayHistory();
+   }
    // ต้อง sync หลัง replay เสมอ (replay จำลองไม้เสมือนจากศูนย์ ไม่รู้จักไม้จริง — ถ้า sync
    // ก่อน replay จะโดน gMtOpenBar ที่ replay ไม่ได้แตะอยู่แล้วก็จริง แต่ปลอดภัยกว่าให้ sync
    // เป็นขั้นตอนสุดท้ายเสมอ กันโค้ดในอนาคตมาแทรกระหว่างกลางแล้วลืมลำดับ)
@@ -243,6 +260,18 @@ int OnInit()
    if(hasRealPosition && gHavePending)
    {
       Print("มีสัญญาณเก่าที่ซ้ำกับไม้ที่เปิดอยู่แล้ว จึงยกเลิกสัญญาณนั้นทิ้ง");
+      gHavePending = false;
+   }
+   // แก้บั๊ก 2026-09-18: เคสข้างบน (hasRealPosition) ครอบคลุมแค่ตอนไม้จริงยัง "เปิดอยู่" ตอน reattach
+   // แต่ถ้าไม้จริงจากสัญญาณเดียวกันเข้าไปแล้ว "ปิดจบไปก่อน" reattach (โดน SL/TP/timeout ไปแล้ว)
+   // hasRealPosition จะเป็น false ทำให้เช็คข้างบนไม่จับ — สัญญาณ replay ฟื้นซ้ำเข้าไม้ setup เดิมที่จบ
+   // ไปแล้วอีกรอบ (เจอจริง 2026-09-18: ไม้หลักโดน SL ไปแล้ว แต่ reattach แล้วเข้าไม้ย้อนหลังซ้ำที่ราคา
+   // ตลาดตอนนั้นซึ่งอยู่ชิดขอบ SL เดิมมาก ทำให้ lot พองผิดปกติ (60+ lot) — ดู bugs.md) เช็คประวัติ
+   // ดีลจริงว่ามีไม้เข้าเกิดขึ้นหลังจากสัญญาณนี้เกิดหรือยัง ถ้ามีแปลว่าถูกเทรดไปแล้วจริง ไม่ว่าผลจะเป็น
+   // ยังไง ไม่ควรฟื้นกลับมาเข้าซ้ำอีก
+   else if(gHavePending && PL_HasEntrySince(InpMagic, gPendingSignalTime))
+   {
+      Print("สัญญาณเก่าถูกเทรดไปแล้วจริงตั้งแต่ก่อน reattach (เจอไม้เข้าในประวัติหลังจากสัญญาณนี้เกิด) — ยกเลิกทิ้ง กันเข้าไม้ซ้ำ setup เดิม");
       gHavePending = false;
    }
    else if(gHavePending)
@@ -330,7 +359,9 @@ void SatsDrawDashboard()
    const int colGap = 170; // ระยะจากขอบซ้ายกล่องถึงคอลัมน์ value — เผื่อ label ไทยยาวสุด
 
    bool hasPos = (gMtDir != 0);
-   int rowCount = 1 + (hasPos ? 4 : 1) + 5 + 1; // header + ไม้ + (balance/equity/วันนี้/เวลา/pending) + เหตุการณ์ล่าสุด
+   // แถว TP: usePartials=true โชว์ TP1/TP2/TP3 แยกบรรทัด (3 แถว), false โชว์ TP เดียว (=TP3, 1 แถว)
+   int tpRows = InpUsePartials ? 3 : 1;
+   int rowCount = 1 + 1 + (hasPos ? (4 + tpRows) : 1) + 5 + 1; // header + version + ไม้ + (balance/equity/วันนี้/เวลา/pending) + เหตุการณ์ล่าสุด
    int panelW = 360;
    int panelH = padTop + rowCount * dy + 30 + padBottom; // +30 = ช่องว่าง+เส้นคั่น 3 จุดระหว่างกลุ่ม
 
@@ -354,6 +385,21 @@ void SatsDrawDashboard()
    bool ok = (statusText == "กำลังทำงาน");
    color accentClr = ok ? clrLimeGreen : clrTomato;
 
+   // แจ้ง Telegram เฉพาะสถานะ Algo Trading/บัญชี/broker (edge-trigger) — คำนวณแยกจาก statusText
+   // ข้างบน เพราะ statusText ผสม gLastProblem เข้ามาด้วย ซึ่ง "ค้าง" ตลอดไปหลัง set ครั้งแรก (ไม่มีจุด
+   // reset กลับเป็น "" ที่ไหนเลยในโค้ดเดิม) ถ้าเอา statusText ตรงๆ มา edge-trigger จะยิงซ้ำกับ
+   // TG_NotifyProblem ที่จุดเข้า/ปิดไม้ไม่สำเร็จ และค้างสถานะ "มีปัญหา" ไม่มีวันกลับเป็นปกติจน EA รีสตาร์ท
+   string tgStatus;
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) || !MQLInfoInteger(MQL_TRADE_ALLOWED))
+      tgStatus = "ปิด Algo Trading อยู่";
+   else if(!AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+      tgStatus = "บัญชีไม่อนุญาตให้ EA เทรด";
+   else if((ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_MODE) != SYMBOL_TRADE_MODE_FULL)
+      tgStatus = "broker ปิดเทรด " + _Symbol + " ชั่วคราว";
+   else
+      tgStatus = "กำลังทำงาน";
+   TG_NotifyStatus(_Symbol, tgStatus, tgStatus == "กำลังทำงาน");
+
    int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
    int boxX = MathMax(0, chartW - 5 - panelW);
    int boxY = 5;
@@ -369,6 +415,11 @@ void SatsDrawDashboard()
    PL_DashLabel(prefix + "title", "SATS " + _Symbol + " " + tf, xLabel, y, clrSilver, FS, CN, AN);
    PL_DashLabel(prefix + "status", statusText, xValue, y, accentClr, FS, CN, AN);
    y += dy;
+
+   PL_DashLabel(prefix + "ver_l", "Version", xLabel, y, clrGray, FS, CN, AN);
+   PL_DashLabel(prefix + "ver_v", "v" + SATS_VERSION + " · " + SATS_UPDATED, xValue, y, clrGray, FS, CN, AN);
+   y += dy;
+
    PL_DashPanelBg(prefix + "div1", boxX + 8, y + 5, panelW - 16, 1, C'58,63,77', C'58,63,77', CN);
    y += 10;
 
@@ -383,6 +434,40 @@ void SatsDrawDashboard()
       PL_DashLabel(prefix + "sl_v", DoubleToString(gMtSlInit, _Digits) + " / " + DoubleToString(gMtLot, 2),
                    xValue, y, clrWhite, FS, CN, AN);
       y += dy;
+
+      // แถว TP — เพิ่ม 2026-09-18 ตามคำขอผู้ใช้ บอกกำไร (+currency) ถ้าราคาไปถึงจุดนั้นจริง
+      // usePartials=false: TP1/TP2 ไม่มีการปิดไม้จริง (แค่ useBe ขยับ SL เฉยๆ) โชว์แค่ TP3 เต็ม lot
+      // usePartials=true: แตะ TP1/TP2 ปิดจริง 1/3 lot ต่อจุด (gMtPartVol) ที่เหลือปิดที่ TP3
+      if(InpUsePartials)
+      {
+         double volLast = MathMax(gMtLot - 2.0 * gMtPartVol, 0.0);
+         double gain1 = gMtPartVol * (MathAbs(gMtTp1 - gMtEntry) / InpRiskPointUnit);
+         double gain2 = gMtPartVol * (MathAbs(gMtTp2 - gMtEntry) / InpRiskPointUnit);
+         double gain3 = volLast    * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
+
+         PL_DashLabel(prefix + "tp1_l", "TP1", xLabel, y, clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp1_v", DoubleToString(gMtTp1, _Digits) + " (+" + DoubleToString(gain1, 0) + " " + curr + ")",
+                      xValue, y, clrLimeGreen, FS, CN, AN);
+         y += dy;
+
+         PL_DashLabel(prefix + "tp2_l", "TP2", xLabel, y, clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp2_v", DoubleToString(gMtTp2, _Digits) + " (+" + DoubleToString(gain2, 0) + " " + curr + ")",
+                      xValue, y, clrLimeGreen, FS, CN, AN);
+         y += dy;
+
+         PL_DashLabel(prefix + "tp3_l", "TP3", xLabel, y, clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp3_v", DoubleToString(gMtTp3, _Digits) + " (+" + DoubleToString(gain3, 0) + " " + curr + ")",
+                      xValue, y, clrLimeGreen, FS, CN, AN);
+         y += dy;
+      }
+      else
+      {
+         double gainTp = gMtLot * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
+         PL_DashLabel(prefix + "tp_l", "TP", xLabel, y, clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp_v", DoubleToString(gMtTp3, _Digits) + " (+" + DoubleToString(gainTp, 0) + " " + curr + ")",
+                      xValue, y, clrLimeGreen, FS, CN, AN);
+         y += dy;
+      }
 
       PL_DashLabel(prefix + "risk_l", "Risk (" + curr + ")", xLabel, y, clrSilver, FS, CN, AN);
       PL_DashLabel(prefix + "risk_v", DoubleToString(gTradeRiskUsd, 0) + " " + curr, xValue, y, clrWhite, FS, CN, AN);
@@ -402,6 +487,13 @@ void SatsDrawDashboard()
       PL_DashLabel(prefix + "pos_l", "Position", xLabel, y, clrSilver, FS, CN, AN);
       PL_DashLabel(prefix + "pos_v", "ไม่มีไม้เปิดอยู่", xValue, y, clrSilver, FS, CN, AN);
       y += dy;
+
+      // แก้บั๊ก 2026-09-18: เดิมตอนไม่มีไม้เปิดอยู่ label แถวเฉพาะตอนมีไม้ (SL/TP/Risk/P&L) จากรอบก่อน
+      // ไม่เคยถูกลบเลย ค้างลอยอยู่ใต้กล่องที่ย่อสั้นลงแล้ว — ลบทิ้งทุกครั้งที่ไม่มีไม้เปิดอยู่
+      string posOnly[] = {"sl_l","sl_v","tp_l","tp_v","tp1_l","tp1_v","tp2_l","tp2_v","tp3_l","tp3_v",
+                          "risk_l","risk_v","pl_l","pl_v"};
+      for(int pi = 0; pi < ArraySize(posOnly); pi++)
+         ObjectDelete(0, prefix + posOnly[pi]);
    }
 
    PL_DashPanelBg(prefix + "div2", boxX + 8, y + 5, panelW - 16, 1, C'58,63,77', C'58,63,77', CN);
@@ -463,12 +555,21 @@ void OnTimer()
    if(!TerminalInfoInteger(TERMINAL_CONNECTED))
    {
       gLastProblem = "ขาดการเชื่อมต่อกับ broker";
+      TG_NotifyProblemOnce("disconnected", _Symbol, gLastProblem, "🔌");
       return;
    }
+   TG_ClearProblemKind("disconnected"); // เชื่อมต่อกลับมาแล้ว เปิดสิทธิ์แจ้งซ้ำได้ถ้าหลุดอีกรอบ
 
    double idleSec = (GetTickCount64() - gLastTickMs) / 1000.0;
    if(idleSec > SATS_HEARTBEAT_MAX_SEC)
+   {
+      // dedupe ตามสาเหตุ ไม่ใช่ข้อความเป๊ะๆ — เลขนาทีเปลี่ยนทุกรอบ 30 วิ ถ้า dedupe แบบเทียบ string
+      // ตรงๆ จะไม่มีทางซ้ำเลย ส่งรัวทุก 30 วิจนกว่าจะหาย
       gLastProblem = StringFormat("ไม่มี tick เข้ามา %d นาทีแล้ว เช็คการเชื่อมต่อ", (int)(idleSec / 60));
+      TG_NotifyProblemOnce("heartbeat_stuck", _Symbol, gLastProblem, "⚠️");
+   }
+   else
+      TG_ClearProblemKind("heartbeat_stuck");
 }
 
 //+------------------------------------------------------------------+
@@ -713,7 +814,7 @@ void SatsOpen(const int dir, const double atrValue, const double tqi, const doub
 
    gTradeRiskUsd = SatsRiskUsd();
    if(PL_Open(dir, tSl, tp1, tp2, tp3, gTradeRiskUsd, InpRiskPointUnit,
-              InpMagic, "SATS", InpUsePartials, gBar, InpShowChartObjects))
+              InpMagic, "SATS", InpUsePartials, gBar, InpShowChartObjects, InpUseBe))
    {
       gCnt_Entry++;
       PrintFormat("เกิดสัญญาณใหม่: %s : %s | SL : %s | Lot : %.2f | Risk : %.2f | Balance : %.2f",
@@ -727,10 +828,13 @@ void SatsOpen(const int dir, const double atrValue, const double tqi, const doub
 //+------------------------------------------------------------------+
 //| ปิดไม้แล้วบันทึกผลเป็น R เข้า self-learning                           |
 //+------------------------------------------------------------------+
-void SatsRecordClosedPosition()
+// คืนค่า true + netOut = กำไร/ขาดทุนจริงรวม swap/commission ถ้าบันทึกสำเร็จ — ผู้เรียกใช้ netOut
+// ต่อแจ้ง Telegram ได้เลยโดยไม่ต้องวนลูปอ่านประวัติดีลซ้ำอีกรอบ
+bool SatsRecordClosedPosition(double &netOut)
 {
-   if(gMtPosId == 0 || gTradeRiskUsd <= 0) return;
-   if(!HistorySelectByPosition((long)gMtPosId)) return;
+   netOut = 0;
+   if(gMtPosId == 0 || gTradeRiskUsd <= 0) return false;
+   if(!HistorySelectByPosition((long)gMtPosId)) return false;
    double net = 0;
    int deals = HistoryDealsTotal();
    for(int i = 0; i < deals; i++)
@@ -744,6 +848,8 @@ void SatsRecordClosedPosition()
            + HistoryDealGetDouble(d, DEAL_COMMISSION);
    }
    SatsRecordR(net / gTradeRiskUsd);
+   netOut = net;
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -928,7 +1034,9 @@ void SatsOnBar()
    if(gMtDir != 0 && gBar - gMtOpenBar >= InpTradeMaxAge)
    {
       PL_CloseAll(InpMagic);
-      SatsRecordClosedPosition();
+      double closedNet;
+      if(SatsRecordClosedPosition(closedNet))
+         TG_NotifyClose(_Symbol, "ถือนานเกินกำหนด", closedNet, AccountInfoString(ACCOUNT_CURRENCY));
       gMtPosId = 0;
       gCnt_Timeout++;
       Print("ไม้ปิดแล้ว: ถือไม้นานเกินกำหนด ปิดอัตโนมัติ");
@@ -940,11 +1048,14 @@ void SatsOnBar()
    {
       int oldDir = gMtDir;
       PL_CloseAll(InpMagic);
-      SatsRecordClosedPosition();
+      double closedNet;
+      string flipReason = StringFormat("กลับทิศ (%s→%s)", PL_DirStr(oldDir), PL_DirStr(-oldDir));
+      if(SatsRecordClosedPosition(closedNet))
+         TG_NotifyClose(_Symbol, flipReason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
       gMtPosId = 0;
       gCnt_FlipExit++;
       PrintFormat("ไม้ปิดแล้ว: สัญญาณกลับทิศ (%s → %s) รอเข้าไม้ใหม่", PL_DirStr(oldDir), PL_DirStr(-oldDir));
-      PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: กลับทิศ (%s→%s)", PL_DirStr(oldDir), PL_DirStr(-oldDir)));
+      PL_SetLastEvent("ไม้ปิดแล้ว: " + flipReason);
    }
 
    // diagnostic เฉพาะ flip ที่เกิด "สด" เท่านั้น (SatsOnBar ถูกเรียกจาก OnTick อย่างเดียว ไม่ถูก
@@ -980,13 +1091,14 @@ void SatsOnBar()
                            PL_DirStr(gPendingDir), DoubleToString(gPendingEntry, _Digits)));
             }
 
-            gHavePending  = true;
-            gPendingDir   = flipUp ? 1 : -1;
-            gPendingEntry = e;
-            gPendingSl    = s;
-            gPendingTp1   = t1;
-            gPendingTp2   = t2;
-            gPendingTp3   = t3;
+            gHavePending      = true;
+            gPendingDir       = flipUp ? 1 : -1;
+            gPendingEntry     = e;
+            gPendingSl        = s;
+            gPendingTp1       = t1;
+            gPendingTp2       = t2;
+            gPendingTp3       = t3;
+            gPendingSignalTime = iTime(_Symbol, PERIOD_CURRENT, 1);
 
             PrintFormat("เกิดสัญญาณใหม่: %s : %s | SL : %s — อยู่นอกเวลาเทรด (%s) เก็บสัญญาณไว้รอเข้าไม้ย้อนหลังเมื่อถึงเวลา (%s)",
                         PL_DirStr(gPendingDir), DoubleToString(e, _Digits), DoubleToString(s, _Digits),
@@ -1022,6 +1134,7 @@ void SatsReplayHistory()
    int    virtDir     = 0;
    double virtEntry = 0, virtSl = 0, virtTp1 = 0, virtTp2 = 0, virtTp3 = 0;
    int    virtOpenBar = 0;
+   datetime virtSignalTime = 0; // เวลาที่แท่งซึ่งเกิดสัญญาณนี้ปิด — ส่งต่อเป็น gPendingSignalTime
 
    // สัญญาณที่เจอระหว่าง replay แต่ติด cutoff/ยังไม่ถึงเวลาเริ่ม (InpTradeStartServerHour) ตอนนั้น —
    // แยกจาก virt* เพราะยังไม่ได้ "เปิด" จริงแม้แต่ในแบบจำลอง แค่รอราคาแตะช่วง entry↔SL ตอนเวลาเปิดแล้ว
@@ -1030,6 +1143,7 @@ void SatsReplayHistory()
    // replay ไม่รู้จักมันเลย
    int    blockDir   = 0;
    double blockEntry = 0, blockSl = 0, blockTp1 = 0, blockTp2 = 0, blockTp3 = 0;
+   datetime blockSignalTime = 0;
 
    for(int i = steps; i >= 1; i--)
    {
@@ -1064,6 +1178,7 @@ void SatsReplayHistory()
             virtTp2     = blockTp2;
             virtTp3     = blockTp3;
             virtOpenBar = gBar;
+            virtSignalTime = blockSignalTime;
             blockDir    = 0;
          }
       }
@@ -1106,6 +1221,7 @@ void SatsReplayHistory()
                virtTp2     = t2;
                virtTp3     = t3;
                virtOpenBar = gBar;
+               virtSignalTime = barTime;
             }
             else
             {
@@ -1115,6 +1231,7 @@ void SatsReplayHistory()
                blockTp1   = t1;
                blockTp2   = t2;
                blockTp3   = t3;
+               blockSignalTime = barTime;
             }
          }
       }
@@ -1124,23 +1241,25 @@ void SatsReplayHistory()
 
    if(virtDir != 0)
    {
-      gHavePending  = true;
-      gPendingDir   = virtDir;
-      gPendingEntry = virtEntry;
-      gPendingSl    = virtSl;
-      gPendingTp1   = virtTp1;
-      gPendingTp2   = virtTp2;
-      gPendingTp3   = virtTp3;
+      gHavePending      = true;
+      gPendingDir       = virtDir;
+      gPendingEntry     = virtEntry;
+      gPendingSl        = virtSl;
+      gPendingTp1       = virtTp1;
+      gPendingTp2       = virtTp2;
+      gPendingTp3       = virtTp3;
+      gPendingSignalTime = virtSignalTime;
    }
    else if(blockDir != 0)
    {
-      gHavePending  = true;
-      gPendingDir   = blockDir;
-      gPendingEntry = blockEntry;
-      gPendingSl    = blockSl;
-      gPendingTp1   = blockTp1;
-      gPendingTp2   = blockTp2;
-      gPendingTp3   = blockTp3;
+      gHavePending      = true;
+      gPendingDir       = blockDir;
+      gPendingEntry     = blockEntry;
+      gPendingSl        = blockSl;
+      gPendingTp1       = blockTp1;
+      gPendingTp2       = blockTp2;
+      gPendingTp3       = blockTp3;
+      gPendingSignalTime = blockSignalTime;
    }
 }
 
@@ -1163,7 +1282,7 @@ void SatsTryCatchup()
    gTradeRiskUsd = SatsRiskUsd();
    if(PL_Open(gPendingDir, gPendingSl, gPendingTp1, gPendingTp2, gPendingTp3,
               gTradeRiskUsd, InpRiskPointUnit, InpMagic, "SATS-catchup", InpUsePartials, gBar,
-              InpShowChartObjects))
+              InpShowChartObjects, InpUseBe))
    {
       gCnt_Entry++;
       PrintFormat("เข้าไม้ย้อนหลังสำเร็จ: %s : %s | SL : %s | Lot : %.2f | Risk : %.2f | Balance : %.2f",
@@ -1182,18 +1301,25 @@ void OnTick()
    gLastTickMs = GetTickCount64(); // heartbeat — ดู OnTimer()
 
    // ไม้ปิดเองโดย broker (SL/TP) → บันทึกผลเข้า self-learning ก่อนรีเซ็ต
+   // (แจ้ง Telegram ทำที่ PL_ClassifyClosed() ผ่าน PL_Manage() ด้านล่างแทน ไม่ต้องซ้ำที่นี่)
    if(gMtDir != 0 && !PL_HasPosition(InpMagic))
-      SatsRecordClosedPosition();
+   {
+      double unusedNet;
+      SatsRecordClosedPosition(unusedNet);
+   }
 
    // day-trade เท่านั้น ห้ามถือข้ามคืน — เลยเวลาตัดรอบแล้วคัตไม้ที่เหลือทั้งหมดทันที (ปิดได้ที่ InpUseCutoff)
    if(InpUseCutoff && gMtDir != 0 && PL_PastCutoff(InpCutoffServerHour))
    {
       PL_CloseAll(InpMagic);
-      SatsRecordClosedPosition();
+      double closedNet;
+      string cutoffReason = StringFormat("หมดเวลาเทรด (%s)", PL_ThaiHourStr(InpCutoffServerHour));
+      if(SatsRecordClosedPosition(closedNet))
+         TG_NotifyClose(_Symbol, cutoffReason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
       gMtPosId = 0;
       gCnt_CutoffClose++;
       PrintFormat("ไม้ปิดแล้ว: หมดเวลาเทรดของวัน (%s) ปิดไม้อัตโนมัติตามกฎ", PL_ThaiHourStr(InpCutoffServerHour));
-      PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: หมดเวลาเทรด (%s)", PL_ThaiHourStr(InpCutoffServerHour)));
+      PL_SetLastEvent("ไม้ปิดแล้ว: " + cutoffReason);
    }
 
    PL_Manage(InpMagic, InpUsePartials, InpUseBe, false);

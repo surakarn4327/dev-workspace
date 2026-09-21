@@ -27,7 +27,14 @@ param(
   [string]$ExecutionMode = '37',                     # หน่วง ms จำลอง slippage — 0 = ได้ราคาดีเกินจริง
   [string]$Deposit = '10000',                        # เงินฝากตั้งต้น — ต้องเท่ากันทุกรอบถึงเทียบกันได้
   [string]$DumpDir = 'sats_opt',                      # โฟลเดอร์ที่ OnTester() ของ EA นั้นเขียนผลลง
-  [switch]$SkipPreflight                             # ข้ามด่านตรวจค่าใน GUI
+  [ValidateSet('0', '1', '2', '3', '4', '5', '6')][string]$OptCrit = '6',
+    # เกณฑ์ให้คะแนน optimize: 0=Balance 1=Profit factor 2=Expected payoff
+    # 3=Drawdown min 4=Recovery factor 5=Sharpe ratio 6=Custom max (OnTester())
+  [switch]$SkipPreflight,                            # ข้ามด่านตรวจค่าใน GUI
+  [switch]$KeepOpen                                  # ไม่ปิด MT5 อัตโนมัติหลังรันจบ (ดูผลใน GUI เองได้)
+                                                      # หมายเหตุ: ถ้าใช้ค่านี้ สคริปต์จะไม่รอ/เก็บผลให้
+                                                      # เอง เพราะไม่รู้ว่า MT5 จะปิดเมื่อไหร่ ต้องเก็บ
+                                                      # ไฟล์ผลจาก $dump เองหลังดูจบ (path พิมพ์ไว้ให้ท้ายสคริปต์)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,14 +57,22 @@ $out  = Join-Path $root "results\$OutName.csv"
 New-Item -ItemType Directory -Force -Path "$DataDir\MQL5\Profiles\Tester" | Out-Null
 Copy-Item (Join-Path $root "sets\$SetName.set") "$DataDir\MQL5\Profiles\Tester\" -Force
 
+# เช็คเฉพาะ instance ที่ตรงกับ -Terminal ที่จะสั่งรัน (ไม่ใช่ terminal64 ตัวไหนก็ได้)
+# เพราะเครื่องอื่น (เช่นตัวที่รัน EA จริงอยู่) ต้องปล่อยให้รันต่อไปได้ตามปกติ
+function Get-SameTerminalProcess {
+  Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object {
+    try { $_.Path -eq $Terminal } catch { $false }
+  }
+}
+
 # รอบก่อนหน้าอาจยังปิดตัวไม่สนิท (Start-Process -Wait คืนค่าก่อน process หายจริง)
 # รอสักครู่ก่อน แล้วค่อยยอมแพ้ ไม่งั้นสั่งรันติดกันหลายรอบจะสะดุดเปล่าๆ
 $waited = 0
-while ((Get-Process terminal64 -ErrorAction SilentlyContinue) -and $waited -lt 30) {
+while ((Get-SameTerminalProcess) -and $waited -lt 30) {
   Start-Sleep -Seconds 2; $waited += 2
 }
-if (Get-Process terminal64 -ErrorAction SilentlyContinue) {
-  throw "MT5 ยังเปิดอยู่หลังรอ $waited วินาที — ปิดเองแล้วสั่งใหม่"
+if (Get-SameTerminalProcess) {
+  throw "MT5 (instance เดียวกับ -Terminal) ยังเปิดอยู่หลังรอ $waited วินาที — ปิดเองแล้วสั่งใหม่"
 }
 
 # ด่านตรวจก่อนยิง: ช่องที่สั่งจากคอมมานด์ไลน์ไม่ได้ ต้องยังตรงกับที่ตั้งไว้ใน GUI
@@ -73,7 +88,7 @@ if (-not $SkipPreflight) {
   $want = @{
     Leverage = '100'         # 1:100
     Deposit  = "$Deposit.00"  # เงินฝากตั้งต้น — เคยค้างเป็น 3000 จากรอบตรวจ real tick แล้วผลเทียบกันไม่ได้
-    OptCrit  = '6'           # Custom max = คะแนนจาก OnTester()
+    OptCrit  = $OptCrit      # ค่า default 6 = Custom max (คะแนนจาก OnTester()) เปลี่ยนได้ผ่าน -OptCrit
   }
   # ช่วงวันที่ตรวจเฉพาะตอนที่ไม่ได้สั่งมาเอง
   if (-not $From) { $want['DateFrom'] = '1757462400' }  # 2025-09-10
@@ -102,12 +117,15 @@ $lines = @(
   "Symbol=$Symbol"
   "Period=$Period"
   "Optimization=$Optimization"
-  'OptimizationCriterion=6'          # 6 = Custom max ใช้คะแนนจาก OnTester()
+  "OptimizationCriterion=$OptCrit"
   "ExpertParameters=$SetName.set"
   "Model=$Model"                     # ต้องระบุเอง — MT5 รีเซ็ตช่องนี้ทุกครั้งที่เปิดด้วย /config
   "ExecutionMode=$ExecutionMode"     # เช่นเดียวกัน ไม่ระบุ = 0 ms ซึ่งได้ราคาดีเกินจริง
   "Deposit=$Deposit"
-  'ShutdownTerminal=1'
+  "Currency=USD"                     # บังคับ USD เสมอ กัน GUI ค้างเป็น USC จากรอบก่อนหน้า
+                                      # (เจอบั๊กจริง 2026-09-18 — USC ค้างจากรอบทดสอบ BTC ทำให้ lot
+                                      # พองเกิน 100 เท่าเงียบๆ จนไม้เปิดไม่ได้เลยทั้ง pass)
+  "ShutdownTerminal=$(if ($KeepOpen) { '0' } else { '1' })"
 )
 if ($From) { $lines += "FromDate=$From" }
 if ($To)   { $lines += "ToDate=$To" }
@@ -115,6 +133,12 @@ if ($To)   { $lines += "ToDate=$To" }
 
 Write-Host "รัน $Expert บน $Symbol $Period ด้วย $SetName ..." -ForegroundColor Cyan
 $t0 = Get-Date
+if ($KeepOpen) {
+  Start-Process -FilePath $Terminal -ArgumentList "/config:`"$ini`""
+  Write-Host "เปิด MT5 แล้ว (ไม่ปิดอัตโนมัติ) — ดูผลในแท็บ Optimization Results เอง" -ForegroundColor Green
+  Write-Host "ไฟล์ผลดิบ (ถ้าอยากเก็บเข้า results\ ทีหลัง) จะอยู่ที่: $dump" -ForegroundColor Yellow
+  return
+}
 Start-Process -FilePath $Terminal -ArgumentList "/config:`"$ini`"" -Wait
 $mins = [math]::Round(((Get-Date) - $t0).TotalMinutes, 1)
 

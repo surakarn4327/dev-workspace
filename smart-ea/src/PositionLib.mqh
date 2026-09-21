@@ -12,6 +12,7 @@
 #define POSITION_LIB_MQH
 
 #include <Trade\Trade.mqh>
+#include "TelegramNotify.mqh"
 
 CTrade gTrade;
 
@@ -209,8 +210,12 @@ void PL_SetLabel(const string name, const string text, const double price, const
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
 }
 
+// showTp12 = false ไม่วาดเส้น/label TP1-TP2 (ใช้ตอน usePartials/useBe ปิดทั้งคู่ — ไม้จะปิดที่ TP3
+// เท่านั้น เส้น TP1/TP2 ไม่มีความหมายกับผู้ใช้ตอนนั้น) ไม่กระทบค่า gMtTp1/gMtTp2 ภายในเลย ยังคำนวณ/
+// เก็บไว้เหมือนเดิมทุกอย่าง เพราะยังใช้เช็ค breakeven (ถ้า useBe เปิด) และตอน replay/catch-up
 void PL_DrawTrade(const string prefix, const int dir, const double entry,
-                   const double sl, const double tp1, const double tp2, const double tp3)
+                   const double sl, const double tp1, const double tp2, const double tp3,
+                   const bool showTp12 = true)
 {
    string an = prefix + "entry_arrow";
    ObjectCreate(0, an, dir == 1 ? OBJ_ARROW_BUY : OBJ_ARROW_SELL, 0, TimeCurrent(), entry);
@@ -219,10 +224,13 @@ void PL_DrawTrade(const string prefix, const int dir, const double entry,
 
    PL_SetHLine(prefix + "sl", sl, clrRed, STYLE_DASH);
    PL_SetLabel(prefix + "sl_lbl", "SL " + DoubleToString(sl, _Digits), sl, clrRed);
-   PL_SetHLine(prefix + "tp1", tp1, clrGold, STYLE_DOT);
-   PL_SetLabel(prefix + "tp1_lbl", "TP1 " + DoubleToString(tp1, _Digits), tp1, clrGold);
-   PL_SetHLine(prefix + "tp2", tp2, clrLime, STYLE_DOT);
-   PL_SetLabel(prefix + "tp2_lbl", "TP2 " + DoubleToString(tp2, _Digits), tp2, clrLime);
+   if(showTp12)
+   {
+      PL_SetHLine(prefix + "tp1", tp1, clrGold, STYLE_DOT);
+      PL_SetLabel(prefix + "tp1_lbl", "TP1 " + DoubleToString(tp1, _Digits), tp1, clrGold);
+      PL_SetHLine(prefix + "tp2", tp2, clrLime, STYLE_DOT);
+      PL_SetLabel(prefix + "tp2_lbl", "TP2 " + DoubleToString(tp2, _Digits), tp2, clrLime);
+   }
    PL_SetHLine(prefix + "tp3", tp3, clrGreen, STYLE_SOLID);
    PL_SetLabel(prefix + "tp3_lbl", "TP3 " + DoubleToString(tp3, _Digits), tp3, clrGreen);
    ChartRedraw();
@@ -262,6 +270,28 @@ bool PL_HasPosition(const long magic)
 {
    ulong t = 0;
    return PL_Select(magic, t);
+}
+
+//+------------------------------------------------------------------+
+//| มีไม้เข้าจริง (magic/symbol นี้) เกิดขึ้นตั้งแต่เวลา sinceTime เป็นต้นมาไหม |
+//| ใช้กันบั๊ก "สัญญาณค้างฟื้นซ้ำ" — สัญญาณที่ replay/pending เจอ ถ้ามีไม้จริง |
+//| เข้าไปแล้วหลังจากสัญญาณนั้นเกิด แปลว่าถูกเทรดไปแล้วจริง (ไม่ว่าจะได้/เสีย)  |
+//| ไม่ควรฟื้นกลับมาเข้าซ้ำอีก (ดู bugs.md 2026-09-18)                       |
+//+------------------------------------------------------------------+
+bool PL_HasEntrySince(const long magic, const datetime sinceTime)
+{
+   if(sinceTime <= 0) return false;
+   if(!HistorySelect(sinceTime, TimeCurrent())) return false;
+   int deals = HistoryDealsTotal();
+   for(int i = 0; i < deals; i++)
+   {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0) continue;
+      if(HistoryDealGetInteger(d, DEAL_MAGIC) != magic) continue;
+      if(HistoryDealGetString(d, DEAL_SYMBOL) != _Symbol) continue;
+      if(HistoryDealGetInteger(d, DEAL_ENTRY) == DEAL_ENTRY_IN) return true;
+   }
+   return false;
 }
 
 //+------------------------------------------------------------------+
@@ -305,6 +335,12 @@ bool PL_SyncOpenPosition(const long magic, const int currentGBar)
    int shift = iBarShift(_Symbol, PERIOD_CURRENT, openTime, false);
    gMtOpenBar = (shift >= 0) ? MathMax(0, currentGBar - shift) : currentGBar;
 
+   // แก้บั๊ก 2026-09-18: เดิมฟังก์ชันนี้ไม่เคยเรียก PL_SetLastEvent เลย ทำให้ "เหตุการณ์ล่าสุด" บน
+   // dashboard ค้างข้อความ/เวลาเก่าจากก่อน reattach ทั้งที่แถว Position sync ราคาใหม่ถูกต้องแล้ว —
+   // ใช้ openTime จริงของไม้ (ไม่ใช่ TimeCurrent() ตอน reattach) ให้เวลาที่โชว์ตรงกับตอนเปิดไม้จริง
+   gLastEvent     = StringFormat("เข้าไม้ (ซิงก์จากไม้เดิม): %s %s", PL_DirStr(gMtDir), DoubleToString(entry, _Digits));
+   gLastEventTime = openTime;
+
    return true;
 }
 
@@ -325,7 +361,7 @@ bool PL_Open(const int dir, const double slPrice,
              const double riskUsd, const double pointUnit,
              const long magic, const string cmt,
              const bool usePartials, const int barIdx,
-             const bool showChart = false)
+             const bool showChart = false, const bool useBe = false)
 {
    bool isLong  = (dir == 1);
    double entry = isLong ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
@@ -364,8 +400,11 @@ bool PL_Open(const int dir, const double slPrice,
    {
       gPlOpenFail++;
       gLastProblem = "เข้าไม้ไม่สำเร็จ";
+      string failReason = gTrade.ResultRetcodeDescription();
       PrintFormat("⚠️ เข้าไม้ไม่สำเร็จ: %s ที่ %s — broker ปฏิเสธ (%s)",
-                  PL_DirStr(dir), DoubleToString(entry, _Digits), gTrade.ResultRetcodeDescription());
+                  PL_DirStr(dir), DoubleToString(entry, _Digits), failReason);
+      TG_NotifyProblem(_Symbol, StringFormat("เข้าไม้ไม่สำเร็จ: %s ที่ %s\nเหตุผล: %s",
+                       PL_DirStr(dir), DoubleToString(entry, _Digits), failReason));
       return false;
    }
 
@@ -389,7 +428,13 @@ bool PL_Open(const int dir, const double slPrice,
    gPlOpened++;
 
    if(showChart)
-      PL_DrawTrade(PL_ChartPrefix(magic), dir, entry, slAdj, tp1Adj, tp2Adj, tp3Adj);
+      PL_DrawTrade(PL_ChartPrefix(magic), dir, entry, slAdj, tp1Adj, tp2Adj, tp3Adj,
+                   usePartials || useBe);
+
+   // จุดเดียวที่แจ้งเข้าไม้ — ครอบคลุมทั้งเข้าไม้สด (cmt="SATS") และเข้าไม้ย้อนหลัง
+   // (cmt="SATS-catchup") เพราะทั้งสองทางเรียก PL_Open() นี้เหมือนกัน ไม่ต้องแยกจุดเรียก
+   TG_NotifyEntry(_Symbol, dir, entry, slAdj, tp3Adj, lot, riskUsd, AccountInfoString(ACCOUNT_CURRENCY),
+                  AccountInfoDouble(ACCOUNT_BALANCE), StringFind(cmt, "catchup") >= 0);
 
    return true;
 }
@@ -409,8 +454,13 @@ void PL_CloseAll(const long magic)
    else
    {
       gLastProblem = "ปิดไม้ไม่สำเร็จ";
+      string failReason = gTrade.ResultRetcodeDescription();
       PrintFormat("⚠️ ปิดไม้ไม่สำเร็จ: ticket #%s — broker ปฏิเสธ (%s)",
-                  IntegerToString(ticket), gTrade.ResultRetcodeDescription());
+                  IntegerToString(ticket), failReason);
+      // ไม้ยังเปิดอยู่ (ปิดไม่สำเร็จ) — gMtDir/gMtEntry ยังไม่ถูกรีเซ็ต ใช้บอกทิศทาง/ราคาเข้าแทน
+      // ticket number เปล่าๆ ที่อ่านไม่รู้เรื่อง
+      TG_NotifyProblem(_Symbol, StringFormat("ปิดไม้ไม่สำเร็จ: %s (เข้าที่ %s)\nเหตุผล: %s",
+                       PL_DirStr(gMtDir), DoubleToString(gMtEntry, _Digits), failReason));
    }
 }
 
@@ -425,6 +475,9 @@ void PL_ClassifyClosed()
    long lastReason = -1;
    double lastPrice = 0;
    datetime lastTime = 0;
+   // กำไร/ขาดทุนรวม "ทุกดีลที่ออก" ของไม้นี้ ไม่ใช่แค่ดีลสุดท้าย — สำคัญเวลาเปิด partial close
+   // (usePartials) เพราะดีลสุดท้ายมีแค่ 1/3 lot ที่เหลือ ไม่ใช่กำไรรวมทั้งไม้
+   double totalProfit = 0;
    int deals = HistoryDealsTotal();
    for(int i = 0; i < deals; i++)
    {
@@ -432,6 +485,9 @@ void PL_ClassifyClosed()
       if(d == 0) continue;
       long entry = HistoryDealGetInteger(d, DEAL_ENTRY);
       if(entry != DEAL_ENTRY_OUT && entry != DEAL_ENTRY_OUT_BY) continue;
+      totalProfit += HistoryDealGetDouble(d, DEAL_PROFIT)
+                   + HistoryDealGetDouble(d, DEAL_SWAP)
+                   + HistoryDealGetDouble(d, DEAL_COMMISSION);
       datetime t = (datetime)HistoryDealGetInteger(d, DEAL_TIME);
       if(t >= lastTime)
       {
@@ -445,12 +501,16 @@ void PL_ClassifyClosed()
       gPlClosedTp++;
       PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: TP ที่ %s", DoubleToString(lastPrice, _Digits)));
       Print(gLastEvent);
+      TG_NotifyClose(_Symbol, StringFormat("TP ที่ %s", DoubleToString(lastPrice, _Digits)),
+                     totalProfit, AccountInfoString(ACCOUNT_CURRENCY));
    }
    else if(lastReason == DEAL_REASON_SL)
    {
       gPlClosedSl++;
       PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: SL ที่ %s", DoubleToString(lastPrice, _Digits)));
       Print(gLastEvent);
+      TG_NotifyClose(_Symbol, StringFormat("SL ที่ %s", DoubleToString(lastPrice, _Digits)),
+                     totalProfit, AccountInfoString(ACCOUNT_CURRENCY));
    }
    gMtPosId = 0;
 }
@@ -520,7 +580,10 @@ bool PL_Manage(const long magic, const bool usePartials,
       {
          double vol = PositionGetDouble(POSITION_VOLUME);
          if(vol - gMtPartVol >= SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN))
-            gTrade.PositionClosePartial(ticket, gMtPartVol);
+         {
+            if(gTrade.PositionClosePartial(ticket, gMtPartVol))
+               TG_NotifyPartial(_Symbol, "TP1", gMtTp1, gMtPartVol);
+         }
       }
       if(useBe && !gMtBeDone)
       {
@@ -528,7 +591,10 @@ bool PL_Manage(const long magic, const bool usePartials,
          // ต่างจาก gMtTp1/Tp2 ที่ชดเชยแล้วตั้งแต่ PL_Open — ต้องบวกเองตรงนี้
          double beSpread = isLong ? 0.0 : SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
          if(PL_MoveSl(ticket, gMtEntry + beSpread))
+         {
             gMtBeDone = true;
+            TG_NotifyBreakeven(_Symbol, gMtEntry + beSpread);
+         }
       }
    }
 
@@ -539,7 +605,10 @@ bool PL_Manage(const long magic, const bool usePartials,
       {
          double vol = PositionGetDouble(POSITION_VOLUME);
          if(vol - gMtPartVol >= SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN))
-            gTrade.PositionClosePartial(ticket, gMtPartVol);
+         {
+            if(gTrade.PositionClosePartial(ticket, gMtPartVol))
+               TG_NotifyPartial(_Symbol, "TP2", gMtTp2, gMtPartVol);
+         }
       }
       if(trailAfterTp2)
          PL_MoveSl(ticket, gMtTp1);
