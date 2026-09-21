@@ -11,24 +11,39 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 
 let client: MqttClient | null = null;
 
+function getDeviceIdFromUrl(): string | null {
+  const device = new URLSearchParams(window.location.search).get('device');
+  return device ? device.trim() : null;
+}
+
 function render(): void {
   const settings = loadSettings();
   app.innerHTML = '';
   if (!settings) {
-    app.appendChild(renderSetup());
+    const prefillDeviceId = getDeviceIdFromUrl();
+    if (prefillDeviceId) {
+      // Drop ?device= from the address bar once read so it doesn't linger
+      // in history/bookmarks or get re-read after the form is filled in.
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    app.appendChild(renderSetup(undefined, prefillDeviceId ?? undefined));
   } else {
     app.appendChild(renderMain(settings));
   }
 }
 
-function renderSetup(existing?: BrokerSettings): HTMLElement {
+function renderSetup(existing?: BrokerSettings, prefillDeviceId?: string): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'screen setup';
+  const deviceIdValue = existing?.deviceId ?? prefillDeviceId ?? '';
+  const hint = prefillDeviceId && !existing
+    ? 'Device ID กรอกให้จาก ESP32 อัตโนมัติแล้ว — แค่ตั้งชื่ออุปกรณ์แล้วกดบันทึก'
+    : 'ใส่ Device ID เดียวกับที่ตั้งค่าไว้บน ESP32 (broker เป็นแบบสาธารณะ ไม่ต้องกรอก host/รหัสผ่านเอง)';
   wrap.innerHTML = `
     <h1>+ เพิ่มอุปกรณ์</h1>
-    <p class="hint">ใส่ Device ID เดียวกับที่ตั้งค่าไว้บน ESP32 (broker เป็นแบบสาธารณะ ไม่ต้องกรอก host/รหัสผ่านเอง)</p>
+    <p class="hint">${hint}</p>
     <form id="setup-form">
-      <label>Device ID <input name="deviceId" required placeholder="pc-x9f3k2m8q1" value="${existing?.deviceId ?? ''}"></label>
+      <label>Device ID <input name="deviceId" required placeholder="pc-x9f3k2m8q1" value="${escapeHtml(deviceIdValue)}"></label>
       <label>ชื่ออุปกรณ์ (แสดงบนหน้าจอ) <input name="deviceName" required placeholder="คอมห้องทำงาน" value="${existing?.deviceName ?? ''}"></label>
       <button type="submit">บันทึกและเชื่อมต่อ</button>
       ${existing ? '<button type="button" id="reset-btn" class="danger">ลบการตั้งค่าอุปกรณ์นี้</button>' : ''}

@@ -47,11 +47,25 @@ static const int RELAY_PIN = 23;
 static const bool RELAY_ACTIVE_HIGH = false; // most low-cost single-channel relay modules trigger on LOW, not HIGH
 static const unsigned long HOLD_MS = 1000; // relay contact-closure duration (not the app's hold-to-confirm gesture, that's separate in src/main.ts)
 
-static const unsigned long PING_INTERVAL_MS = 60000;
+static const unsigned long PING_INTERVAL_MS = 10000;
 static const unsigned long PING_TIMEOUT_MS = 1000;
+
+// GPIO0 is the built-in "BOOT" button on every ESP32-WROOM-32 dev board,
+// already wired to an on-board pull-up + pushbutton to GND — no extra
+// wiring needed. It only affects boot mode (flash vs run) at power-on/reset;
+// reading it as a plain input during loop() has no special meaning and is
+// safe to reuse for this.
+static const int WIFI_RESET_PIN = 0;
+static const unsigned long WIFI_RESET_HOLD_MS = 5000; // hold BOOT this long to forget wifi + all saved settings
 
 static const char* MQTT_HOST = "broker.emqx.io";
 static const int MQTT_PORT = 8883; // TLS, no credentials needed
+
+// Must match the actual deployed Vercel domain (see ../../README.md) — used
+// only to build the post-setup link shown on the "Credentials saved" page,
+// pre-filled with this board's Device ID so the buyer never has to
+// copy/type it into the web app themselves.
+static const char* WEBAPP_URL = "https://pc-controller-eight.vercel.app/";
 
 // ---------- persisted settings (via WiFiManager custom params) ----------
 
@@ -63,6 +77,7 @@ String topicStatus, topicAvailability, topicCmd;
 
 WiFiClientSecure tlsClient;
 PubSubClient mqtt(tlsClient);
+Preferences prefs;
 
 bool pcOnlineLast = false;
 bool pcOnlineKnown = false;
@@ -180,6 +195,34 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
   }
 }
 
+// ---------- wifi reset button (hold BOOT, no reflash needed) ----------
+
+unsigned long wifiResetPressStart = 0;
+bool wifiResetTriggered = false;
+
+void serviceWifiResetButton() {
+  bool pressed = digitalRead(WIFI_RESET_PIN) == LOW;
+  if (!pressed) {
+    wifiResetPressStart = 0;
+    return;
+  }
+  if (wifiResetPressStart == 0) {
+    wifiResetPressStart = millis();
+    return;
+  }
+  if (!wifiResetTriggered && millis() - wifiResetPressStart >= WIFI_RESET_HOLD_MS) {
+    wifiResetTriggered = true;
+    Serial.println("[wifi] BOOT held for reset threshold - forgetting wifi + settings");
+    notify(String(cfgDeviceId) + " กำลังรีเซ็ต wifi (มีคนกดปุ่ม BOOT ค้าง) กรุณาตั้งค่าใหม่ผ่าน " + String(AP_NAME) + " 🔄");
+    prefs.begin("pc-ctrl", false);
+    prefs.clear();
+    prefs.end();
+    WiFi.disconnect(true, true); // erase WiFiManager's saved SSID/password too
+    delay(500);
+    ESP.restart();
+  }
+}
+
 bool wasConnected = true;
 
 void mqttConnect() {
@@ -211,6 +254,81 @@ void mqttConnect() {
 
 // ---------- wifi + provisioning ----------
 
+// Restyles every WiFiManager portal page (colors/fonts/rounded corners) to
+// match the web app's own look (see src/style.css) via a plain CSS override
+// injected through WiFiManager's public setCustomHeadElement() hook, which
+// splices raw HTML into <head> on every page. WiFiManager's own English
+// copy ("Config ESP", "SSID", "Credentials saved", ...) is left as-is —
+// translating it would mean forking the library, not just skinning it.
+// Applies unconditionally (every portal page), unlike the save-page block
+// below which is gated to one specific page.
+String buildPortalBrandingHeadElement() {
+  String html;
+  html += "<style>";
+  html += ":root{--bg:#0f1115;--surface:#161a23;--text:#eef1f6;--muted:#8b93a3;--accent:#35d07f;--danger:#ff5c5c}";
+  html += "html,body{background:var(--bg)!important;color:var(--text)!important;font-family:system-ui,-apple-system,'Segoe UI',sans-serif!important;margin:0}";
+  html += ".wrap{max-width:420px;margin:0 auto;padding:24px 20px}";
+  html += "h1{font-size:1.4rem;margin:0 0 4px}";
+  html += "h3{color:var(--muted)!important;font-weight:400;font-size:0.9rem;margin:0 0 16px}";
+  html += "hr{border:none;border-top:1px solid #2a2f3a;margin:16px 0}";
+  html += "a{color:var(--accent)!important}";
+  html += "label{color:var(--muted);font-size:0.85rem}";
+  html += "input,select{background:var(--surface)!important;border:1px solid #2a2f3a!important;border-radius:10px!important;color:var(--text)!important}";
+  html += "button,input[type=button],input[type=submit]{background:var(--accent)!important;color:#06210f!important;border-radius:12px!important;font-weight:600!important;font-size:1rem!important;line-height:2.6rem!important}";
+  html += "button.D{background:var(--danger)!important;color:#fff!important}";
+  html += ".msg{background:var(--surface)!important;border:1px solid #2a2f3a!important;border-left-width:5px!important;border-radius:10px!important;color:var(--text)!important}";
+  html += ".msg.S{border-left-color:var(--accent)!important}.msg.S h4{color:var(--accent)!important}";
+  html += ".msg.D{border-left-color:var(--danger)!important}.msg.D h4{color:var(--danger)!important}";
+  html += "#pcc-brand{display:flex;align-items:center;gap:8px;margin-bottom:18px;font-weight:600;font-size:1.05rem}";
+  html += "#pcc-brand .dot{width:10px;height:10px;border-radius:50%;background:var(--accent)}";
+  html += "</style>";
+  html += "<script>window.addEventListener('load',function(){";
+  html += "var w=document.querySelector('.wrap');if(!w)return;";
+  html += "var b=document.createElement('div');b.id='pcc-brand';";
+  html += "b.innerHTML='<span class=\"dot\"></span> PC Controller — ตั้งค่าอุปกรณ์';";
+  html += "w.insertBefore(b, w.firstChild);";
+  html += "});</script>";
+  return html;
+}
+
+// WiFiManager's "Credentials saved" page (shown right after the setup form
+// is submitted, while the phone is still on the ESP32's own AP) is the last
+// screen we get to talk to the phone on directly. At the moment it loads,
+// the phone typically still has no real internet (it hasn't reconnected to
+// home wifi/mobile data yet) — a plain JS redirect fired immediately would
+// just fail. So instead of a single attempt, this polls: every 2s it tries
+// a no-cors fetch of the web app's own URL (succeeds once the phone can
+// actually reach it, regardless of AP/wifi switching in between) and only
+// then navigates. The Device ID is embedded via ?device= either way, and
+// the same URL stays visible as a tappable link the whole time — if the
+// auto-redirect never fires (probe blocked, browser tab backgrounded,
+// whatever), the buyer can still just tap it manually, so this can only
+// improve on the old plain-link behavior, never regress it.
+//
+// Gated on document.title so it only runs on the actual "Credentials
+// saved" page, not on every other portal page this head element also
+// loads on.
+String buildPostSaveLinkHeadElement() {
+  String url = String(WEBAPP_URL) + "?device=" + String(cfgDeviceId);
+  String html;
+  html += "<script>window.addEventListener('load',function(){";
+  html += "if(document.title!=='Credentials saved')return;";
+  html += "var url='" + url + "';";
+  html += "var d=document.createElement('div');";
+  html += "d.style.cssText='margin:16px 0;padding:12px;background:var(--surface,#161a23);border:1px solid #2a2f3a;border-radius:10px;font-size:14px';";
+  html += "d.innerHTML='<b>ตั้งค่าเสร็จแล้ว</b><br>กำลังรอมือถือต่อเน็ตกลับ แล้วจะพาไปเว็บแอปให้อัตโนมัติ...<br>ถ้ารอนานเกินไป กดลิงก์นี้เอง: <a href=\\'' + url + '\\'>' + url + '</a>';";
+  html += "document.body.insertBefore(d, document.body.firstChild);";
+  html += "var tries=0;";
+  html += "(function tryRedirect(){";
+  html += "tries++;";
+  html += "fetch(url,{mode:'no-cors',cache:'no-store'}).then(function(){window.location.href=url;}).catch(function(){";
+  html += "if(tries<60)setTimeout(tryRedirect,2000);";
+  html += "});";
+  html += "})();";
+  html += "});</script>";
+  return html;
+}
+
 void setupWifi() {
   WiFiManager wm;
 
@@ -234,6 +352,22 @@ void setupWifi() {
   wm.addParameter(&pDevice);
   wm.addParameter(&pPcIp);
   wm.addParameter(&pDiscord);
+
+  wm.setCustomHeadElement((buildPortalBrandingHeadElement() + buildPostSaveLinkHeadElement()).c_str());
+
+  // If the user actually edits the pre-filled Device ID field before
+  // submitting, the head element above (built from the old default) would
+  // point the post-save link at the wrong topic. Rebuild it here, right
+  // after the form is submitted but before the "Credentials saved" page is
+  // rendered, using whatever was actually typed.
+  wm.setSaveParamsCallback([&]() {
+    String submittedId = String(pDevice.getValue());
+    submittedId.trim();
+    if (submittedId.length() > 0) {
+      strlcpy(cfgDeviceId, submittedId.c_str(), sizeof(cfgDeviceId));
+    }
+    wm.setCustomHeadElement((buildPortalBrandingHeadElement() + buildPostSaveLinkHeadElement()).c_str());
+  });
 
   wm.setConfigPortalTimeout(300); // 5 min, then reboot and retry rather than block forever
 
@@ -265,8 +399,6 @@ void setupWifi() {
   // savePrefs() (called once in setup(), right after this function runs).
 }
 
-Preferences prefs;
-
 void loadPrefs() {
   prefs.begin("pc-ctrl", true);
   prefs.getString("device", cfgDeviceId, sizeof(cfgDeviceId));
@@ -290,6 +422,8 @@ void setup() {
 
   pinMode(RELAY_PIN, OUTPUT);
   relaySet(false);
+
+  pinMode(WIFI_RESET_PIN, INPUT_PULLUP);
 
   loadPrefs();
   setupWifi();
@@ -321,4 +455,5 @@ void loop() {
   }
 
   serviceRelay();
+  serviceWifiResetButton();
 }
