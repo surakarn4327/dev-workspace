@@ -313,12 +313,25 @@ void AdxEmaComputeTodayStats(double &profitOut, int &tradesOut)
 //| พร้อมกัน ตัวที่ต่ำสุดคือตัวที่ฉุดอยู่ กรณีพิเศษตามที่ผู้ใช้ขอ 2026-09-21:  |
 //| มีไม้เปิดอยู่แล้ว = ค้าง 100% เสมอ, ติด cutoff = 0% เสมอ (ต่อให้เงื่อนไข |
 //| อื่นครบก็เข้าไม่ได้อยู่ดี ไม่อยากให้ % หลอกว่า "ใกล้แล้ว")               |
+//|                                                                    |
+//| แก้ 2026-09-21 (รอบ 2): เดิม pAdxEma = ratio ADX/EMA เฉยๆ พอ ADX      |
+//| อยู่เหนือ EMA ปุ๊บจะโชว์ 100% ค้างได้หลายแท่งติด ทั้งที่เงื่อนไขเข้าไม้จริง|
+//| ต้องเป็น "แท่งที่เพิ่งตัดขึ้นพอดี" (crossUp) เท่านั้น ทำให้ผู้ใช้เข้าใจผิด |
+//| ว่า 100% = เข้าไม้แน่ๆ — ตอนนี้เช็ค crossUp จริงแบบเดียวกับ              |
+//| CheckEntrySignal(): ถ้าเป็นแท่งที่เพิ่งตัดขึ้นจริง = 100% เต็ม ถ้าแค่    |
+//| ยังอยู่เหนือ EMA แต่ตัดไปแล้วก่อนหน้านี้ (ไม่ fresh) = cap ไว้ไม่เกิน 99% |
+//| กัน 100% หลอกอีกต่อไป — 100% เต็มจะโผล่เฉพาะแท่งที่เข้าไม้จริงเท่านั้น   |
+//| (พร้อมอีก 2 เงื่อนไขผ่านด้วย)                                        |
 //+------------------------------------------------------------------+
 int AdxEmaComputeProgress()
 {
    if(PL_HasPosition(InpMagic)) return 100;
    if(InpUseCutoff && PL_PastCutoff(InpCutoffServerHour, InpTradeStartServerHour)) return 0;
    if(!gEmaInited) return 0;
+
+   double adxShift2Buf[];
+   if(CopyBuffer(hADX, 0, 2, 1, adxShift2Buf) < 1) return 0;
+   double adxShift2 = adxShift2Buf[0];
 
    double adxBuf[];
    if(CopyBuffer(hADX, 0, 1, 1, adxBuf) < 1) return 0;
@@ -331,7 +344,13 @@ int AdxEmaComputeProgress()
    double minusDi = diBuf[0];
    double diGap = MathAbs(plusDi - minusDi);
 
-   double pAdxEma   = (gEmaAdx > 0)        ? MathMin(100.0, adxShift1 / gEmaAdx * 100.0)        : 0.0;
+   bool freshCross = (adxShift2 <= gEmaAdxPrev) && (adxShift1 > gEmaAdx);
+   double pAdxEma;
+   if(freshCross)
+      pAdxEma = 100.0;
+   else
+      pAdxEma = (gEmaAdx > 0) ? MathMin(99.0, adxShift1 / gEmaAdx * 100.0) : 0.0;
+
    double pAdxLevel = (InpMinADXLevel > 0) ? MathMin(100.0, adxShift1 / InpMinADXLevel * 100.0) : 100.0;
    double pDiGap    = (InpMinDiGap > 0)    ? MathMin(100.0, diGap / InpMinDiGap * 100.0)        : 100.0;
 
@@ -383,7 +402,12 @@ void AdxEmaDrawDashboard()
    lastDraw = TimeCurrent();
 
    string prefix = "ADXEMADASH_" + IntegerToString(InpMagic) + "_";
-   PL_ClearChartObjects(prefix);
+   // แก้กระพริบ 2026-09-21: เดิมเรียก PL_ClearChartObjects(prefix) ลบ object ทั้งหมดของ dashboard
+   // ทิ้งก่อนวาดใหม่ทุกครั้ง (ทุก 2 วิ) — PL_DashLabel()/PL_DashPanelBg() เองอัปเดตแบบ upsert อยู่แล้ว
+   // (เช็ค ObjectFind ก่อน มีอยู่แล้วก็แค่เขียนทับค่า ไม่ต้องลบ) การลบทั้งหมดตอนต้นเป็นของเกินจำเป็นที่
+   // ทำให้เห็นช่วงว่างเปล่าสั้นๆ ระหว่างลบกับสร้างใหม่ (กระพริบ) — ตัดออก ปล่อยให้แต่ละ label อัปเดตในที่
+   // ของมันเอง ส่วนแถวที่ต้องหายไปจริงๆ ตอนไม่มีไม้เปิดอยู่ (TP/SL/Risk/P&L) มีลูปลบเฉพาะจุด (posOnly[])
+   // อยู่ด้านล่างอยู่แล้ว ไม่ต้องพึ่งการลบทั้งหมดตอนต้น
 
    string curr = AccountInfoString(ACCOUNT_CURRENCY);
    StringToLower(curr);
