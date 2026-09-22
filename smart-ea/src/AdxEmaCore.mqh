@@ -278,32 +278,13 @@ void CheckEntrySignal(const double adxShift1)
 }
 
 //+------------------------------------------------------------------+
-//| รวมกำไร/ขาดทุนที่ปิดจริงแล้ว + จำนวนไม้ที่เปิดตั้งแต่ต้น "วันเทรด" ปัจจุบัน  |
-//| (แบ่งวันตาม cutoff ไม่ใช่เที่ยงคืนปฏิทิน) — ใช้โชว์บน dashboard เท่านั้น    |
+//| รวมกำไร/ขาดทุน + จำนวนไม้ที่ "ปิดจบแล้ว" ของวันเทรดปัจจุบัน (แบ่งวันจาก    |
+//| เวลาเริ่มเทรด InpTradeStartServerHour ไม่ใช่ cutoff/เที่ยงคืนปฏิทิน) —     |
+//| ตรรกะจริงอยู่ที่ PL_ComputeTodayStats (ดู bugs.md 2026-09-22)            |
 //+------------------------------------------------------------------+
 void AdxEmaComputeTodayStats(double &profitOut, int &tradesOut)
 {
-   profitOut = 0;
-   tradesOut = 0;
-   datetime dayStart = PL_TradingDayStart(InpCutoffServerHour);
-   if(!HistorySelect(dayStart, TimeCurrent())) return;
-
-   int deals = HistoryDealsTotal();
-   for(int i = 0; i < deals; i++)
-   {
-      ulong d = HistoryDealGetTicket(i);
-      if(d == 0) continue;
-      if(HistoryDealGetString(d, DEAL_SYMBOL) != _Symbol) continue;
-      if(HistoryDealGetInteger(d, DEAL_MAGIC) != InpMagic) continue;
-
-      long entry = HistoryDealGetInteger(d, DEAL_ENTRY);
-      if(entry == DEAL_ENTRY_IN)
-         tradesOut++;
-      else if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY)
-         profitOut += HistoryDealGetDouble(d, DEAL_PROFIT)
-                    + HistoryDealGetDouble(d, DEAL_SWAP)
-                    + HistoryDealGetDouble(d, DEAL_COMMISSION);
-   }
+   PL_ComputeTodayStats(InpMagic, InpCutoffServerHour, InpTradeStartServerHour, profitOut, tradesOut);
 }
 
 //+------------------------------------------------------------------+
@@ -508,12 +489,14 @@ void AdxEmaDrawDashboard()
          double gain2 = gMtPartVol * (MathAbs(gMtTp2 - gMtEntry) / InpRiskPointUnit);
          double gain3 = volLast    * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
 
-         PL_DashLabel(prefix + "tp1_l", "TP1", xLabel, y, clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp1_l", gMtHitTp1 ? "TP1 ✓" : "TP1", xLabel, y,
+                      gMtHitTp1 ? clrLimeGreen : clrSilver, FS, CN, AN);
          PL_DashLabel(prefix + "tp1_v", DoubleToString(gMtTp1, _Digits) + " (+" + DoubleToString(gain1, 0) + " " + curr + ")",
                       xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
 
-         PL_DashLabel(prefix + "tp2_l", "TP2", xLabel, y, clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp2_l", gMtHitTp2 ? "TP2 ✓" : "TP2", xLabel, y,
+                      gMtHitTp2 ? clrLimeGreen : clrSilver, FS, CN, AN);
          PL_DashLabel(prefix + "tp2_v", DoubleToString(gMtTp2, _Digits) + " (+" + DoubleToString(gain2, 0) + " " + curr + ")",
                       xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
@@ -532,8 +515,10 @@ void AdxEmaDrawDashboard()
          y += dy;
       }
 
+      // เสี่ยงเหลือเท่าไหร่ถ้าโดน SL ตอนนี้ (ใช้ lot ที่เหลือจริง + SL ปัจจุบัน) ไม่ใช่ทุนเสี่ยงตั้งต้น
+      // ตอนเปิดไม้เต็ม lot อีกต่อไป — ลดลงเองหลัง TP1/TP2 หรือเกือบ 0 ถ้า BE เลื่อน SL มาที่ entry
       PL_DashLabel(prefix + "risk_l", "Risk (" + curr + ")", xLabel, y, clrSilver, FS, CN, AN);
-      PL_DashLabel(prefix + "risk_v", DoubleToString(gTradeRiskUsd, 0) + " " + curr, xValue, y, clrWhite, FS, CN, AN);
+      PL_DashLabel(prefix + "risk_v", DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr, xValue, y, clrWhite, FS, CN, AN);
       y += dy;
 
       double posProfit = 0;
@@ -636,10 +621,13 @@ int OnInit()
       // ไม่รู้ riskUsd จริงที่ใช้ตอนเปิดไม้นี้ (เปิดไปก่อน EA รอบนี้จะรัน) — ย้อนคำนวณจาก lot/SL แทน
       // (สูตรกลับของ PL_Lot: riskUsd = lot * slDistPoints) ไว้โชว์บน dashboard ให้พอเทียบเคียงได้
       gTradeRiskUsd = gMtLot * (MathAbs(gMtEntry - gMtSlInit) / InpRiskPointUnit);
-      // ไม่รู้ว่าไม้นี้เปิดด้วยโหมด Fix Multi RR หรือเปล่า (broker เห็นแค่ SL/TP เดียว) — ถือว่าไม่ใช่
-      // partial ไว้ก่อนอย่างระมัดระวัง (เหมือนที่ PL_SyncOpenPosition ตั้ง gMtHitTp1/Tp2=true ไว้แล้ว
-      // กันปิดบางส่วนซ้ำผิดจำนวน)
-      gCurUsePartials = false;
+      // แก้บั๊ก 2026-09-22: เดิม hardcode เป็น false เสมอ (เดาว่าไม่ใช่โหมด partial ไว้ก่อน) เพราะ
+      // broker เก็บได้แค่ SL/TP เดียว ไม่รู้ว่าไม้นี้เปิดด้วยโหมดไหน — ตอนนี้ PL_SyncOpenPosition
+      // ลองโหลดสถานะจริงจากไฟล์ที่ PL_Open เขียนไว้แล้ว (ดู PL_LoadState ใน PositionLib.mqh) ถ้าโหลด
+      // สำเร็จ gMtPartVol > 0 แปลว่าไม้นี้เปิดด้วยโหมด Fix Multiple RR จริง ให้ partial-close ทำงาน
+      // ต่อได้ตามปกติ — ถ้าโหลดไม่สำเร็จ (ไม่มีไฟล์/posId ไม่ตรง) gMtPartVol จะเป็น 0 จาก fallback
+      // เดิมใน PL_SyncOpenPosition อยู่แล้ว จึงยังปลอดภัยเหมือนพฤติกรรมเดิมในเคสนั้น
+      gCurUsePartials = (gMtPartVol > 0);
    }
 
    if(InpShowDashboard)
@@ -669,6 +657,8 @@ void OnTimer()
       return;
    }
    TG_ClearProblemKind("disconnected");
+   if(gLastProblem == "ขาดการเชื่อมต่อกับ broker")
+      gLastProblem = ""; // เชื่อมต่อกลับมาแล้ว — เคลียร์ข้อความค้างบน dashboard (บั๊ก 2026-09-22)
 
    double idleSec = (GetTickCount64() - gLastTickMs) / 1000.0;
    if(idleSec > ADXEMA_HEARTBEAT_MAX_SEC)
@@ -677,7 +667,11 @@ void OnTimer()
       TG_NotifyProblemOnce("heartbeat_stuck", _Symbol, gLastProblem, "⚠️");
    }
    else
+   {
       TG_ClearProblemKind("heartbeat_stuck");
+      if(StringFind(gLastProblem, "ไม่มี tick เข้ามา") == 0)
+         gLastProblem = "";
+   }
 }
 
 //+------------------------------------------------------------------+

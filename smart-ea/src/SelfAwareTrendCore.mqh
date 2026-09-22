@@ -291,7 +291,10 @@ int OnInit()
       else
       {
          Print("⚠️ วาดกราฟไม่สำเร็จ — รอสักครู่แล้วลบ/เพิ่ม EA ใหม่");
-         gLastProblem = "วาดกราฟไม่สำเร็จ";
+         // แก้บั๊ก 2026-09-22 (ดู bugs.md): เดิมเขียนลง gLastProblem ซึ่งไม่มีจุดเคลียร์คืนเลย ทำให้
+         // dashboard ค้างข้อความนี้ตลอดไปแม้กราฟจะวาดสำเร็จในรอบถัดไปแล้วก็ตาม — เหตุการณ์นี้เกิดแค่
+         // ตอน OnInit ครั้งเดียว ย้ายไปโชว์ที่ "เหตุการณ์ล่าสุด" แทน (ถูกแทนที่เองทันทีที่มีไม้เข้า/ออก)
+         PL_SetLastEvent("⚠️ วาดกราฟไม่สำเร็จ — รอสักครู่แล้วลบ/เพิ่ม EA ใหม่");
       }
       ChartRedraw();
    }
@@ -302,32 +305,13 @@ int OnInit()
 }
 
 //+------------------------------------------------------------------+
-//| รวมกำไร/ขาดทุนที่ปิดจริงแล้ว + จำนวนไม้ที่เปิดตั้งแต่ต้น "วันเทรด" ปัจจุบัน  |
-//| (แบ่งวันตาม cutoff ไม่ใช่เที่ยงคืนปฏิทิน) — ใช้โชว์บน dashboard เท่านั้น    |
+//| รวมกำไร/ขาดทุน + จำนวนไม้ที่ "ปิดจบแล้ว" ของวันเทรดปัจจุบัน (แบ่งวันจาก    |
+//| เวลาเริ่มเทรด InpTradeStartServerHour ไม่ใช่ cutoff/เที่ยงคืนปฏิทิน) —     |
+//| ตรรกะจริงอยู่ที่ PL_ComputeTodayStats (ดู bugs.md 2026-09-22)            |
 //+------------------------------------------------------------------+
 void SatsComputeTodayStats(double &profitOut, int &tradesOut)
 {
-   profitOut = 0;
-   tradesOut = 0;
-   datetime dayStart = PL_TradingDayStart(InpCutoffServerHour);
-   if(!HistorySelect(dayStart, TimeCurrent())) return;
-
-   int deals = HistoryDealsTotal();
-   for(int i = 0; i < deals; i++)
-   {
-      ulong d = HistoryDealGetTicket(i);
-      if(d == 0) continue;
-      if(HistoryDealGetString(d, DEAL_SYMBOL) != _Symbol) continue;
-      if(HistoryDealGetInteger(d, DEAL_MAGIC) != InpMagic) continue;
-
-      long entry = HistoryDealGetInteger(d, DEAL_ENTRY);
-      if(entry == DEAL_ENTRY_IN)
-         tradesOut++;
-      else if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY)
-         profitOut += HistoryDealGetDouble(d, DEAL_PROFIT)
-                    + HistoryDealGetDouble(d, DEAL_SWAP)
-                    + HistoryDealGetDouble(d, DEAL_COMMISSION);
-   }
+   PL_ComputeTodayStats(InpMagic, InpCutoffServerHour, InpTradeStartServerHour, profitOut, tradesOut);
 }
 
 //+------------------------------------------------------------------+
@@ -445,12 +429,14 @@ void SatsDrawDashboard()
          double gain2 = gMtPartVol * (MathAbs(gMtTp2 - gMtEntry) / InpRiskPointUnit);
          double gain3 = volLast    * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
 
-         PL_DashLabel(prefix + "tp1_l", "TP1", xLabel, y, clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp1_l", gMtHitTp1 ? "TP1 ✓" : "TP1", xLabel, y,
+                      gMtHitTp1 ? clrLimeGreen : clrSilver, FS, CN, AN);
          PL_DashLabel(prefix + "tp1_v", DoubleToString(gMtTp1, _Digits) + " (+" + DoubleToString(gain1, 0) + " " + curr + ")",
                       xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
 
-         PL_DashLabel(prefix + "tp2_l", "TP2", xLabel, y, clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp2_l", gMtHitTp2 ? "TP2 ✓" : "TP2", xLabel, y,
+                      gMtHitTp2 ? clrLimeGreen : clrSilver, FS, CN, AN);
          PL_DashLabel(prefix + "tp2_v", DoubleToString(gMtTp2, _Digits) + " (+" + DoubleToString(gain2, 0) + " " + curr + ")",
                       xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
@@ -469,8 +455,10 @@ void SatsDrawDashboard()
          y += dy;
       }
 
+      // เสี่ยงเหลือเท่าไหร่ถ้าโดน SL ตอนนี้ (ใช้ lot ที่เหลือจริง + SL ปัจจุบัน) ไม่ใช่ทุนเสี่ยงตั้งต้น
+      // ตอนเปิดไม้เต็ม lot อีกต่อไป — ลดลงเองหลัง TP1/TP2 หรือเกือบ 0 ถ้า BE เลื่อน SL มาที่ entry
       PL_DashLabel(prefix + "risk_l", "Risk (" + curr + ")", xLabel, y, clrSilver, FS, CN, AN);
-      PL_DashLabel(prefix + "risk_v", DoubleToString(gTradeRiskUsd, 0) + " " + curr, xValue, y, clrWhite, FS, CN, AN);
+      PL_DashLabel(prefix + "risk_v", DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr, xValue, y, clrWhite, FS, CN, AN);
       y += dy;
 
       double posProfit = 0;
@@ -559,6 +547,8 @@ void OnTimer()
       return;
    }
    TG_ClearProblemKind("disconnected"); // เชื่อมต่อกลับมาแล้ว เปิดสิทธิ์แจ้งซ้ำได้ถ้าหลุดอีกรอบ
+   if(gLastProblem == "ขาดการเชื่อมต่อกับ broker")
+      gLastProblem = ""; // เคลียร์ข้อความค้างบน dashboard (บั๊ก 2026-09-22)
 
    double idleSec = (GetTickCount64() - gLastTickMs) / 1000.0;
    if(idleSec > SATS_HEARTBEAT_MAX_SEC)
@@ -569,7 +559,11 @@ void OnTimer()
       TG_NotifyProblemOnce("heartbeat_stuck", _Symbol, gLastProblem, "⚠️");
    }
    else
+   {
       TG_ClearProblemKind("heartbeat_stuck");
+      if(StringFind(gLastProblem, "ไม่มี tick เข้ามา") == 0)
+         gLastProblem = "";
+   }
 }
 
 //+------------------------------------------------------------------+

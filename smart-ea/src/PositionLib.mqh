@@ -64,15 +64,20 @@ void PL_SetLastEvent(const string text)
    gLastEventTime = TimeCurrent();
 }
 
-// จุดเริ่ม "วันเทรด" ของรอบปัจจุบัน — ใช้ cutoffServerHour เป็นเส้นแบ่งวันเดียวกับกฎ day-trade
-// (เที่ยงคืนไทย = cutoffServerHour ฝั่ง server) ไม่ใช่เที่ยงคืนปฏิทินธรรมดา
-datetime PL_TradingDayStart(const int cutoffServerHour)
+// จุดเริ่ม "วันเทรด" ของรอบปัจจุบัน — เดิมใช้ cutoffServerHour เป็นเส้นแบ่งวันเสมอ แต่ cutoff กับ
+// เวลาเริ่มเทรด (startServerHour) เป็นคนละเวลากัน (default cutoff=17 server, start=23 server —
+// ต่างกัน 6 ชม.) ผู้ใช้ขอ 2026-09-22 ให้ "วันนี้" บน dashboard เริ่มนับจากเวลาที่เริ่มเทรดได้จริง
+// ไม่ใช่จาก cutoff — ถ้าส่ง startServerHour มา (>=0) ใช้เป็นเส้นแบ่งวันแทน คืนค่าเวลาที่ล่าสุดที่
+// hour นั้นเกิดขึ้น (วันนี้ถ้าถึงแล้ว ไม่งั้นย้อนไปเมื่อวาน) ไม่ใส่ startServerHour (ค่าเริ่มต้น -1)
+// ยังคงพฤติกรรมเดิมเป๊ะ (ใช้ cutoffServerHour เป็นเส้นแบ่งวัน)
+datetime PL_TradingDayStart(const int cutoffServerHour, const int startServerHour = -1)
 {
+   int markHour = (startServerHour >= 0) ? startServerHour : cutoffServerHour;
    MqlDateTime dt;
    TimeToStruct(TimeCurrent(), dt);
-   dt.hour = cutoffServerHour; dt.min = 0; dt.sec = 0;
-   datetime cutoffToday = StructToTime(dt);
-   return (TimeCurrent() >= cutoffToday) ? cutoffToday : cutoffToday - 86400;
+   dt.hour = markHour; dt.min = 0; dt.sec = 0;
+   datetime markToday = StructToTime(dt);
+   return (TimeCurrent() >= markToday) ? markToday : markToday - 86400;
 }
 
 // เวลาที่เหลือก่อนถึง cutoff แบบอ่านง่าย — "นอกเวลาเทรด" ถ้าติด cutoff อยู่แล้ว
@@ -145,6 +150,8 @@ int    gMtDir     = 0;     // 1 = long, -1 = short, 0 = ไม่มีไม้
 ulong  gMtPosId   = 0;     // position identifier ของไม้ที่เปิดอยู่
 double gMtEntry   = 0;
 double gMtSlInit  = 0;     // SL ตอนเปิด (ใช้คำนวณ R ไม่ใช่ SL ปัจจุบัน)
+double gMtSlCurrent = 0;   // SL ปัจจุบันจริง (ขยับได้ตอน BE/trailAfterTp2) ใช้คำนวณ "เสี่ยงเหลือเท่าไหร่
+                           // ถ้าโดน SL ตอนนี้" บน dashboard — ต่างจาก gMtSlInit ที่ตรึงค่าตอนเปิดไม้
 double gMtTp1     = 0;
 double gMtTp2     = 0;
 double gMtTp3     = 0;
@@ -273,6 +280,79 @@ bool PL_HasPosition(const long magic)
 }
 
 //+------------------------------------------------------------------+
+//| รวมกำไร/ขาดทุน + จำนวนไม้ที่ "ปิดจบแล้ว" ของไม้ที่ EA นี้เปิดเอง ตั้งแต่ต้น  |
+//| วันเทรดปัจจุบัน — ใช้โชว์แถว "วันนี้" บน dashboard เท่านั้น                  |
+//|                                                                    |
+//| แก้บั๊ก 2026-09-22 (ดู bugs.md): เดิมกรอง deal ปิดไม้ (DEAL_ENTRY_OUT)    |
+//| ด้วย DEAL_MAGIC ของตัว deal ปิดเองตรงๆ ซึ่งผิด — deal ปิดที่เกิดจากการ   |
+//| ปิดมือผ่านเทอร์มินัล (คลิกขวา Close) หรือ stop-out จะมี DEAL_MAGIC = 0   |
+//| เสมอ (สืบทอดจาก order ที่สั่งปิด ไม่ใช่จาก position เดิม) ไม่ตรงกับ magic  |
+//| ของ EA ทำให้กำไรของไม้ที่ปิดมือหายไปจากผลรวม ทั้งที่ deal เข้าไม้ (IN) ของ|
+//| ไม้เดียวกันยังมี magic ถูกต้องอยู่ (นับเข้าจำนวนไม้ได้ปกติ) — วิธีแก้คือ   |
+//| ไล่ 2 รอบ: รอบแรกหา DEAL_POSITION_ID ของไม้ที่ IN deal มี magic ตรงกับ   |
+//| EA นี้จริง (เชื่อถือได้เสมอ เพราะ EA เป็นคนสั่งเปิดเองโดยตรง) รอบสองรวม    |
+//| กำไรจาก OUT deal ที่ position id อยู่ในเซตนั้น โดยไม่สนใจ magic ของ OUT   |
+//| deal เอง — นับ "ไม้" แค่ครั้งเดียวต่อ 1 position แม้จะมีหลาย OUT deal    |
+//| (partial close TP1/TP2) และนับเฉพาะไม้ที่ปิดจบแล้วเท่านั้น (ไม้ที่ยังเปิด |
+//| ค้างอยู่ตอนนี้ไม่มี OUT deal เลย จึงไม่ถูกนับ ตามที่ผู้ใช้ขอ)              |
+//+------------------------------------------------------------------+
+void PL_ComputeTodayStats(const long magic, const int cutoffServerHour, const int startServerHour,
+                           double &profitOut, int &tradesOut)
+{
+   profitOut = 0;
+   tradesOut = 0;
+   datetime dayStart = PL_TradingDayStart(cutoffServerHour, startServerHour);
+   if(!HistorySelect(dayStart, TimeCurrent())) return;
+
+   int deals = HistoryDealsTotal();
+
+   long ownPosIds[];
+   for(int i = 0; i < deals; i++)
+   {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0) continue;
+      if(HistoryDealGetString(d, DEAL_SYMBOL) != _Symbol) continue;
+      if(HistoryDealGetInteger(d, DEAL_ENTRY) != DEAL_ENTRY_IN) continue;
+      if(HistoryDealGetInteger(d, DEAL_MAGIC) != magic) continue;
+      int n = ArraySize(ownPosIds);
+      ArrayResize(ownPosIds, n + 1);
+      ownPosIds[n] = (long)HistoryDealGetInteger(d, DEAL_POSITION_ID);
+   }
+   if(ArraySize(ownPosIds) == 0) return;
+
+   long countedPosIds[];
+   for(int i = 0; i < deals; i++)
+   {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0) continue;
+      if(HistoryDealGetString(d, DEAL_SYMBOL) != _Symbol) continue;
+      long entry = HistoryDealGetInteger(d, DEAL_ENTRY);
+      if(entry != DEAL_ENTRY_OUT && entry != DEAL_ENTRY_OUT_BY) continue;
+
+      long posId = (long)HistoryDealGetInteger(d, DEAL_POSITION_ID);
+      bool isOwn = false;
+      for(int k = 0; k < ArraySize(ownPosIds); k++)
+         if(ownPosIds[k] == posId) { isOwn = true; break; }
+      if(!isOwn) continue;
+
+      profitOut += HistoryDealGetDouble(d, DEAL_PROFIT)
+                 + HistoryDealGetDouble(d, DEAL_SWAP)
+                 + HistoryDealGetDouble(d, DEAL_COMMISSION);
+
+      bool alreadyCounted = false;
+      for(int k = 0; k < ArraySize(countedPosIds); k++)
+         if(countedPosIds[k] == posId) { alreadyCounted = true; break; }
+      if(!alreadyCounted)
+      {
+         int n = ArraySize(countedPosIds);
+         ArrayResize(countedPosIds, n + 1);
+         countedPosIds[n] = posId;
+         tradesOut++;
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
 //| มีไม้เข้าจริง (magic/symbol นี้) เกิดขึ้นตั้งแต่เวลา sinceTime เป็นต้นมาไหม |
 //| ใช้กันบั๊ก "สัญญาณค้างฟื้นซ้ำ" — สัญญาณที่ replay/pending เจอ ถ้ามีไม้จริง |
 //| เข้าไปแล้วหลังจากสัญญาณนั้นเกิด แปลว่าถูกเทรดไปแล้วจริง (ไม่ว่าจะได้/เสีย)  |
@@ -304,9 +384,12 @@ bool PL_HasEntrySince(const long magic, const datetime sinceTime)
 //| ยังเปิดอยู่ในตลาด ถ้าไม่ sync ตรงนี้ EA จะ "ลืม" ไม้เดิม แล้วอาจเปิดไม้ซ้อนอีกไม้
 //| (เพราะคิดว่าช่องว่าง) หรือไม่คัตไม้ตาม cutoff/timeout/flip-exit ให้อีกเลย
 //|
-//| กู้คืนได้แค่ dir/entry/SL/TP(บรอกเกอร์)/openBar โดยประมาณ — TP1/TP2 (จุดปิดบางส่วน)
-//| กับสถานะ hitTp1/hitTp2/BE ไม่มีที่เก็บฝั่งบรอกเกอร์เลย จึงถือว่า "ผ่านไปแล้ว" (true)
-//| ไว้ก่อนอย่างระมัดระวัง กันปิดบางส่วนซ้ำผิดจำนวน/ผิดราคาอ้างอิงเดิม
+//| กู้คืนได้แค่ dir/entry/SL/TP(บรอกเกอร์)/openBar จาก broker โดยตรงเสมอ — ส่วน TP1/TP2 (จุดปิด
+//| บางส่วน) กับสถานะ hitTp1/hitTp2/BE ลองโหลดจากไฟล์ที่ PL_Open/PL_Manage เขียนไว้ก่อน (ดู
+//| PL_LoadState) ถ้าไฟล์ตรงกับไม้จริง (เทียบ posId) ถือว่าเชื่อถือได้ ใช้แทนค่าเดา — ถ้าไม่มีไฟล์
+//| หรือ posId ไม่ตรง (เช่น backward-compat กับ EA เวอร์ชันก่อนมีไฟล์นี้) fallback เป็นค่าเดิมที่
+//| ถือว่า "ผ่านไปแล้ว" (true) ไว้ก่อนอย่างระมัดระวัง กันปิดบางส่วนซ้ำผิดจำนวน/ผิดราคาอ้างอิงเดิม
+//| (แก้บั๊ก 2026-09-22 — ดู bugs.md)
 //+------------------------------------------------------------------+
 bool PL_SyncOpenPosition(const long magic, const int currentGBar)
 {
@@ -322,15 +405,21 @@ bool PL_SyncOpenPosition(const long magic, const int currentGBar)
    gMtDir     = (type == POSITION_TYPE_BUY) ? 1 : -1;
    gMtPosId   = (ulong)PositionGetInteger(POSITION_IDENTIFIER);
    gMtEntry   = entry;
-   gMtSlInit  = sl;
-   gMtTp1     = tp;  // ไม่รู้ TP1/TP2 จริง ใช้ TP บรอกเกอร์ (=TP3 เดิม) กันปิดบางส่วนผิดราคา
-   gMtTp2     = tp;
-   gMtTp3     = tp;
-   gMtHitTp1  = true; // ถือว่าผ่านจุดปิดบางส่วนไปแล้ว กันปิด partial ซ้ำผิดจำนวน/ผิดราคา
-   gMtHitTp2  = true;
-   gMtBeDone  = true; // กันเลื่อน SL ไปที่ราคาเปิดซ้ำ
-   gMtPartVol = 0;
    gMtLot     = PositionGetDouble(POSITION_VOLUME);
+   gMtSlCurrent = sl; // SL ปัจจุบันอ่านสดจาก broker เสมอ เชื่อถือได้อยู่แล้วไม่ต้องพึ่งไฟล์ state
+
+   bool stateLoaded = PL_LoadState(magic, gMtPosId);
+   if(!stateLoaded)
+   {
+      gMtSlInit  = sl;
+      gMtTp1     = tp;  // ไม่รู้ TP1/TP2 จริง ใช้ TP บรอกเกอร์ (=TP3 เดิม) กันปิดบางส่วนผิดราคา
+      gMtTp2     = tp;
+      gMtTp3     = tp;
+      gMtHitTp1  = true; // ถือว่าผ่านจุดปิดบางส่วนไปแล้ว กันปิด partial ซ้ำผิดจำนวน/ผิดราคา
+      gMtHitTp2  = true;
+      gMtBeDone  = true; // กันเลื่อน SL ไปที่ราคาเปิดซ้ำ
+      gMtPartVol = 0;
+   }
 
    int shift = iBarShift(_Symbol, PERIOD_CURRENT, openTime, false);
    gMtOpenBar = (shift >= 0) ? MathMax(0, currentGBar - shift) : currentGBar;
@@ -338,10 +427,102 @@ bool PL_SyncOpenPosition(const long magic, const int currentGBar)
    // แก้บั๊ก 2026-09-18: เดิมฟังก์ชันนี้ไม่เคยเรียก PL_SetLastEvent เลย ทำให้ "เหตุการณ์ล่าสุด" บน
    // dashboard ค้างข้อความ/เวลาเก่าจากก่อน reattach ทั้งที่แถว Position sync ราคาใหม่ถูกต้องแล้ว —
    // ใช้ openTime จริงของไม้ (ไม่ใช่ TimeCurrent() ตอน reattach) ให้เวลาที่โชว์ตรงกับตอนเปิดไม้จริง
-   gLastEvent     = StringFormat("เข้าไม้ (ซิงก์จากไม้เดิม): %s %s", PL_DirStr(gMtDir), DoubleToString(entry, _Digits));
+   // แยกข้อความ 2 แบบ (ผู้ใช้ขอ 2026-09-22 ไว้เช็คว่า "กลับมาดูแลไม้" หลัง restart สำเร็จจริงไหม)
+   // ไม่ต้องบอกละเอียดว่า TP1/TP2 ผ่านหรือยัง เพราะ dashboard มีติ๊ก ✓ ที่แถว TP1/TP2 โชว์อยู่แล้ว
+   // (ผู้ใช้ขอตัด 2026-09-22 รอบ 2 — กันข้อความยาวเกินจำเป็น)
+   if(stateLoaded)
+      gLastEvent = StringFormat("กลับมาดูแลไม้แล้ว: %s %s", PL_DirStr(gMtDir), DoubleToString(entry, _Digits));
+   else
+      gLastEvent = StringFormat("เข้าไม้ (ซิงก์จากไม้เดิม): %s %s", PL_DirStr(gMtDir), DoubleToString(entry, _Digits));
    gLastEventTime = openTime;
+   Print(gLastEvent); // ให้เห็นใน Experts/Journal log ด้วย ไม่ใช่แค่บน dashboard
 
    return true;
+}
+
+//+------------------------------------------------------------------+
+//| เก็บสถานะ TP1/TP2/BE ของไม้ปัจจุบันลงไฟล์ (คีย์ด้วย magic+symbol เดียวกับ|
+//| PL_Select — 1 EA/สัญลักษณ์ถือได้ไม้เดียวอยู่แล้ว) แก้บั๊ก 2026-09-22:    |
+//| ก่อนหน้านี้ PL_SyncOpenPosition "เดา" ว่าไม้ที่เปิดอยู่ตอน reattack ผ่าน |
+//| TP1/TP2 ไปแล้วเสมอ (กันปิด partial ซ้ำผิดจำนวน) แต่ถ้าไม้ยังไม่ผ่าน     |
+//| TP1/TP2 เลยจริงๆ การเดานี้ทำให้ partial-close หยุดทำงานทั้งที่ควรทำต่อ  |
+//| — เขียนไฟล์ทุกครั้งที่เปิดไม้ใหม่/สถานะ TP1/TP2/BE เปลี่ยน อ่านกลับใน   |
+//| PL_SyncOpenPosition ถ้า posId ในไฟล์ตรงกับไม้จริงที่เจอ ถือว่าเชื่อถือได้|
+//| ไฟล์ไม่ใช้ FILE_COMMON (ต่างจาก TelegramNotify) เพราะสถานะนี้ผูกกับ    |
+//| บัญชี/เทอร์มินัลนี้เท่านั้น ไม่ควรแชร์ข้าม terminal เหมือน token       |
+//+------------------------------------------------------------------+
+string PL_StateFile(const long magic)
+{
+   return "PL_state_" + IntegerToString(magic) + "_" + _Symbol + ".bin";
+}
+
+void PL_SaveState(const long magic)
+{
+   int h = FileOpen(PL_StateFile(magic), FILE_WRITE | FILE_BIN);
+   if(h == INVALID_HANDLE) return;
+   FileWriteLong(h, (long)gMtPosId);
+   FileWriteDouble(h, gMtSlInit);
+   FileWriteDouble(h, gMtTp1);
+   FileWriteDouble(h, gMtTp2);
+   FileWriteDouble(h, gMtTp3);
+   FileWriteDouble(h, gMtPartVol);
+   FileWriteInteger(h, gMtHitTp1 ? 1 : 0);
+   FileWriteInteger(h, gMtHitTp2 ? 1 : 0);
+   FileWriteInteger(h, gMtBeDone ? 1 : 0);
+   FileClose(h);
+}
+
+void PL_DeleteState(const long magic)
+{
+   string fn = PL_StateFile(magic);
+   if(FileIsExist(fn))
+      FileDelete(fn);
+}
+
+// คืน true เฉพาะเมื่อไฟล์มีอยู่จริงและ posId ในไฟล์ตรงกับไม้จริงที่กำลัง sync (posId ต่างกัน =
+// ไฟล์เก่าของไม้ก่อนหน้าที่ปิดไปแล้วแต่ลบไฟล์ไม่ทัน เช่น EA ถูกปิดกลางคันตอนไม้เพิ่งปิด) ไม่ถือว่าเชื่อถือได้
+bool PL_LoadState(const long magic, const ulong posId)
+{
+   string fn = PL_StateFile(magic);
+   if(!FileIsExist(fn)) return false;
+   int h = FileOpen(fn, FILE_READ | FILE_BIN);
+   if(h == INVALID_HANDLE) return false;
+
+   ulong  savedPosId = (ulong)FileReadLong(h);
+   double slInit     = FileReadDouble(h);
+   double tp1        = FileReadDouble(h);
+   double tp2        = FileReadDouble(h);
+   double tp3        = FileReadDouble(h);
+   double partVol    = FileReadDouble(h);
+   int    hit1       = FileReadInteger(h);
+   int    hit2       = FileReadInteger(h);
+   int    be         = FileReadInteger(h);
+   FileClose(h);
+
+   if(savedPosId != posId) return false;
+
+   gMtSlInit  = slInit;
+   gMtTp1     = tp1;
+   gMtTp2     = tp2;
+   gMtTp3     = tp3;
+   gMtPartVol = partVol;
+   gMtHitTp1  = (hit1 != 0);
+   gMtHitTp2  = (hit2 != 0);
+   gMtBeDone  = (be != 0);
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| เสี่ยงเหลือเท่าไหร่ถ้าราคาย้อนกลับไปโดน SL ปัจจุบัน — ใช้ lot ที่เหลือจริง   |
+//| (หลัง partial close) คูณระยะจาก entry ถึง SL ปัจจุบัน (หลัง BE/trail)    |
+//| ต่างจากทุนเสี่ยงตั้งต้นตอนเปิดไม้ (riskUsd ที่ส่งเข้า PL_Open) ซึ่งใช้ทำ    |
+//| R-multiple ของ self-learning (SATS) ต่อ ไม่ควรเปลี่ยนตามการปิดบางส่วน   |
+//| ฟังก์ชันนี้จึงแยกไว้เฉพาะโชว์ dashboard เท่านั้น (ผู้ใช้ขอ 2026-09-22)     |
+//+------------------------------------------------------------------+
+double PL_RiskRemaining(const double pointUnit)
+{
+   if(pointUnit <= 0) return 0;
+   return gMtLot * (MathAbs(gMtEntry - gMtSlCurrent) / pointUnit);
 }
 
 //+------------------------------------------------------------------+
@@ -399,7 +580,13 @@ bool PL_Open(const int dir, const double slPrice,
    if(!ok)
    {
       gPlOpenFail++;
-      gLastProblem = "เข้าไม้ไม่สำเร็จ";
+      // แก้บั๊ก 2026-09-22 (ดู bugs.md): เดิมเขียนลง gLastProblem ซึ่งเป็น "สถานะ" ที่ dashboard
+      // โชว์ทับ statusText ทุกครั้งจนกว่าจะมีใครเคลียร์ทิ้ง — แต่เหตุการณ์นี้เกิดครั้งเดียวจบ (เช่น
+      // ผู้ใช้ปิด Algo Trading เองชั่วคราวตอน EA ดันสั่งเข้าไม้พอดี) ไม่ใช่ปัญหาค้างแบบเน็ตหลุด ไม่มี
+      // จุดไหนเคลียร์ gLastProblem คืนเลย ทำให้ dashboard ค้างข้อความนี้ตลอดไปแม้ปัญหาจะหายแล้วจริง —
+      // ย้ายไปโชว์ที่ "เหตุการณ์ล่าสุด" แทน (gLastEvent) ซึ่งจะถูกแทนที่เองโดยธรรมชาติทันทีที่มี
+      // เหตุการณ์ถัดไปเกิดขึ้น (เข้าไม้สำเร็จ/ปิดไม้/sync ฯลฯ) ไม่ต้องหาจุดเคลียร์เพิ่มเลย
+      PL_SetLastEvent("⚠️ เข้าไม้ไม่สำเร็จ: " + PL_DirStr(dir) + " ที่ " + DoubleToString(entry, _Digits));
       string failReason = gTrade.ResultRetcodeDescription();
       PrintFormat("⚠️ เข้าไม้ไม่สำเร็จ: %s ที่ %s — broker ปฏิเสธ (%s)",
                   PL_DirStr(dir), DoubleToString(entry, _Digits), failReason);
@@ -414,6 +601,7 @@ bool PL_Open(const int dir, const double slPrice,
    gMtDir     = dir;
    gMtEntry   = entry;
    gMtSlInit  = slAdj;
+   gMtSlCurrent = slAdj;
    gMtTp1     = tp1Adj;
    gMtTp2     = tp2Adj;
    gMtTp3     = tp3Adj;
@@ -426,6 +614,7 @@ bool PL_Open(const int dir, const double slPrice,
    if(usePartials && gMtPartVol <= 0)
       gPlNoPartial++;
    gPlOpened++;
+   PL_SaveState(magic);
 
    if(showChart)
       PL_DrawTrade(PL_ChartPrefix(magic), dir, entry, slAdj, tp1Adj, tp2Adj, tp3Adj,
@@ -450,10 +639,13 @@ void PL_CloseAll(const long magic)
       gMtDir = 0;
       // ไม่ล้าง gMtPosId ที่นี่ — ผู้เรียกอาจต้องอ่านประวัติดีลของไม้นี้ต่อ
       PL_ClearChartObjects(PL_ChartPrefix(magic));
+      PL_DeleteState(magic); // ไม้ปิดแล้ว ไม่ต้องเก็บสถานะ TP1/TP2/BE ของไม้นี้ต่อ
    }
    else
    {
-      gLastProblem = "ปิดไม้ไม่สำเร็จ";
+      // เหตุผลเดียวกับ "เข้าไม้ไม่สำเร็จ" ข้างบน — ย้ายจาก gLastProblem (ค้างตลอดไป) มาเป็น
+      // gLastEvent (ถูกแทนที่เองโดยธรรมชาติ) แก้บั๊ก 2026-09-22
+      PL_SetLastEvent(StringFormat("⚠️ ปิดไม้ไม่สำเร็จ: %s (เข้าที่ %s)", PL_DirStr(gMtDir), DoubleToString(gMtEntry, _Digits)));
       string failReason = gTrade.ResultRetcodeDescription();
       PrintFormat("⚠️ ปิดไม้ไม่สำเร็จ: ticket #%s — broker ปฏิเสธ (%s)",
                   IntegerToString(ticket), failReason);
@@ -531,6 +723,7 @@ bool PL_MoveSl(const ulong ticket, const double newSl)
    bool ok = gTrade.PositionModify(ticket, sl, curTp);
    if(ok)
    {
+      gMtSlCurrent = sl;
       string prefix = PL_ChartPrefix((long)PositionGetInteger(POSITION_MAGIC));
       if(PL_ChartActive(prefix))
       {
@@ -559,6 +752,7 @@ bool PL_Manage(const long magic, const bool usePartials,
       {
          PL_ClassifyClosed();
          PL_ClearChartObjects(PL_ChartPrefix(magic));
+         PL_DeleteState(magic); // ไม้ปิดเองจาก broker (SL/TP) — ไม่ต้องเก็บสถานะไม้นี้ต่อ
       }
       gMtDir = 0;
       return false;
@@ -582,7 +776,13 @@ bool PL_Manage(const long magic, const bool usePartials,
          if(vol - gMtPartVol >= SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN))
          {
             if(gTrade.PositionClosePartial(ticket, gMtPartVol))
+            {
                TG_NotifyPartial(_Symbol, "TP1", gMtTp1, gMtPartVol);
+               // อัปเดต lot ที่เหลือจริงหลังปิดบางส่วน — เดิม gMtLot ค้างเป็น lot เต็มตอนเปิดไม้
+               // ตลอดไป ทำให้ dashboard โชว์ "SL / Lot" ผิดหลัง TP1/TP2 (บั๊ก 2026-09-22)
+               if(PositionSelectByTicket(ticket))
+                  gMtLot = PositionGetDouble(POSITION_VOLUME);
+            }
          }
       }
       if(useBe && !gMtBeDone)
@@ -596,6 +796,7 @@ bool PL_Manage(const long magic, const bool usePartials,
             TG_NotifyBreakeven(_Symbol, gMtEntry + beSpread);
          }
       }
+      PL_SaveState(magic); // เก็บสถานะทันทีที่ TP1/BE เปลี่ยน กันรีสตาร์ทกลางไม้แล้วเดาผิด (บั๊ก 2026-09-22)
    }
 
    if(reach2 && !gMtHitTp2)
@@ -607,11 +808,16 @@ bool PL_Manage(const long magic, const bool usePartials,
          if(vol - gMtPartVol >= SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN))
          {
             if(gTrade.PositionClosePartial(ticket, gMtPartVol))
+            {
                TG_NotifyPartial(_Symbol, "TP2", gMtTp2, gMtPartVol);
+               if(PositionSelectByTicket(ticket))
+                  gMtLot = PositionGetDouble(POSITION_VOLUME);
+            }
          }
       }
       if(trailAfterTp2)
          PL_MoveSl(ticket, gMtTp1);
+      PL_SaveState(magic); // เก็บสถานะทันทีที่ TP2 เปลี่ยน (เหตุผลเดียวกับ TP1 ด้านบน)
    }
 
    return true;
