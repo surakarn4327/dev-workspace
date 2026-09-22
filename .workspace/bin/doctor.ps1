@@ -59,8 +59,18 @@ foreach ($p in $projects) {
     }
 
     if ($isNode -or $isPython) {
-        if (-not (Test-Path (Join-Path $dir '.github\workflows\ci.yml'))) {
-            Problem $n 'ไม่มี CI (.github/workflows/ci.yml)'
+        # CI workflow อยู่ที่ root ของ monorepo ไม่ใช่ในโฟลเดอร์โปรเจกต์ (GitHub Actions มองไม่เห็น
+        # .github/workflows/ ที่ซ้อนอยู่ในโฟลเดอร์ย่อย) เช็คว่ามี workflow ที่ root ที่กรอง paths
+        # มาถึงโปรเจกต์นี้แทน
+        $rootWorkflows = Join-Path $Root '.github\workflows'
+        $hasCi = $false
+        if (Test-Path $rootWorkflows) {
+            $hasCi = @(Get-ChildItem $rootWorkflows -Filter '*.yml' -File | Where-Object {
+                (Get-Content $_.FullName -Raw) -match [regex]::Escape("$n/")
+            }).Count -gt 0
+        }
+        if (-not $hasCi) {
+            Problem $n "ไม่มี CI ที่ root อ้างถึงโฟลเดอร์นี้ (.github/workflows/*.yml ที่มี paths: ['$n/**'])"
         }
     }
 
