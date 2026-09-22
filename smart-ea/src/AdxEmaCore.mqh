@@ -36,6 +36,12 @@
 
 const int ADXEMA_HEARTBEAT_MAX_SEC = 120; // ค่าเดียวกับ SATS (ผู้ใช้เลือกไว้ 2026-09-17)
 
+// ล็อก timeframe การเทรดไว้ที่ M1 ตายตัว (ผู้ใช้ขอ 2026-09-22 — ไม่อยากยุ่งกับการแก้ .set)
+// ไม่ใช่ input เพราะตั้งใจให้แก้ไม่ได้ผ่าน Inputs tab — จะสลับดูชาร์ต TF อื่นได้ตามปกติ (attach
+// เข้ากับชาร์ต M1/M5/H1 ก็ได้) แต่ตรรกะเข้า/ออกไม้ทั้งหมดยังคำนวณจากแท่ง M1 เสมอ ไม่ผูกกับ
+// PERIOD_CURRENT ของชาร์ตอีกต่อไป (OnTick() รับทุก tick อยู่แล้วไม่ว่าชาร์ตจะโชว์ TF ไหน)
+#define ADXEMA_TRADE_TF PERIOD_M1
+
 int hADX = INVALID_HANDLE;
 int hATR = INVALID_HANDLE;
 
@@ -61,7 +67,7 @@ int gCnt_EmaNotReady=0;
 void WarmupEma()
 {
    int period = MathMax(2, InpEmaPeriod);
-   int bars   = iBars(_Symbol, PERIOD_CURRENT);
+   int bars   = iBars(_Symbol, ADXEMA_TRADE_TF);
    int lookback = MathMin(period * 10, bars - InpADXPeriod - 5);
    if(lookback < period)
    {
@@ -259,7 +265,7 @@ void CheckEntrySignal(const double adxShift1)
    if(CopyBuffer(hATR, 0, 1, 1, atrBuf) < 1) return;
    double atr = MathMax(atrBuf[0], SymbolInfoDouble(_Symbol, SYMBOL_POINT));
 
-   double refPrice = iClose(_Symbol, PERIOD_CURRENT, 1);
+   double refPrice = iClose(_Symbol, ADXEMA_TRADE_TF, 1);
 
    double sl, tp1, tp2, tp3; bool usePartials;
    ComputeLevels(dir, refPrice, atr, adxShift1, sl, tp1, tp2, tp3, usePartials);
@@ -399,7 +405,9 @@ void AdxEmaDrawDashboard()
    const int dy = 24;
    const int padTop = 16, padBottom = 16, padLeft = 14;
 
-   string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)Period()), 7);
+   // ใช้ ADXEMA_TRADE_TF ไม่ใช่ Period() (TF ของชาร์ตที่กำลังดูอยู่) — ล็อกเทรด M1 ตายตัวแล้ว
+   // (2026-09-22) หัวข้อควรโชว์ TF ที่เทรดจริงเสมอ ไม่ใช่ TF ที่บังเอิญเปิดชาร์ตดูอยู่ตอนนั้น
+   string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)ADXEMA_TRADE_TF), 7);
    string titleText = "AdxEma " + _Symbol + " " + tf;
 
    // colGap = ระยะจากขอบซ้ายกล่องถึงคอลัมน์ value — ต้องกว้างพอให้หัวข้อ (แถวที่ยาวสุดเสมอ
@@ -583,8 +591,8 @@ void AdxEmaDrawDashboard()
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   hADX = iADX(_Symbol, PERIOD_CURRENT, InpADXPeriod);
-   hATR = iATR(_Symbol, PERIOD_CURRENT, InpATRPeriod);
+   hADX = iADX(_Symbol, ADXEMA_TRADE_TF, InpADXPeriod);
+   hATR = iATR(_Symbol, ADXEMA_TRADE_TF, InpATRPeriod);
    if(hADX == INVALID_HANDLE || hATR == INVALID_HANDLE)
    {
       Print("iADX/iATR handle failed");
@@ -601,7 +609,7 @@ int OnInit()
    // เพราะที่นั่นข้อมูลย้อนหลังพร้อมอยู่แล้วเสมอ ไม่มี lag แบบตอน attach สด (มิเรอร์ SATS OnInit)
    if(!MQLInfoInteger(MQL_TESTER))
    {
-      int wantBars = iBars(_Symbol, PERIOD_CURRENT);
+      int wantBars = iBars(_Symbol, ADXEMA_TRADE_TF);
       int waited = 0;
       while((BarsCalculated(hADX) < wantBars - 2 || BarsCalculated(hATR) < wantBars - 2) && waited < 100)
       {
@@ -628,6 +636,14 @@ int OnInit()
       // ต่อได้ตามปกติ — ถ้าโหลดไม่สำเร็จ (ไม่มีไฟล์/posId ไม่ตรง) gMtPartVol จะเป็น 0 จาก fallback
       // เดิมใน PL_SyncOpenPosition อยู่แล้ว จึงยังปลอดภัยเหมือนพฤติกรรมเดิมในเคสนั้น
       gCurUsePartials = (gMtPartVol > 0);
+
+      // แก้บั๊ก 2026-09-22: เดิม PL_DrawTrade() ถูกเรียกแค่จุดเดียวตอน PL_Open() เปิดไม้ครั้งแรก —
+      // reattach บนชาร์ตอื่น (หรือชาร์ตเดิมที่ล้าง object ไปแล้ว) จะไม่มีเส้น TP1/TP2/TP3 ที่ EA
+      // วาดเองเลย เห็นแค่เส้น SL/TP เดียวที่ MT5 วาดให้อัตโนมัติ (built-in ของเทอร์มินัล คนละเส้นกับ
+      // ที่ EA วาด) — วาดซ้ำด้วยค่าที่ sync กลับมาได้ ให้เหมือนตอนเปิดไม้ครั้งแรกทุกประการ
+      if(InpShowChartObjects)
+         PL_DrawTrade(PL_ChartPrefix(InpMagic), gMtDir, gMtEntry, gMtSlInit, gMtTp1, gMtTp2, gMtTp3,
+                      gCurUsePartials);
    }
 
    if(InpShowDashboard)
@@ -713,7 +729,10 @@ double OnTester()
 //+------------------------------------------------------------------+
 void DumpPass(const double score)
 {
-   string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)Period()), 7);
+   // ใช้ ADXEMA_TRADE_TF ไม่ใช่ Period() — ตรรกะเทรดล็อก M1 ตายตัวแล้ว (2026-09-22) ต่อให้ตั้ง
+   // Period ใน Strategy Tester เป็น TF อื่น ข้อมูลที่คำนวณจริงก็ยังเป็น M1 เสมอ ชื่อไฟล์ผลต้องบอก
+   // ตามความจริง ไม่ใช่ตาม Tester period ที่เลือกไว้ (ดูคำอธิบายเต็มที่ ADXEMA_TRADE_TF ต้นไฟล์)
+   string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)ADXEMA_TRADE_TF), 7);
 
    string stem = StringFormat(
       "%s_%s_%d_%d_%.2f_%.2f_%d_%.2f_%.2f_%d_%.2f_%.2f_%.2f_%.2f_%.2f_%d",
@@ -760,7 +779,7 @@ void OnTick()
    }
    PL_Manage(InpMagic, gCurUsePartials, false, false);
 
-   datetime barTime = iTime(_Symbol, PERIOD_CURRENT, 0);
+   datetime barTime = iTime(_Symbol, ADXEMA_TRADE_TF, 0);
    if(barTime != gLastBarTime)
    {
       gLastBarTime = barTime;
