@@ -509,16 +509,14 @@ void AdxEmaDrawDashboard()
          double gain2 = gMtPartVol * (MathAbs(gMtTp2 - gMtEntry) / InpRiskPointUnit);
          double gain3 = volLast    * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
 
-         PL_DashLabel(prefix + "tp1_l", gMtHitTp1 ? "TP1 ✓" : "TP1", xLabel, y,
-                      gMtHitTp1 ? clrLimeGreen : clrSilver, FS, CN, AN);
-         PL_DashLabel(prefix + "tp1_v", DoubleToString(gMtTp1, _Digits) + " (+" + DoubleToString(gain1, 0) + " " + curr + ")",
-                      xValue, y, clrLimeGreen, FS, CN, AN);
+         PL_DashLabel(prefix + "tp1_l", "TP1", xLabel, y, gMtHitTp1 ? clrLimeGreen : clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp1_v", DoubleToString(gMtTp1, _Digits) + " (+" + DoubleToString(gain1, 0) + " " + curr + ")" +
+                      (gMtHitTp1 ? " ✓" : ""), xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
 
-         PL_DashLabel(prefix + "tp2_l", gMtHitTp2 ? "TP2 ✓" : "TP2", xLabel, y,
-                      gMtHitTp2 ? clrLimeGreen : clrSilver, FS, CN, AN);
-         PL_DashLabel(prefix + "tp2_v", DoubleToString(gMtTp2, _Digits) + " (+" + DoubleToString(gain2, 0) + " " + curr + ")",
-                      xValue, y, clrLimeGreen, FS, CN, AN);
+         PL_DashLabel(prefix + "tp2_l", "TP2", xLabel, y, gMtHitTp2 ? clrLimeGreen : clrSilver, FS, CN, AN);
+         PL_DashLabel(prefix + "tp2_v", DoubleToString(gMtTp2, _Digits) + " (+" + DoubleToString(gain2, 0) + " " + curr + ")" +
+                      (gMtHitTp2 ? " ✓" : ""), xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
 
          PL_DashLabel(prefix + "tp3_l", "TP3", xLabel, y, clrSilver, FS, CN, AN);
@@ -646,8 +644,8 @@ void AdxEmaSendStatusSummary()
 
       if(gCurUsePartials)
       {
-         s += "TP1" + (gMtHitTp1 ? " ✓" : "") + ": " + DoubleToString(gMtTp1, _Digits) + "\n";
-         s += "TP2" + (gMtHitTp2 ? " ✓" : "") + ": " + DoubleToString(gMtTp2, _Digits) + "\n";
+         s += "TP1: " + DoubleToString(gMtTp1, _Digits) + (gMtHitTp1 ? " ✓" : "") + "\n";
+         s += "TP2: " + DoubleToString(gMtTp2, _Digits) + (gMtHitTp2 ? " ✓" : "") + "\n";
          s += "TP3: " + DoubleToString(gMtTp3, _Digits) + "\n";
       }
       else
