@@ -596,29 +596,26 @@ void AdxEmaDrawDashboard()
 // (font monospace ของ Discord) ต้องเป็น label ภาษาอังกฤษล้วนเท่านั้นถึงจะตรงเป๊ะทุกแถว เพราะอักษรไทย
 // กว้างไม่เท่ากันในฟอนต์ monospace (ปัญหาเดียวกับที่เจอตอนคาลิเบรต colGap ของ dashboard บนกราฟ) —
 // ค่าที่ตามหลัง label ยังใส่ภาษาไทยได้ปกติ (เช่น "ไม้") เพราะอยู่หลังจุดจัดคอลัมน์แล้ว ไม่กระทบแถวอื่น
-string AdxEmaPad(const string label, const int width)
-{
-   string s = label;
-   while(StringLen(s) < width) s += " ";
-   return s;
-}
-
 //+------------------------------------------------------------------+
 //| สร้างข้อความสรุปสถานะเป็น code block (ผู้ใช้ขอ 2026-09-23 — ยืนยันดีไซน์  |
-//| หลายรอบ: label อังกฤษ+เว้นวรรคจัดคอลัมน์แทน Discord Embed Fields เพราะ    |
-//| ต้องการ label กับ value อยู่บรรทัดเดียวกัน ซึ่ง Embed Field ทำไม่ได้ —     |
-//| name/value ของ Embed Field ถูก Discord บังคับให้อยู่คนละบรรทัดเสมอ)      |
-//| เนื้อหา/ลำดับเหมือน AdxEmaDrawDashboard() ทุกแถว ใช้ทั้งกับตัวจับเวลาทุก   |
-//| InpSummaryEveryMin นาที และทั้ง 4 เหตุการณ์ (เข้าไม้/ปิดไม้ทุกสาเหตุ/     |
-//| ปิดบางส่วน/ขยับ BE) ผ่าน gPlSummaryHook ใน PositionLib.mqh              |
+//| หลายรอบ) — รูปแบบ "Label: value" สั้นๆ บรรทัดเดียว **ไม่ pad ให้คอลัมน์   |
+//| ตรงกันอีกต่อไป** (2026-09-23 รอบถัดมา): ลองบน desktop เห็นว่าตรงสวย แต่   |
+//| พอทดสอบจริงบนมือถือ (จอแคบกว่า) บรรทัดที่ยาวจาก padding+ค่ายาวๆ ถูก      |
+//| Discord ตัดขึ้นบรรทัดใหม่กลางค่า (เช่น "4369.949 /" ตัดจาก "0.42")       |
+//| ทำให้คอลัมน์พังเละกว่าไม่ pad เลย — ตัดสินใจเลิก pad ทั้งหมด, ตัด          |
+//| "(+xxx usc)" ท้าย TP1-3 ออก (ข้อมูลซ้ำกับ Floating P/L), แยก SL/Lot      |
+//| และ Today/Trades เป็นคนละบรรทัด เพื่อให้ทุกบรรทัดสั้นพอไม่ตัดขึ้นบรรทัดใหม่ |
+//| ไม่ว่าจอกว้างแค่ไหน — **ตัดแถว Version/Progress ออกตามคำขอผู้ใช้ด้วย**     |
+//| เนื้อหาที่เหลือ/ลำดับยังอิง AdxEmaDrawDashboard() (ไม้/balance/equity/    |
+//| วันนี้/เวลาเทรด/เหตุการณ์ล่าสุด) ใช้ทั้งกับตัวจับเวลาทุก InpSummaryEveryMin  |
+//| นาที และทั้ง 4 เหตุการณ์ (เข้าไม้/ปิดไม้ทุกสาเหตุ/ปิดบางส่วน/ขยับ BE) ผ่าน   |
+//| gPlSummaryHook ใน PositionLib.mqh                                    |
 //+------------------------------------------------------------------+
 void AdxEmaSendStatusSummary()
 {
    string curr = AccountInfoString(ACCOUNT_CURRENCY);
    StringToLower(curr);
    string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)ADXEMA_TRADE_TF), 7);
-   const int W = 16;
-   string divider = "------------------------------";
 
    string statusText;
    if(gLastProblem != "")
@@ -632,64 +629,55 @@ void AdxEmaSendStatusSummary()
    else
       statusText = "กำลังทำงาน";
 
-   string s = "AdxEma " + _Symbol + " " + tf + " - " + statusText + "\n";
-   s += AdxEmaPad("Version", W) + "v" + ADXEMA_VERSION + " . " + ADXEMA_UPDATED + "\n";
-   s += divider + "\n";
-
-   int progressPct = AdxEmaComputeProgress();
-   s += AdxEmaPad("Progress", W) + IntegerToString(progressPct) + "%\n";
+   string s = "AdxEma " + _Symbol + " " + tf + " - " + statusText + "\n\n";
 
    bool hasPos = (gMtDir != 0);
    if(hasPos)
    {
-      s += AdxEmaPad("Position", W) + PL_DirStr(gMtDir) + " " + DoubleToString(gMtEntry, _Digits) + "\n";
-      s += AdxEmaPad("SL / Lot", W) + DoubleToString(gMtSlInit, _Digits) + " / " + DoubleToString(gMtLot, 2) + "\n";
+      s += "Position: " + PL_DirStr(gMtDir) + " " + DoubleToString(gMtEntry, _Digits) + "\n";
+      s += "SL: " + DoubleToString(gMtSlInit, _Digits) + "\n";
+      s += "Lot: " + DoubleToString(gMtLot, 2) + "\n";
 
       if(gCurUsePartials)
       {
-         double volLast = MathMax(gMtLot - 2.0 * gMtPartVol, 0.0);
-         double gain1 = gMtPartVol * (MathAbs(gMtTp1 - gMtEntry) / InpRiskPointUnit);
-         double gain2 = gMtPartVol * (MathAbs(gMtTp2 - gMtEntry) / InpRiskPointUnit);
-         double gain3 = volLast    * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
-         s += AdxEmaPad(gMtHitTp1 ? "TP1 (hit)" : "TP1", W) + DoubleToString(gMtTp1, _Digits) + " (+" + DoubleToString(gain1, 0) + " " + curr + ")\n";
-         s += AdxEmaPad(gMtHitTp2 ? "TP2 (hit)" : "TP2", W) + DoubleToString(gMtTp2, _Digits) + " (+" + DoubleToString(gain2, 0) + " " + curr + ")\n";
-         s += AdxEmaPad("TP3", W) + DoubleToString(gMtTp3, _Digits) + " (+" + DoubleToString(gain3, 0) + " " + curr + ")\n";
+         s += "TP1" + (gMtHitTp1 ? " (hit)" : "") + ": " + DoubleToString(gMtTp1, _Digits) + "\n";
+         s += "TP2" + (gMtHitTp2 ? " (hit)" : "") + ": " + DoubleToString(gMtTp2, _Digits) + "\n";
+         s += "TP3: " + DoubleToString(gMtTp3, _Digits) + "\n";
       }
       else
       {
-         double gainTp = gMtLot * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
-         s += AdxEmaPad("TP", W) + DoubleToString(gMtTp3, _Digits) + " (+" + DoubleToString(gainTp, 0) + " " + curr + ")\n";
+         s += "TP: " + DoubleToString(gMtTp3, _Digits) + "\n";
       }
 
-      s += AdxEmaPad("Risk (" + curr + ")", W) + DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr + "\n";
+      s += "Risk: " + DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr + "\n";
 
       double posProfit = 0;
       ulong ticket = 0;
       if(PL_Select(InpMagic, ticket) && PositionSelectByTicket(ticket))
          posProfit = PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
-      s += AdxEmaPad("Floating P/L", W) + (posProfit >= 0 ? "+" : "") + DoubleToString(posProfit, 0) + " " + curr + "\n";
+      s += "P/L: " + (posProfit >= 0 ? "+" : "") + DoubleToString(posProfit, 0) + " " + curr + "\n";
    }
    else
    {
-      s += AdxEmaPad("Position", W) + "ไม่มีไม้เปิดอยู่\n";
+      s += "Position: ไม่มีไม้เปิดอยู่\n";
    }
 
-   s += divider + "\n";
+   s += "\n";
 
    double bal = AccountInfoDouble(ACCOUNT_BALANCE);
    double eq  = AccountInfoDouble(ACCOUNT_EQUITY);
-   s += AdxEmaPad("Balance", W) + DoubleToString(bal, 0) + " " + curr + "\n";
-   s += AdxEmaPad("Equity", W) + DoubleToString(eq, 0) + " " + curr + "\n";
+   s += "Balance: " + DoubleToString(bal, 0) + " " + curr + "\n";
+   s += "Equity: " + DoubleToString(eq, 0) + " " + curr + "\n";
 
    double todayProfit; int todayTrades;
    AdxEmaComputeTodayStats(todayProfit, todayTrades);
-   s += AdxEmaPad("Today", W) + (todayProfit >= 0 ? "+" : "") + DoubleToString(todayProfit, 0) + " " + curr +
-        " . " + IntegerToString(todayTrades) + " ไม้\n";
+   s += "Today: " + (todayProfit >= 0 ? "+" : "") + DoubleToString(todayProfit, 0) + " " + curr + "\n";
+   s += "Trades: " + IntegerToString(todayTrades) + " ไม้\n";
 
-   s += AdxEmaPad("Time left", W) +
+   s += "Time left: " +
         (InpUseCutoff ? PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour) : "ปิดใช้งาน") + "\n";
 
-   s += divider + "\n";
+   s += "\n";
    s += (gLastEvent == "") ? "ยังไม่มีเหตุการณ์" :
         (TimeToString(gLastEventTime, TIME_MINUTES) + "  " + gLastEvent);
 
