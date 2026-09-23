@@ -595,7 +595,7 @@ void AdxEmaDrawDashboard()
    y += 10;
 
    string evText = (gLastEvent == "") ? "ยังไม่มีเหตุการณ์" :
-                   TimeToString(gLastEventTime, TIME_MINUTES) + "  " + gLastEvent;
+                   PL_ServerTimeToThaiStr(gLastEventTime, InpCutoffServerHour) + "  " + gLastEvent;
    PL_DashLabel(prefix + "event", evText, xLabel, y, clrOrange, FS, CN, AN);
 
    ChartRedraw();
@@ -693,7 +693,7 @@ void AdxEmaSendStatusSummary()
 
    s += "\n";
    s += (gLastEvent == "") ? "ยังไม่มีเหตุการณ์" :
-        (TimeToString(gLastEventTime, TIME_MINUTES) + "  " + gLastEvent);
+        (PL_ServerTimeToThaiStr(gLastEventTime, InpCutoffServerHour) + "  " + gLastEvent);
 
    DC_Send(s); // DC_Send() ห่อ code block + account tag ให้เองแล้ว (2026-09-23) ไม่ต้องห่อซ้ำที่นี่
 }

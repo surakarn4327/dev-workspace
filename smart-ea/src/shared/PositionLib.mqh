@@ -94,6 +94,21 @@ string PL_TimeLeftStr(const int cutoffServerHour, const int startServerHour = -1
    return StringFormat("%d ชม. %d นาที", diff / 60, diff % 60);
 }
 
+// แปลงเวลา server เป็นเวลาไทยสำหรับ "แสดงผล" เท่านั้น (ผู้ใช้ขอ 2026-09-23 — เดิมโชว์เวลา server ตรงๆ
+// ทำให้ "เหตุการณ์ล่าสุด" บน dashboard/Discord ดูเหมือนเวลาเพิ่งเกิด ทั้งที่จริงเป็นเวลา server ต่างจาก
+// เวลาไทยหลายชั่วโมง สับสนได้ง่าย) **ไม่ใช้คำนวณ logic ใดๆ** (cutoff/PastCutoff ยังคำนวณจากเวลา server
+// ตรงๆ เหมือนเดิมทั้งหมด แค่จุดที่โชว์ตัวเลขให้คนอ่านเท่านั้นที่แปลง) — derive offset จาก
+// cutoffServerHour ที่ผู้ใช้ตั้งไว้เอง (แทนที่จะ hardcode "+7 ชม." ตายตัว) เพราะตามนิยามของกฎ
+// day-trade cutoff (ข้อ 1-2 ของ EA) ชั่วโมง server นี้ตรงกับเที่ยงคืนไทยพอดีอยู่แล้ว — ถ้าเปลี่ยน
+// broker/บัญชีในอนาคตแล้ววัด cutoffServerHour ใหม่ เวลาที่โชว์ตรงนี้จะปรับตามอัตโนมัติ ไม่ต้องมาแก้
+// เลขคงที่ซ้ำอีกจุด
+string PL_ServerTimeToThaiStr(const datetime serverTime, const int cutoffServerHour)
+{
+   int offsetHours = (24 - cutoffServerHour) % 24; // server + offset = เวลาไทย
+   datetime thaiTime = serverTime + offsetHours * 3600;
+   return TimeToString(thaiTime, TIME_MINUTES);
+}
+
 // พื้นหลังสี่เหลี่ยมทึบของพาเนล dashboard — ให้อ่านออกด้วยตอนชาร์ตพื้นขาว (ผู้ใช้ขอ 2026-09-17)
 void PL_DashPanelBg(const string name, const int x, const int y, const int w, const int h,
                      const color bg, const color border, const ENUM_BASE_CORNER corner)
