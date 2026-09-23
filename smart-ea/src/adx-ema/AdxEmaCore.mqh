@@ -504,7 +504,16 @@ void AdxEmaDrawDashboard()
 
       if(gCurUsePartials)
       {
-         double volLast = MathMax(gMtLot - 2.0 * gMtPartVol, 0.0);
+         // แก้บั๊ก 2026-09-23: เดิมลบ 2×gMtPartVol ออกจาก gMtLot เสมอ (สมมติว่า gMtLot ยังเป็น lot
+         // เต็มตอนเปิดไม้) แต่ตั้งแต่แก้บั๊ก 2026-09-22 ที่ทำให้ gMtLot อัปเดตเป็น lot ที่เหลือจริงหลัง
+         // ปิดบางส่วนไปแล้ว สูตรนี้เลยลบซ้ำ 2 รอบทันทีที่ TP1/TP2 แตะไปแล้วทั้งคู่ (เช่น TP1/TP2 หมดแล้ว
+         // gMtLot=0.16 พอลบอีก 2×0.13 กลายเป็นติดลบ ถูก MathMax ปัดเป็น 0 → TP3 โชว์ "+0 usc" ทั้งที่
+         // เหลือ 0.16 lot จริงรอปิดที่ TP3 อยู่) — คำนวณใหม่จากจำนวนครั้งที่ "ยังไม่แตะ" แทน (แตะไปแล้ว
+         // กี่ครั้ง gMtLot ก็หักให้แล้วในตัว ไม่ต้องหักซ้ำ)
+         double volLast = gMtLot;
+         if(!gMtHitTp1) volLast -= gMtPartVol;
+         if(!gMtHitTp2) volLast -= gMtPartVol;
+         volLast = MathMax(volLast, 0.0);
          double gain1 = gMtPartVol * (MathAbs(gMtTp1 - gMtEntry) / InpRiskPointUnit);
          double gain2 = gMtPartVol * (MathAbs(gMtTp2 - gMtEntry) / InpRiskPointUnit);
          double gain3 = volLast    * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
