@@ -478,7 +478,7 @@ void AdxEmaDrawDashboard()
 
    int progressPct = AdxEmaComputeProgress();
    color progressClr = (progressPct >= 100) ? clrLimeGreen : (progressPct >= 70 ? clrOrange : clrGray);
-   PL_DashLabel(prefix + "prog_l", "Progress", xLabel, y, clrSilver, FS, CN, AN);
+   PL_DashLabel(prefix + "prog_l", "Ready", xLabel, y, clrSilver, FS, CN, AN);
    PL_DashLabel(prefix + "prog_v", AdxEmaProgressBar(progressPct), xValue, y, progressClr, FS, CN, AN);
    y += dy;
 
