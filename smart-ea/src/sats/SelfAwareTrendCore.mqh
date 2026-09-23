@@ -5,8 +5,8 @@
 //| ไฟล์นี้ไม่ประกาศ input เอง อ้างถึง input ที่ EA ประกาศไว้ก่อน include  |
 //| (แพทเทิร์นเดียวกับ MARibbonCore / AmdPo3Core)                       |
 //+------------------------------------------------------------------+
-#include "PositionLib.mqh"
-#include "TesterMetrics.mqh"
+#include "..\shared\PositionLib.mqh"
+#include "..\shared\TesterMetrics.mqh"
 
 // เวอร์ชันของ core นี้ — โชว์บน dashboard กันสับสนว่า EA ที่รันอยู่บนชาร์ตเป็นโค้ดล่าสุดหรือยัง
 // (อัปเดตคู่กับทุกครั้งที่แก้ SelfAwareTrendCore.mqh/PositionLib.mqh แล้ว compile ใหม่จริง)
@@ -190,7 +190,7 @@ void SatsResolvePreset()
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   TG_LoadConfig(); // เช็ค/พิมพ์ log ทันทีว่าหา token/chat id เจอไหม แทนที่จะรอ event แรกเกิดก่อน
+   DC_LoadConfig(); // เช็ค/พิมพ์ log ทันทีว่าหา webhook URL เจอไหม แทนที่จะรอ event แรกเกิดก่อน
 
    SatsResolvePreset();
 
@@ -369,10 +369,10 @@ void SatsDrawDashboard()
    bool ok = (statusText == "กำลังทำงาน");
    color accentClr = ok ? clrLimeGreen : clrTomato;
 
-   // แจ้ง Telegram เฉพาะสถานะ Algo Trading/บัญชี/broker (edge-trigger) — คำนวณแยกจาก statusText
+   // แจ้ง Discord เฉพาะสถานะ Algo Trading/บัญชี/broker (edge-trigger) — คำนวณแยกจาก statusText
    // ข้างบน เพราะ statusText ผสม gLastProblem เข้ามาด้วย ซึ่ง "ค้าง" ตลอดไปหลัง set ครั้งแรก (ไม่มีจุด
    // reset กลับเป็น "" ที่ไหนเลยในโค้ดเดิม) ถ้าเอา statusText ตรงๆ มา edge-trigger จะยิงซ้ำกับ
-   // TG_NotifyProblem ที่จุดเข้า/ปิดไม้ไม่สำเร็จ และค้างสถานะ "มีปัญหา" ไม่มีวันกลับเป็นปกติจน EA รีสตาร์ท
+   // DC_NotifyProblem ที่จุดเข้า/ปิดไม้ไม่สำเร็จ และค้างสถานะ "มีปัญหา" ไม่มีวันกลับเป็นปกติจน EA รีสตาร์ท
    string tgStatus;
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) || !MQLInfoInteger(MQL_TRADE_ALLOWED))
       tgStatus = "ปิด Algo Trading อยู่";
@@ -382,7 +382,7 @@ void SatsDrawDashboard()
       tgStatus = "broker ปิดเทรด " + _Symbol + " ชั่วคราว";
    else
       tgStatus = "กำลังทำงาน";
-   TG_NotifyStatus(_Symbol, tgStatus, tgStatus == "กำลังทำงาน");
+   DC_NotifyStatus(_Symbol, tgStatus, tgStatus == "กำลังทำงาน");
 
    int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
    int boxX = MathMax(0, chartW - 5 - panelW);
@@ -543,10 +543,10 @@ void OnTimer()
    if(!TerminalInfoInteger(TERMINAL_CONNECTED))
    {
       gLastProblem = "ขาดการเชื่อมต่อกับ broker";
-      TG_NotifyProblemOnce("disconnected", _Symbol, gLastProblem, "🔌");
+      DC_NotifyProblemOnce("disconnected", _Symbol, gLastProblem, "🔌");
       return;
    }
-   TG_ClearProblemKind("disconnected"); // เชื่อมต่อกลับมาแล้ว เปิดสิทธิ์แจ้งซ้ำได้ถ้าหลุดอีกรอบ
+   DC_ClearProblemKind("disconnected"); // เชื่อมต่อกลับมาแล้ว เปิดสิทธิ์แจ้งซ้ำได้ถ้าหลุดอีกรอบ
    if(gLastProblem == "ขาดการเชื่อมต่อกับ broker")
       gLastProblem = ""; // เคลียร์ข้อความค้างบน dashboard (บั๊ก 2026-09-22)
 
@@ -556,11 +556,11 @@ void OnTimer()
       // dedupe ตามสาเหตุ ไม่ใช่ข้อความเป๊ะๆ — เลขนาทีเปลี่ยนทุกรอบ 30 วิ ถ้า dedupe แบบเทียบ string
       // ตรงๆ จะไม่มีทางซ้ำเลย ส่งรัวทุก 30 วิจนกว่าจะหาย
       gLastProblem = StringFormat("ไม่มี tick เข้ามา %d นาทีแล้ว เช็คการเชื่อมต่อ", (int)(idleSec / 60));
-      TG_NotifyProblemOnce("heartbeat_stuck", _Symbol, gLastProblem, "⚠️");
+      DC_NotifyProblemOnce("heartbeat_stuck", _Symbol, gLastProblem, "⚠️");
    }
    else
    {
-      TG_ClearProblemKind("heartbeat_stuck");
+      DC_ClearProblemKind("heartbeat_stuck");
       if(StringFind(gLastProblem, "ไม่มี tick เข้ามา") == 0)
          gLastProblem = "";
    }
@@ -823,7 +823,7 @@ void SatsOpen(const int dir, const double atrValue, const double tqi, const doub
 //| ปิดไม้แล้วบันทึกผลเป็น R เข้า self-learning                           |
 //+------------------------------------------------------------------+
 // คืนค่า true + netOut = กำไร/ขาดทุนจริงรวม swap/commission ถ้าบันทึกสำเร็จ — ผู้เรียกใช้ netOut
-// ต่อแจ้ง Telegram ได้เลยโดยไม่ต้องวนลูปอ่านประวัติดีลซ้ำอีกรอบ
+// ต่อแจ้ง Discord ได้เลยโดยไม่ต้องวนลูปอ่านประวัติดีลซ้ำอีกรอบ
 bool SatsRecordClosedPosition(double &netOut)
 {
    netOut = 0;
@@ -1030,7 +1030,7 @@ void SatsOnBar()
       PL_CloseAll(InpMagic);
       double closedNet;
       if(SatsRecordClosedPosition(closedNet))
-         TG_NotifyClose(_Symbol, "ถือนานเกินกำหนด", closedNet, AccountInfoString(ACCOUNT_CURRENCY));
+         DC_NotifyClose(_Symbol, "ถือนานเกินกำหนด", closedNet, AccountInfoString(ACCOUNT_CURRENCY));
       gMtPosId = 0;
       gCnt_Timeout++;
       Print("ไม้ปิดแล้ว: ถือไม้นานเกินกำหนด ปิดอัตโนมัติ");
@@ -1045,7 +1045,7 @@ void SatsOnBar()
       double closedNet;
       string flipReason = StringFormat("กลับทิศ (%s→%s)", PL_DirStr(oldDir), PL_DirStr(-oldDir));
       if(SatsRecordClosedPosition(closedNet))
-         TG_NotifyClose(_Symbol, flipReason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
+         DC_NotifyClose(_Symbol, flipReason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
       gMtPosId = 0;
       gCnt_FlipExit++;
       PrintFormat("ไม้ปิดแล้ว: สัญญาณกลับทิศ (%s → %s) รอเข้าไม้ใหม่", PL_DirStr(oldDir), PL_DirStr(-oldDir));
@@ -1295,7 +1295,7 @@ void OnTick()
    gLastTickMs = GetTickCount64(); // heartbeat — ดู OnTimer()
 
    // ไม้ปิดเองโดย broker (SL/TP) → บันทึกผลเข้า self-learning ก่อนรีเซ็ต
-   // (แจ้ง Telegram ทำที่ PL_ClassifyClosed() ผ่าน PL_Manage() ด้านล่างแทน ไม่ต้องซ้ำที่นี่)
+   // (แจ้ง Discord ทำที่ PL_ClassifyClosed() ผ่าน PL_Manage() ด้านล่างแทน ไม่ต้องซ้ำที่นี่)
    if(gMtDir != 0 && !PL_HasPosition(InpMagic))
    {
       double unusedNet;
@@ -1309,7 +1309,7 @@ void OnTick()
       double closedNet;
       string cutoffReason = StringFormat("หมดเวลาเทรด (%s)", PL_ThaiHourStr(InpCutoffServerHour));
       if(SatsRecordClosedPosition(closedNet))
-         TG_NotifyClose(_Symbol, cutoffReason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
+         DC_NotifyClose(_Symbol, cutoffReason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
       gMtPosId = 0;
       gCnt_CutoffClose++;
       PrintFormat("ไม้ปิดแล้ว: หมดเวลาเทรดของวัน (%s) ปิดไม้อัตโนมัติตามกฎ", PL_ThaiHourStr(InpCutoffServerHour));

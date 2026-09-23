@@ -28,8 +28,8 @@
 //| ไฟล์นี้ไม่ประกาศ input เอง — อ้างถึงตัวแปรที่ AdxEmaEA.mq5 ประกาศไว้    |
 //| ก่อน include (มิเรอร์ SdPaAdxCore.mqh/AmdPo3Core.mqh)                 |
 //+------------------------------------------------------------------+
-#include "PositionLib.mqh"
-#include "TesterMetrics.mqh"
+#include "..\shared\PositionLib.mqh"
+#include "..\shared\TesterMetrics.mqh"
 
 #define ADXEMA_VERSION "1.0"
 #define ADXEMA_UPDATED "19/09/26"
@@ -163,7 +163,7 @@ void ComputeLevels(const int dir, const double refPrice, const double atr, const
 //+------------------------------------------------------------------+
 //| หากำไร/ขาดทุนสุทธิของไม้ที่เพิ่งปิดผ่าน `PL_CloseAll()` — ใช้ `gMtPosId`  |
 //| ที่ `PL_CloseAll()` ตั้งใจไม่ล้างทิ้งไว้ให้ (ดูคอมเมนต์ใน PositionLib.mqh) |
-//| จำเป็นเพราะ `PL_CloseAll()` เองไม่ส่ง Telegram อัตโนมัติ — มีแค่          |
+//| จำเป็นเพราะ `PL_CloseAll()` เองไม่ส่ง Discord อัตโนมัติ — มีแค่           |
 //| `PL_ClassifyClosed()` (เรียกจาก `PL_Manage()`) ที่ส่งให้ และมันเช็คเฉพาะ  |
 //| เหตุผล TP/SL เท่านั้น ไม่ครอบคลุมการปิดมือแบบ cutoff/momentum-exit        |
 //| (มิเรอร์ `SatsRecordClosedPosition()` ของ SelfAwareTrendCore.mqh)         |
@@ -204,7 +204,7 @@ void CheckMomentumExit(const double adxShift1)
       string reason = "โมเมนตัมหมด (ADX ต่ำกว่า EMA)";
       double closedNet;
       if(AdxEmaClosedNet(closedNet))
-         TG_NotifyClose(_Symbol, reason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
+         DC_NotifyClose(_Symbol, reason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
       PL_SetLastEvent("ไม้ปิดแล้ว: " + reason);
       gCnt_MomentumExit++;
    }
@@ -439,7 +439,7 @@ void AdxEmaDrawDashboard()
    bool ok = (statusText == "กำลังทำงาน");
    color accentClr = ok ? clrLimeGreen : clrTomato;
 
-   // แจ้ง Telegram เฉพาะสถานะ Algo Trading/บัญชี/broker (edge-trigger) — เหมือน SATS ทุกประการ
+   // แจ้ง Discord เฉพาะสถานะ Algo Trading/บัญชี/broker (edge-trigger) — เหมือน SATS ทุกประการ
    string tgStatus;
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) || !MQLInfoInteger(MQL_TRADE_ALLOWED))
       tgStatus = "ปิด Algo Trading อยู่";
@@ -449,7 +449,7 @@ void AdxEmaDrawDashboard()
       tgStatus = "broker ปิดเทรด " + _Symbol + " ชั่วคราว";
    else
       tgStatus = "กำลังทำงาน";
-   TG_NotifyStatus(_Symbol, tgStatus, tgStatus == "กำลังทำงาน");
+   DC_NotifyStatus(_Symbol, tgStatus, tgStatus == "กำลังทำงาน");
 
    int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
    int boxX = MathMax(0, chartW - 5 - panelW);
@@ -622,7 +622,7 @@ int OnInit()
 
    // ซิงก์สถานะไม้จากตำแหน่งจริงที่เปิดอยู่ (ถ้ามี) — กันบั๊กเดียวกับที่เจอใน SATS 2026-09-16:
    // reattach/compile ใหม่/เปลี่ยน timeframe ระหว่างมีไม้เปิดอยู่ทำให้ gMtDir รีเซ็ตเป็น 0 ทั้งที่ไม้
-   // ยังเปิดจริง ผลคือ TP1/TP2 (Fix Multiple RR) หยุดแบ่งปิด และไม่มีการแจ้ง Telegram ตอนไม้นั้นปิด
+   // ยังเปิดจริง ผลคือ TP1/TP2 (Fix Multiple RR) หยุดแบ่งปิด และไม่มีการแจ้ง Discord ตอนไม้นั้นปิด
    bool hasRealPosition = PL_SyncOpenPosition(InpMagic, 0);
    if(hasRealPosition)
    {
@@ -669,10 +669,10 @@ void OnTimer()
    if(!TerminalInfoInteger(TERMINAL_CONNECTED))
    {
       gLastProblem = "ขาดการเชื่อมต่อกับ broker";
-      TG_NotifyProblemOnce("disconnected", _Symbol, gLastProblem, "🔌");
+      DC_NotifyProblemOnce("disconnected", _Symbol, gLastProblem, "🔌");
       return;
    }
-   TG_ClearProblemKind("disconnected");
+   DC_ClearProblemKind("disconnected");
    if(gLastProblem == "ขาดการเชื่อมต่อกับ broker")
       gLastProblem = ""; // เชื่อมต่อกลับมาแล้ว — เคลียร์ข้อความค้างบน dashboard (บั๊ก 2026-09-22)
 
@@ -680,11 +680,11 @@ void OnTimer()
    if(idleSec > ADXEMA_HEARTBEAT_MAX_SEC)
    {
       gLastProblem = StringFormat("ไม่มี tick เข้ามา %d นาทีแล้ว เช็คการเชื่อมต่อ", (int)(idleSec / 60));
-      TG_NotifyProblemOnce("heartbeat_stuck", _Symbol, gLastProblem, "⚠️");
+      DC_NotifyProblemOnce("heartbeat_stuck", _Symbol, gLastProblem, "⚠️");
    }
    else
    {
-      TG_ClearProblemKind("heartbeat_stuck");
+      DC_ClearProblemKind("heartbeat_stuck");
       if(StringFind(gLastProblem, "ไม่มี tick เข้ามา") == 0)
          gLastProblem = "";
    }
@@ -773,7 +773,7 @@ void OnTick()
       string cutoffReason = "หมดเวลาเทรด (cutoff)";
       double closedNet;
       if(AdxEmaClosedNet(closedNet))
-         TG_NotifyClose(_Symbol, cutoffReason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
+         DC_NotifyClose(_Symbol, cutoffReason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
       PL_SetLastEvent("ไม้ปิดแล้ว: " + cutoffReason);
       gCnt_CutoffClose++;
    }

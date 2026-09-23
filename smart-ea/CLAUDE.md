@@ -21,12 +21,26 @@ Strategy Tester ใช้ backtest ได้โดยไม่ต้องเท
 compile จากคอมมานด์ไลน์ได้ ไม่ต้องเปิด GUI:
 
 ```bash
-"C:\Program Files\MetaTrader 5 EXNESS\metaeditor64.exe" /compile:"C:\dev\smart-ea\src\BestSATS.mq5" /log:"%TEMP%\c.log"
+"C:\Program Files\MetaTrader 5 EXNESS\metaeditor64.exe" /compile:"C:\dev\smart-ea\src\sats\BestSATS.mq5" /log:"%TEMP%\c.log"
 ```
 
 process คืนค่าก่อนเขียน log เสร็จ — รอสัก 5 วินาทีแล้วค่อยอ่าน log หา `Result: 0 errors`
 
 ## โครงสร้าง
+
+**2026-09-23 แยก `src\` เป็นโฟลเดอร์ย่อยรายกลยุทธ์ (ผู้ใช้ขอ — เดิมไฟล์ทุกกลยุทธ์ปนกันแบนราบใน `src\`
+เดียว หาไฟล์ตอน copy ยาก)**:
+- `src\shared\` — โค้ดที่ใช้ร่วมทุกกลยุทธ์: `PositionLib.mqh`, `TesterMetrics.mqh`, `DiscordNotify.mqh`,
+  `SymbolInfoDump.mq5` (ยูทิลิตี้ dump ข้อมูล symbol ไม่ผูกกลยุทธ์ไหน)
+- `src\amd-po3\` — `AmdPo3Types.mqh`, `AmdPo3Core.mqh`, `AmdPo3EA.mq5`, `BestM5_AmdPo3.mq5`
+- `src\sats\` — `SelfAwareTrendTypes.mqh`, `SelfAwareTrendCore.mqh`, `SelfAwareTrendEA.mq5`, `BestSATS.mq5`
+- `src\adx-ema\` — `AdxEmaTypes.mqh`, `AdxEmaCore.mqh`, `AdxEmaEA.mq5`
+
+ย้ายด้วย `git mv` เก็บ history ไว้ครบ แก้ `#include` ในไฟล์ Core/EA ที่อ้างถึงไฟล์ shared ให้เป็น
+`#include "..\shared\ชื่อไฟล์.mqh"` (ไฟล์ในโฟลเดอร์เดียวกัน เช่น `Types.mqh`↔`Core.mqh`↔`EA.mq5` ของ
+กลยุทธ์เดียวกันไม่ต้องแก้ ยังอ้างชื่อเฉยๆ ได้เหมือนเดิม) compile ผ่านทั้ง 5 ไฟล์ `.mq5` แล้ว (0 errors)
+หลังย้าย — ถ้าเพิ่มกลยุทธ์ใหม่ในอนาคต ให้สร้างโฟลเดอร์ย่อยของตัวเองตามแบบนี้ทันที ไม่ปล่อยไฟล์ลอยที่ root
+`src\` อีก
 
 **รีเซ็ตโปรเจกต์ 2026-09-14 ตามคำสั่งผู้ใช้ — เหลือแค่ AMD Po3 + SATS** ลบโค้ด, ผล optimize
 (`optimizer\results\*`, `optimizer\sets\*`) และ `.ex5` ของ 3 ตระกูลนี้ทิ้งทั้งหมด (**กู้จาก git history
@@ -204,13 +218,17 @@ copy ทั้ง `.mq5` และ `.ex5` ไปที่ `MQL5\Experts\` ขอ
    การจัดลำดับจริงของ SATS ที่ `optimizer\README.md` หัวข้อ "Stage 1/2/3...") ผู้ใช้จะเป็นคนกดรัน optimize
    เองทีละสเตจใน MT5 — Claude ออกแบบลำดับ+ช่วงค่า+เขียนไฟล์ `.set` ให้ครบ ไม่ได้กดรันแทน (กด Start ในหน้า
    Optimization เองไม่ได้)
-9. **ต้องแจ้งเตือน Telegram เมื่อเข้าไม้/ปิดไม้/เจอปัญหา** (ตกลงกับผู้ใช้ 2026-09-18) — `#include
-   "TelegramNotify.mqh"` (โมดูลกลาง ใช้ร่วมทุก EA ไม่ผูกกับกลยุทธ์ไหน) แล้วเรียกที่จุดเข้าไม้/ปิดไม้/error
-   จริงของ EA ตัวนั้นเอง (ไม่มี inheritance ข้าม EA ต้องเรียกเองทุกไฟล์) หลักการ:
-   - Token/Chat ID **ห้ามเป็น `input`** — อ่านจาก `FileOpen(FILE_COMMON)` ตอน `OnInit()` เท่านั้น กัน token
-     หลุดเข้า git ผ่าน `.set` ที่โปรเจกต์นี้มีธรรมเนียม commit เก็บไว้
-   - **ต้อง guard ด้วย `MQLInfoInteger(MQL_TESTER)`/`MQL_OPTIMIZATION`** ที่ต้น `TG_Send()` เสมอ — โปรเจกต์
-     นี้รัน optimize เป็นพัน/หมื่น combination ถ้าไม่ guard จะสแปม Telegram รัวๆ ระหว่าง optimize
+9. **ต้องแจ้งเตือน Discord เมื่อเข้าไม้/ปิดไม้/เจอปัญหา** (ตกลงกับผู้ใช้ 2026-09-18 ใช้ Telegram ตอนแรก
+   **เปลี่ยนมาใช้ Discord แทนทั้งหมดตามคำขอผู้ใช้ 2026-09-23** — ลบ `TelegramNotify.mqh` ทิ้ง ไม่เก็บไว้)
+   — `#include "..\shared\DiscordNotify.mqh"` (โมดูลกลางอยู่ที่ `src\shared\` ใช้ร่วมทุก EA ไม่ผูกกับ
+   กลยุทธ์ไหน) แล้วเรียกที่จุดเข้าไม้/ปิดไม้/error จริงของ EA ตัวนั้นเอง (ไม่มี inheritance ข้าม EA
+   ต้องเรียกเองทุกไฟล์) หลักการ:
+   - Discord ใช้ **Webhook URL เดียว** (ไม่มี bot token/chat id แบบ Telegram) — **ห้ามเป็น `input`**
+     อ่านจาก `FileOpen(FILE_COMMON)` ตอน `OnInit()` เท่านั้น ไฟล์ชื่อ `discord_config.txt` วางที่
+     `%APPDATA%\MetaQuotes\Terminal\Common\Files\discord_config.txt` เนื้อหา 1 บรรทัด = webhook URL
+     กัน URL หลุดเข้า git ผ่าน `.set` ที่โปรเจกต์นี้มีธรรมเนียม commit เก็บไว้
+   - **ต้อง guard ด้วย `MQLInfoInteger(MQL_TESTER)`/`MQL_OPTIMIZATION`** ที่ต้น `DC_Send()` เสมอ — โปรเจกต์
+     นี้รัน optimize เป็นพัน/หมื่น combination ถ้าไม่ guard จะสแปม Discord รัวๆ ระหว่าง optimize
    - แท็ก `[DEMO]`/เลขบัญชีในทุกข้อความ กัน `FILE_COMMON` ที่แชร์ข้าม terminal ทำให้เทรด demo กับเทรดจริง
      ปนกันจนแยกไม่ออก
    - เหตุการณ์ที่ไม่กระทบเงิน/ไม่มีไม้เปิดอยู่จริง (เช่น สัญญาณรอ, สัญญาณโดนแทนที่, กราฟวาดไม่สำเร็จ) ไม่ต้อง
@@ -219,9 +237,12 @@ copy ทั้ง `.mq5` และ `.ex5` ไปที่ `MQL5\Experts\` ขอ
      ห้ามส่งซ้ำทุกครั้งที่เช็ค และต้อง initialize ตอน `OnInit()` ให้ถูกต้องกัน false-alarm ตอน reattach
    - ปัญหาที่ severity เปลี่ยนข้อความทุกรอบ (เช่น "ไม่มี tick มา N นาทีแล้ว") ต้อง dedupe ตาม**สาเหตุ**
      ไม่ใช่ข้อความเป๊ะๆ (ไม่งั้นไม่มีทาง dedupe ได้เลยเพราะเลขเปลี่ยนทุกรอบ)
+   - Discord content จำกัด 2000 ตัวอักษร (สั้นกว่า Telegram 4096) — `DC_Send()` ตัดที่ 1900 กันชนลิมิต
+     และต้องส่ง body เป็น JSON (`{"content":"..."}`) ไม่ใช่ form-urlencoded แบบ Telegram เดิม ต้อง
+     escape เป็น JSON string ให้ถูก (quote/backslash/newline) ไม่ใช่ percent-encode
 
 **ข้อ 1-2, 4, 7, 8, 9 ไม่มีกลไกภาษาบังคับข้ามไฟล์ — MQL5 ไม่มี inheritance ระหว่าง EA** ต้องเขียนซ้ำ/เรียก
-ฟังก์ชันที่มีอยู่แล้วด้วยมือทุกครั้งที่สร้างไฟล์ `.mq5` ใหม่ (ข้อ 9 คือแค่ `#include "TelegramNotify.mqh"`
+ฟังก์ชันที่มีอยู่แล้วด้วยมือทุกครั้งที่สร้างไฟล์ `.mq5` ใหม่ (ข้อ 9 คือแค่ `#include "..\shared\DiscordNotify.mqh"`
 แล้วเรียกฟังก์ชันตรงจุด — ตัวโมดูลกลางแก้ที่เดียวได้ แต่ "จุดเรียกใช้" ต้องเพิ่มเองทุกไฟล์) ข้อ 3, 5 ก็เช่นกัน
 (ต้องประกาศ input เองทุกไฟล์) มีแค่ข้อ 6 ที่ automatic จริงเพราะ EA ทุกตัวเรียก `ConsistencyScore()` สูตร
 เดียวกัน — **ก่อนบอกว่าพอร์ต EA เสร็จ ต้องไล่เช็คทีละข้อใน 9 ข้อนี้ทุกครั้ง อย่าข้าม**

@@ -12,7 +12,7 @@
 #define POSITION_LIB_MQH
 
 #include <Trade\Trade.mqh>
-#include "TelegramNotify.mqh"
+#include "DiscordNotify.mqh"
 
 CTrade gTrade;
 
@@ -448,7 +448,7 @@ bool PL_SyncOpenPosition(const long magic, const int currentGBar)
 //| TP1/TP2 เลยจริงๆ การเดานี้ทำให้ partial-close หยุดทำงานทั้งที่ควรทำต่อ  |
 //| — เขียนไฟล์ทุกครั้งที่เปิดไม้ใหม่/สถานะ TP1/TP2/BE เปลี่ยน อ่านกลับใน   |
 //| PL_SyncOpenPosition ถ้า posId ในไฟล์ตรงกับไม้จริงที่เจอ ถือว่าเชื่อถือได้|
-//| ไฟล์ไม่ใช้ FILE_COMMON (ต่างจาก TelegramNotify) เพราะสถานะนี้ผูกกับ    |
+//| ไฟล์ไม่ใช้ FILE_COMMON (ต่างจาก DiscordNotify) เพราะสถานะนี้ผูกกับ     |
 //| บัญชี/เทอร์มินัลนี้เท่านั้น ไม่ควรแชร์ข้าม terminal เหมือน token       |
 //+------------------------------------------------------------------+
 string PL_StateFile(const long magic)
@@ -590,7 +590,7 @@ bool PL_Open(const int dir, const double slPrice,
       string failReason = gTrade.ResultRetcodeDescription();
       PrintFormat("⚠️ เข้าไม้ไม่สำเร็จ: %s ที่ %s — broker ปฏิเสธ (%s)",
                   PL_DirStr(dir), DoubleToString(entry, _Digits), failReason);
-      TG_NotifyProblem(_Symbol, StringFormat("เข้าไม้ไม่สำเร็จ: %s ที่ %s\nเหตุผล: %s",
+      DC_NotifyProblem(_Symbol, StringFormat("เข้าไม้ไม่สำเร็จ: %s ที่ %s\nเหตุผล: %s",
                        PL_DirStr(dir), DoubleToString(entry, _Digits), failReason));
       return false;
    }
@@ -622,7 +622,7 @@ bool PL_Open(const int dir, const double slPrice,
 
    // จุดเดียวที่แจ้งเข้าไม้ — ครอบคลุมทั้งเข้าไม้สด (cmt="SATS") และเข้าไม้ย้อนหลัง
    // (cmt="SATS-catchup") เพราะทั้งสองทางเรียก PL_Open() นี้เหมือนกัน ไม่ต้องแยกจุดเรียก
-   TG_NotifyEntry(_Symbol, dir, entry, slAdj, tp3Adj, lot, riskUsd, AccountInfoString(ACCOUNT_CURRENCY),
+   DC_NotifyEntry(_Symbol, dir, entry, slAdj, tp3Adj, lot, riskUsd, AccountInfoString(ACCOUNT_CURRENCY),
                   AccountInfoDouble(ACCOUNT_BALANCE), StringFind(cmt, "catchup") >= 0);
 
    return true;
@@ -651,7 +651,7 @@ void PL_CloseAll(const long magic)
                   IntegerToString(ticket), failReason);
       // ไม้ยังเปิดอยู่ (ปิดไม่สำเร็จ) — gMtDir/gMtEntry ยังไม่ถูกรีเซ็ต ใช้บอกทิศทาง/ราคาเข้าแทน
       // ticket number เปล่าๆ ที่อ่านไม่รู้เรื่อง
-      TG_NotifyProblem(_Symbol, StringFormat("ปิดไม้ไม่สำเร็จ: %s (เข้าที่ %s)\nเหตุผล: %s",
+      DC_NotifyProblem(_Symbol, StringFormat("ปิดไม้ไม่สำเร็จ: %s (เข้าที่ %s)\nเหตุผล: %s",
                        PL_DirStr(gMtDir), DoubleToString(gMtEntry, _Digits), failReason));
    }
 }
@@ -693,7 +693,7 @@ void PL_ClassifyClosed()
       gPlClosedTp++;
       PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: TP ที่ %s", DoubleToString(lastPrice, _Digits)));
       Print(gLastEvent);
-      TG_NotifyClose(_Symbol, StringFormat("TP ที่ %s", DoubleToString(lastPrice, _Digits)),
+      DC_NotifyClose(_Symbol, StringFormat("TP ที่ %s", DoubleToString(lastPrice, _Digits)),
                      totalProfit, AccountInfoString(ACCOUNT_CURRENCY));
    }
    else if(lastReason == DEAL_REASON_SL)
@@ -701,7 +701,7 @@ void PL_ClassifyClosed()
       gPlClosedSl++;
       PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: SL ที่ %s", DoubleToString(lastPrice, _Digits)));
       Print(gLastEvent);
-      TG_NotifyClose(_Symbol, StringFormat("SL ที่ %s", DoubleToString(lastPrice, _Digits)),
+      DC_NotifyClose(_Symbol, StringFormat("SL ที่ %s", DoubleToString(lastPrice, _Digits)),
                      totalProfit, AccountInfoString(ACCOUNT_CURRENCY));
    }
    gMtPosId = 0;
@@ -777,7 +777,7 @@ bool PL_Manage(const long magic, const bool usePartials,
          {
             if(gTrade.PositionClosePartial(ticket, gMtPartVol))
             {
-               TG_NotifyPartial(_Symbol, "TP1", gMtTp1, gMtPartVol);
+               DC_NotifyPartial(_Symbol, "TP1", gMtTp1, gMtPartVol);
                // อัปเดต lot ที่เหลือจริงหลังปิดบางส่วน — เดิม gMtLot ค้างเป็น lot เต็มตอนเปิดไม้
                // ตลอดไป ทำให้ dashboard โชว์ "SL / Lot" ผิดหลัง TP1/TP2 (บั๊ก 2026-09-22)
                if(PositionSelectByTicket(ticket))
@@ -793,7 +793,7 @@ bool PL_Manage(const long magic, const bool usePartials,
          if(PL_MoveSl(ticket, gMtEntry + beSpread))
          {
             gMtBeDone = true;
-            TG_NotifyBreakeven(_Symbol, gMtEntry + beSpread);
+            DC_NotifyBreakeven(_Symbol, gMtEntry + beSpread);
          }
       }
       PL_SaveState(magic); // เก็บสถานะทันทีที่ TP1/BE เปลี่ยน กันรีสตาร์ทกลางไม้แล้วเดาผิด (บั๊ก 2026-09-22)
@@ -809,7 +809,7 @@ bool PL_Manage(const long magic, const bool usePartials,
          {
             if(gTrade.PositionClosePartial(ticket, gMtPartVol))
             {
-               TG_NotifyPartial(_Symbol, "TP2", gMtTp2, gMtPartVol);
+               DC_NotifyPartial(_Symbol, "TP2", gMtTp2, gMtPartVol);
                if(PositionSelectByTicket(ticket))
                   gMtLot = PositionGetDouble(POSITION_VOLUME);
             }

@@ -6,7 +6,7 @@
 //| ก่อน include (มิเรอร์ MARibbonCore.mqh)                             |
 //+------------------------------------------------------------------+
 #include <Trade\Trade.mqh>
-#include "TesterMetrics.mqh"
+#include "..\shared\TesterMetrics.mqh"
 
 // ค่าคงที่ตาม constants section ของ Pine ต้นฉบับ (ไม่ใช่ input เพราะต้นฉบับก็ไม่ใช่)
 const int RANGE_WIN         = 20;   // หน้าต่าง Donchian
