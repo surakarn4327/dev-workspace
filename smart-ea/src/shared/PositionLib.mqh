@@ -176,6 +176,7 @@ bool   gMtHitTp1  = false;
 bool   gMtHitTp2  = false;
 bool   gMtBeDone  = false;
 int    gMtOpenBar = 0;
+datetime gMtOpenTime = 0; // เวลา server ที่เปิดไม้จริง — ใช้วางลูกศร BUY/SELL ให้ตรงแท่งจริง (ดู PL_DrawTrade)
 
 // ตัวนับ diagnostic — ตามกฎโปรเจกต์ ห้ามเดาสาเหตุเวลาผลผิดคาด
 int gPlOpenFail = 0, gPlNoRisk = 0, gPlLotTooSmall = 0, gPlNoPartial = 0;
@@ -235,12 +236,17 @@ void PL_SetLabel(const string name, const string text, const double price, const
 // showTp12 = false ไม่วาดเส้น/label TP1-TP2 (ใช้ตอน usePartials/useBe ปิดทั้งคู่ — ไม้จะปิดที่ TP3
 // เท่านั้น เส้น TP1/TP2 ไม่มีความหมายกับผู้ใช้ตอนนั้น) ไม่กระทบค่า gMtTp1/gMtTp2 ภายในเลย ยังคำนวณ/
 // เก็บไว้เหมือนเดิมทุกอย่าง เพราะยังใช้เช็ค breakeven (ถ้า useBe เปิด) และตอน replay/catch-up
+// entryTime: 0 (default) = ใช้ TimeCurrent() เหมือนเดิม (เหมาะกับตอนเปิดไม้สดที่ "ตอนนี้" คือเวลาเปิด
+// จริงอยู่แล้ว) — ถ้าส่งมาไม่เป็น 0 จะใช้ค่านั้นแทน (จำเป็นตอน sync ไม้เดิมกลับมาหลัง reattach ที่เวลา
+// ตอนเรียกฟังก์ชันนี้ไม่ใช่เวลาที่เปิดไม้จริงแล้ว — บั๊กที่เจอ 2026-09-23: ลูกศรไปโผล่ที่แท่งตอน reattach
+// แทนที่จะเป็นแท่งที่เข้าไม้จริง)
 void PL_DrawTrade(const string prefix, const int dir, const double entry,
                    const double sl, const double tp1, const double tp2, const double tp3,
-                   const bool showTp12 = true)
+                   const bool showTp12 = true, const datetime entryTime = 0)
 {
    string an = prefix + "entry_arrow";
-   ObjectCreate(0, an, dir == 1 ? OBJ_ARROW_BUY : OBJ_ARROW_SELL, 0, TimeCurrent(), entry);
+   datetime arrowTime = (entryTime != 0) ? entryTime : TimeCurrent();
+   ObjectCreate(0, an, dir == 1 ? OBJ_ARROW_BUY : OBJ_ARROW_SELL, 0, arrowTime, entry);
    ObjectSetInteger(0, an, OBJPROP_COLOR, dir == 1 ? clrDodgerBlue : clrOrange);
    ObjectSetInteger(0, an, OBJPROP_SELECTABLE, false);
 
@@ -421,6 +427,7 @@ bool PL_SyncOpenPosition(const long magic, const int currentGBar)
    gMtPosId   = (ulong)PositionGetInteger(POSITION_IDENTIFIER);
    gMtEntry   = entry;
    gMtLot     = PositionGetDouble(POSITION_VOLUME);
+   gMtOpenTime = openTime; // ให้ PL_DrawTrade() วางลูกศรที่แท่งเปิดไม้จริง ไม่ใช่แท่งตอน reattach
    gMtSlCurrent = sl; // SL ปัจจุบันอ่านสดจาก broker เสมอ เชื่อถือได้อยู่แล้วไม่ต้องพึ่งไฟล์ state
 
    bool stateLoaded = PL_LoadState(magic, gMtPosId);
@@ -635,6 +642,7 @@ bool PL_Open(const int dir, const double slPrice,
    gMtHitTp2  = false;
    gMtBeDone  = false;
    gMtOpenBar = barIdx;
+   gMtOpenTime = TimeCurrent();
    gMtLot     = lot;
    gMtPartVol = usePartials ? PL_NormVol(lot / 3.0) : 0.0;
    if(usePartials && gMtPartVol <= 0)

@@ -757,7 +757,7 @@ int OnInit()
       // ที่ EA วาด) — วาดซ้ำด้วยค่าที่ sync กลับมาได้ ให้เหมือนตอนเปิดไม้ครั้งแรกทุกประการ
       if(InpShowChartObjects)
          PL_DrawTrade(PL_ChartPrefix(InpMagic), gMtDir, gMtEntry, gMtSlInit, gMtTp1, gMtTp2, gMtTp3,
-                      gCurUsePartials);
+                      gCurUsePartials, gMtOpenTime); // gMtOpenTime = เวลาเปิดไม้จริง ไม่ใช่เวลา reattach
    }
 
    if(InpShowDashboard)
