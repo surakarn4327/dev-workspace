@@ -776,7 +776,15 @@ void OnTimer()
 {
    MqlDateTime dt;
    TimeToStruct(TimeCurrent(), dt);
-   if(dt.day_of_week == 0 || dt.day_of_week == 6) return; // เสาร์-อาทิตย์ ข้าม
+   if(dt.day_of_week == 0 || dt.day_of_week == 6)
+   {
+      // เจอระหว่างตรวจสอบ 2026-09-23: ต้อง refresh gLastTickMs ต่อเนื่องตลอดสุดสัปดาห์ ไม่งั้น
+      // OnTimer() ครั้งแรกหลังตลาดเปิดวันจันทร์จะเจอ idleSec สะสมทั้งสุดสัปดาห์ (ไม่มี tick มาเป็นวันๆ
+      // ตามปกติ เพราะตลาดปิด) แล้วเข้าใจผิดว่า "ค้าง" ทั้งที่ไม่มีอะไรผิดปกติเลย ยิง heartbeat_stuck
+      // เท็จทุกเช้าวันจันทร์ (และตอนนี้ยิง "กลับมาปกติแล้ว" ตามหลังทันทีด้วย เพราะเพิ่งเพิ่มฟีเจอร์นี้)
+      gLastTickMs = GetTickCount64();
+      return; // เสาร์-อาทิตย์ ข้าม
+   }
 
    if(!TerminalInfoInteger(TERMINAL_CONNECTED))
    {
@@ -786,7 +794,14 @@ void OnTimer()
    }
    DC_ClearProblemKind("disconnected");
    if(gLastProblem == "ขาดการเชื่อมต่อกับ broker")
-      gLastProblem = ""; // เชื่อมต่อกลับมาแล้ว — เคลียร์ข้อความค้างบน dashboard (บั๊ก 2026-09-22)
+   {
+      // แจ้งตอนกลับมาปกติด้วย (ผู้ใช้ขอ 2026-09-23) — เดิมเคลียร์เงียบๆ ไม่มีข้อความแจ้งเลยตอนหาย
+      // เช็คค่า gLastProblem เดิมก่อนเคลียร์ = edge-trigger ธรรมชาติอยู่แล้ว (เข้าเงื่อนไขนี้ได้แค่ตอน
+      // "เพิ่งจะ" ไม่ขาดการเชื่อมต่อแล้ว ไม่ใช่ทุกรอบที่เชื่อมต่อปกติ เพราะ gLastProblem โดนเคลียร์เป็น ""
+      // ไปแล้วตั้งแต่รอบก่อน)
+      DC_Send("✅ " + _Symbol + "\nกลับมาเชื่อมต่อกับ broker แล้ว");
+      gLastProblem = ""; // เคลียร์ข้อความค้างบน dashboard (บั๊ก 2026-09-22)
+   }
 
    double idleSec = (GetTickCount64() - gLastTickMs) / 1000.0;
    if(idleSec > ADXEMA_HEARTBEAT_MAX_SEC)
@@ -798,7 +813,11 @@ void OnTimer()
    {
       DC_ClearProblemKind("heartbeat_stuck");
       if(StringFind(gLastProblem, "ไม่มี tick เข้ามา") == 0)
+      {
+         // เหตุผลเดียวกับ disconnected ด้านบน — edge-trigger จาก gLastProblem เดิมก่อนเคลียร์
+         DC_Send("✅ " + _Symbol + "\nกลับมามี tick เข้ามาปกติแล้ว");
          gLastProblem = "";
+      }
    }
 
    // สรุปสถานะเข้า Discord เป็นระยะ (ผู้ใช้ขอ 2026-09-23) — InpSummaryEveryMin=0 ปิดฟีเจอร์นี้
