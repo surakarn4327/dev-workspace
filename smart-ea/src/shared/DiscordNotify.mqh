@@ -67,37 +67,73 @@ string DC_AccountTag()
 
 // escape ให้เป็น JSON string ที่ถูกต้อง — คนละแบบกับ percent-encode ของ Telegram
 // (Discord webhook รับ body เป็น JSON ไม่ใช่ form-urlencoded)
-string DC_JsonEscape(const string text)
+// ต่อท้าย 1 byte เข้า buffer — ตัวช่วยพื้นฐานให้ฟังก์ชันข้างล่างประกอบ payload ทีละ byte ได้
+void DC_AppendByte(uchar &buf[], const uchar b)
+{
+   int n = ArraySize(buf);
+   ArrayResize(buf, n + 1);
+   buf[n] = b;
+}
+
+// ต่อท้ายข้อความ ASCII ล้วน (เช่น syntax ของ JSON `{"content":"`) เข้า buffer ตรงๆ — ใช้ได้เฉพาะ
+// ข้อความที่รู้แน่ชัดว่าเป็น ASCII (0-127) เท่านั้น เพราะ byte ของ ASCII ตรงกับ Unicode codepoint
+// เป๊ะอยู่แล้ว ไม่มีทางเพี้ยนแบบ multi-byte UTF-8
+void DC_AppendAscii(uchar &buf[], const string asciiText)
+{
+   uchar tmp[];
+   int n = StringToCharArray(asciiText, tmp, 0, WHOLE_ARRAY, CP_UTF8) - 1;
+   for(int i = 0; i < n; i++)
+      DC_AppendByte(buf, tmp[i]);
+}
+
+//+------------------------------------------------------------------+
+//| escape ตัวอักษรพิเศษของ JSON string แล้วต่อท้าย buffer เป็น raw UTF-8    |
+//| byte ตรงๆ — **ห้ามประกอบผ่าน MQL5 string (`out += CharToString(...)`)   |
+//| แบบที่เคยทำ** เพราะ string ของ MQL5 เป็น UTF-16 ภายใน `CharToString()`   |
+//| ตีความ byte ที่ >127 เป็นอักขระของ ANSI codepage ปัจจุบันเสมอ ไม่ใช่ raw    |
+//| byte — พอ UTF-8 หลายไบต์ (เช่นภาษาไทย 3 ไบต์/ตัวอักษร) โดนตีความทีละไบต์   |
+//| แบบนี้แล้วเข้ารหัสกลับเป็น UTF-8 อีกรอบตอนส่งจริง ผลคือ double-encode      |
+//| กลายเป็นตัวอักษรขยะ (`à¸›à¸´à¸”...`) — บั๊กจริงที่เจอจาก Discord ข้อความจริง    |
+//| 2026-09-23 (ก่อนหน้านี้เข้าใจผิดว่า `CP_UTF8` ตอน `StringToCharArray`      |
+//| พอแล้ว ไม่ทันคิดว่า `CharToString` ตัวเดียวทำลายมันทิ้งไปแล้วตั้งแต่ต้นทาง)  |
+//+------------------------------------------------------------------+
+void DC_AppendJsonEscaped(uchar &buf[], const string text)
 {
    uchar bytes[];
-   int n = StringToCharArray(text, bytes, 0, WHOLE_ARRAY, CP_UTF8) - 1; // ตัด null terminator ท้าย
-   string out = "";
+   int n = StringToCharArray(text, bytes, 0, WHOLE_ARRAY, CP_UTF8) - 1;
    for(int i = 0; i < n; i++)
    {
       uchar c = bytes[i];
       if(c == '"' || c == '\\')
-         out += "\\" + CharToString((char)c);
+      {
+         DC_AppendByte(buf, '\\');
+         DC_AppendByte(buf, c);
+      }
       else if(c == '\n')
-         out += "\\n";
+      {
+         DC_AppendByte(buf, '\\');
+         DC_AppendByte(buf, 'n');
+      }
       else if(c == '\r')
          continue; // ตัดทิ้ง กัน \r\n ซ้อนกันตอน escape
       else if(c == '\t')
-         out += "\\t";
+      {
+         DC_AppendByte(buf, '\\');
+         DC_AppendByte(buf, 't');
+      }
       else if(c < 0x20)
          continue; // control char อื่นๆ ที่ JSON string ห้ามมีตรงๆ
       else
-         out += CharToString((char)c);
+         DC_AppendByte(buf, c); // byte ปกติ (รวม byte ของ UTF-8 หลายไบต์) ผ่านตรงๆ ไม่แตะ
    }
-   return out;
 }
 
 //+------------------------------------------------------------------+
-//| ยิง JSON body ที่ประกอบไว้แล้วเข้า Discord — จุดเดียวที่คุยกับ WebRequest  |
-//| จริง ใช้ร่วมกันทั้ง DC_Send (content ธรรมดา) และ DC_SendEmbedFields      |
-//| (embed 2 คอลัมน์) แยกออกมาจาก DC_Send เดิม 2026-09-23 กันโค้ด           |
-//| WebRequest/error-handling ซ้ำซ้อนกัน 2 จุด                             |
+//| ยิง raw byte payload ที่ประกอบไว้แล้วเข้า Discord — จุดเดียวที่คุยกับ      |
+//| WebRequest จริง รับเป็น uchar[] ตรงๆ (ไม่ใช่ string) เพื่อกันปัญหา        |
+//| double-encode แบบที่เจอ (ดูคอมเมนต์ DC_AppendJsonEscaped ด้านบน)         |
 //+------------------------------------------------------------------+
-bool DC_PostJson(const string body)
+bool DC_PostJsonBytes(uchar &post[])
 {
    // กันสแปมตอน backtest/optimize (โปรเจกต์นี้รันเป็นพัน/หมื่น combination) — สำคัญที่สุด
    if(MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION))
@@ -110,10 +146,6 @@ bool DC_PostJson(const string body)
 
    string url     = g_DcWebhookUrl;
    string headers = "Content-Type: application/json\r\n";
-
-   char post[];
-   int len = StringToCharArray(body, post, 0, WHOLE_ARRAY, CP_UTF8) - 1;
-   ArrayResize(post, MathMax(len, 0));
 
    char   result[];
    string resultHeaders;
@@ -142,7 +174,12 @@ bool DC_Send(const string text)
    string full = DC_AccountTag() + " " + text;
    if(StringLen(full) > 1900) // เผื่อ margin จาก limit จริง 2000 ตัวอักษรของ Discord content
       full = StringSubstr(full, 0, 1900);
-   return DC_PostJson("{\"content\":\"" + DC_JsonEscape(full) + "\"}");
+
+   uchar post[];
+   DC_AppendAscii(post, "{\"content\":\"");
+   DC_AppendJsonEscaped(post, full);
+   DC_AppendAscii(post, "\"}");
+   return DC_PostJsonBytes(post);
 }
 
 //+------------------------------------------------------------------+
