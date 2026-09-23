@@ -34,8 +34,8 @@
 // forward declaration — เรียกใช้ก่อนตัวจริง (นิยามอยู่ท้ายไฟล์) ตอนปิดไม้จาก momentum-exit/cutoff
 void AdxEmaSendStatusSummary();
 
-#define ADXEMA_VERSION "1.0"
-#define ADXEMA_UPDATED "19/09/26"
+#define ADXEMA_VERSION "1.1"
+#define ADXEMA_UPDATED "23/09/26"
 
 const int ADXEMA_HEARTBEAT_MAX_SEC = 120; // ค่าเดียวกับ SATS (ผู้ใช้เลือกไว้ 2026-09-17)
 
