@@ -58,10 +58,14 @@ string gLastProblem = "";
 // เหตุการณ์ล่าสุด (เข้าไม้/ปิดไม้ ฯลฯ) — โชว์บน dashboard แทนที่ต้องไปเปิด Experts tab ดู
 string   gLastEvent     = "";
 datetime gLastEventTime = 0;
-void PL_SetLastEvent(const string text)
+// eventTime: 0 (default) = ใช้ TimeCurrent() (เหมาะกับเหตุการณ์ที่ EA รู้ทันทีตอนเกิดจริง เช่น
+// เข้าไม้/ปิดบางส่วน/ขยับ BE ซึ่งเป็นคำสั่งที่ EA สั่งเองแบบ synchronous) — ถ้าส่งมาไม่เป็น 0 จะใช้ค่านั้น
+// แทน (จำเป็นตอนปิดที่ TP/SL ที่ broker ปิดเองโดย EA "รู้ทีหลัง" ตอนเช็ค tick ถัดไป ไม่ใช่ตอนดีลปิดจริง
+// — ผู้ใช้ถาม 2026-09-23 ว่าทุกเหตุการณ์ใช้เวลาที่เกิดขึ้นจริงหรือเปล่า จุดนี้คือจุดเดียวที่ยังไม่ตรงเป๊ะ)
+void PL_SetLastEvent(const string text, const datetime eventTime = 0)
 {
    gLastEvent     = text;
-   gLastEventTime = TimeCurrent();
+   gLastEventTime = (eventTime != 0) ? eventTime : TimeCurrent();
 }
 
 // จุดเริ่ม "วันเทรด" ของรอบปัจจุบัน — เดิมใช้ cutoffServerHour เป็นเส้นแบ่งวันเสมอ แต่ cutoff กับ
@@ -734,7 +738,7 @@ void PL_ClassifyClosed()
    if(lastReason == DEAL_REASON_TP)
    {
       gPlClosedTp++;
-      PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: TP ที่ %s", DoubleToString(lastPrice, _Digits)));
+      PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: TP ที่ %s", DoubleToString(lastPrice, _Digits)), lastTime);
       Print(gLastEvent);
       if(gPlSummaryHook != NULL) gPlSummaryHook();
       else DC_NotifyClose(_Symbol, StringFormat("TP ที่ %s", DoubleToString(lastPrice, _Digits)),
@@ -743,7 +747,7 @@ void PL_ClassifyClosed()
    else if(lastReason == DEAL_REASON_SL)
    {
       gPlClosedSl++;
-      PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: SL ที่ %s", DoubleToString(lastPrice, _Digits)));
+      PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: SL ที่ %s", DoubleToString(lastPrice, _Digits)), lastTime);
       Print(gLastEvent);
       if(gPlSummaryHook != NULL) { gPlSummaryHook(); }
       else DC_NotifyClose(_Symbol, StringFormat("SL ที่ %s", DoubleToString(lastPrice, _Digits)),
