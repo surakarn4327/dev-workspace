@@ -448,7 +448,6 @@ bool PL_SyncOpenPosition(const long magic, const int currentGBar)
 
    // แก้บั๊ก 2026-09-18: เดิมฟังก์ชันนี้ไม่เคยเรียก PL_SetLastEvent เลย ทำให้ "เหตุการณ์ล่าสุด" บน
    // dashboard ค้างข้อความ/เวลาเก่าจากก่อน reattach ทั้งที่แถว Position sync ราคาใหม่ถูกต้องแล้ว —
-   // ใช้ openTime จริงของไม้ (ไม่ใช่ TimeCurrent() ตอน reattach) ให้เวลาที่โชว์ตรงกับตอนเปิดไม้จริง
    // แยกข้อความ 2 แบบ (ผู้ใช้ขอ 2026-09-22 ไว้เช็คว่า "กลับมาดูแลไม้" หลัง restart สำเร็จจริงไหม)
    // ไม่ต้องบอกละเอียดว่า TP1/TP2 ผ่านหรือยัง เพราะ dashboard มีติ๊ก ✓ ที่แถว TP1/TP2 โชว์อยู่แล้ว
    // (ผู้ใช้ขอตัด 2026-09-22 รอบ 2 — กันข้อความยาวเกินจำเป็น)
@@ -456,7 +455,13 @@ bool PL_SyncOpenPosition(const long magic, const int currentGBar)
       gLastEvent = StringFormat("กลับมาดูแลไม้แล้ว: %s %s", PL_DirStr(gMtDir), DoubleToString(entry, _Digits));
    else
       gLastEvent = StringFormat("เข้าไม้ (ซิงก์จากไม้เดิม): %s %s", PL_DirStr(gMtDir), DoubleToString(entry, _Digits));
-   gLastEventTime = openTime;
+   // แก้บั๊ก 2026-09-23 (รอบ 2): เดิมใช้ openTime (เวลาเปิดไม้จริงของโบรกเกอร์) เป็นเวลาของเหตุการณ์นี้
+   // ด้วย ตั้งใจให้ "ตรงกับตอนเปิดไม้จริง" แต่ข้อความ "กลับมาดูแลไม้แล้ว"/"เข้าไม้ (ซิงก์...)" ทั้งคู่
+   // บรรยาย "การ sync สำเร็จ" ซึ่งเป็นเหตุการณ์ที่เกิด ณ ตอนนี้ (ตอน reattach) ไม่ใช่ตอนเปิดไม้เดิม —
+   // เอาเวลาเปิดไม้จริงไปแปะกับข้อความที่บอกว่า "เพิ่งเกิด" ทำให้ผู้ใช้เข้าใจผิดว่าเวลาไม่ตรง/เป็นบั๊ก
+   // (ราคา entry ในข้อความเองก็ยังบอกอยู่แล้วว่าไม้นี้ราคาเข้าเท่าไหร่ ไม่จำเป็นต้องพึ่งเวลาช่วยสื่อสารอีก)
+   // ใช้ TimeCurrent() (เวลาที่ sync สำเร็จจริง) แทน — ตรงกับความหมายของ "เหตุการณ์ล่าสุด" มากกว่า
+   gLastEventTime = TimeCurrent();
    Print(gLastEvent); // ให้เห็นใน Experts/Journal log ด้วย ไม่ใช่แค่บน dashboard
 
    return true;
