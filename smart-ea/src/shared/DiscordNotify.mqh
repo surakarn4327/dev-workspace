@@ -171,7 +171,10 @@ bool DC_PostJsonBytes(uchar &post[])
 //+------------------------------------------------------------------+
 bool DC_Send(const string text)
 {
-   string full = DC_AccountTag() + " " + text;
+   // ห่อทุกข้อความด้วย code block เสมอ (ผู้ใช้ขอ 2026-09-23) — ทำให้แต่ละข้อความเป็นกล่องแยกชัดเจน
+   // ใน Discord เองอัตโนมัติ (ไม่ต้องเติมเส้นคั่นเอง) แม้ส่งติดกันหลายข้อความรัวๆ ก็แยกกล่องออกจากกันได้
+   // ง่าย — DC_AccountTag() ขึ้นบรรทัดแรกในกล่องเดียวกัน ไม่ลอยอยู่นอกกล่องแบบเดิม
+   string full = "```\n" + DC_AccountTag() + "\n" + text + "\n```";
    if(StringLen(full) > 1900) // เผื่อ margin จาก limit จริง 2000 ตัวอักษรของ Discord content
       full = StringSubstr(full, 0, 1900);
 

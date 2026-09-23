@@ -489,9 +489,17 @@ void AdxEmaDrawDashboard()
                    gMtDir == 1 ? clrLimeGreen : clrTomato, FS, CN, AN);
       y += dy;
 
-      PL_DashLabel(prefix + "sl_l", "SL / Lot", xLabel, y, clrSilver, FS, CN, AN);
-      PL_DashLabel(prefix + "sl_v", DoubleToString(gMtSlInit, _Digits) + " / " + DoubleToString(gMtLot, 2),
+      // Lot/Risk รวมแถวเดียว (ผู้ใช้ขอ 2026-09-23) — Risk = เสี่ยงเหลือเท่าไหร่ถ้าโดน SL ตอนนี้
+      // (ใช้ lot ที่เหลือจริง + SL ปัจจุบัน) ไม่ใช่ทุนเสี่ยงตั้งต้นตอนเปิดไม้เต็ม lot อีกต่อไป —
+      // ลดลงเองหลัง TP1/TP2 หรือเกือบ 0 ถ้า BE เลื่อน SL มาที่ entry
+      PL_DashLabel(prefix + "lotrisk_l", "Lot / Risk", xLabel, y, clrSilver, FS, CN, AN);
+      PL_DashLabel(prefix + "lotrisk_v", DoubleToString(gMtLot, 2) + " / " +
+                   DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr,
                    xValue, y, clrWhite, FS, CN, AN);
+      y += dy;
+
+      PL_DashLabel(prefix + "sl_l", "SL", xLabel, y, clrSilver, FS, CN, AN);
+      PL_DashLabel(prefix + "sl_v", DoubleToString(gMtSlInit, _Digits), xValue, y, clrWhite, FS, CN, AN);
       y += dy;
 
       if(gCurUsePartials)
@@ -527,17 +535,11 @@ void AdxEmaDrawDashboard()
          y += dy;
       }
 
-      // เสี่ยงเหลือเท่าไหร่ถ้าโดน SL ตอนนี้ (ใช้ lot ที่เหลือจริง + SL ปัจจุบัน) ไม่ใช่ทุนเสี่ยงตั้งต้น
-      // ตอนเปิดไม้เต็ม lot อีกต่อไป — ลดลงเองหลัง TP1/TP2 หรือเกือบ 0 ถ้า BE เลื่อน SL มาที่ entry
-      PL_DashLabel(prefix + "risk_l", "Risk (" + curr + ")", xLabel, y, clrSilver, FS, CN, AN);
-      PL_DashLabel(prefix + "risk_v", DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr, xValue, y, clrWhite, FS, CN, AN);
-      y += dy;
-
       double posProfit = 0;
       ulong ticket = 0;
       if(PL_Select(InpMagic, ticket) && PositionSelectByTicket(ticket))
          posProfit = PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
-      PL_DashLabel(prefix + "pl_l", "Floating P/L", xLabel, y, clrSilver, FS, CN, AN);
+      PL_DashLabel(prefix + "pl_l", "P/L", xLabel, y, clrSilver, FS, CN, AN);
       PL_DashLabel(prefix + "pl_v", (posProfit >= 0 ? "+" : "") + DoubleToString(posProfit, 0) + " " + curr,
                    xValue, y, posProfit >= 0 ? clrLimeGreen : clrTomato, FS, CN, AN);
       y += dy;
@@ -548,8 +550,8 @@ void AdxEmaDrawDashboard()
       PL_DashLabel(prefix + "pos_v", "ไม่มีไม้เปิดอยู่", xValue, y, clrSilver, FS, CN, AN);
       y += dy;
 
-      string posOnly[] = {"sl_l","sl_v","tp_l","tp_v","tp1_l","tp1_v","tp2_l","tp2_v","tp3_l","tp3_v",
-                          "risk_l","risk_v","pl_l","pl_v"};
+      string posOnly[] = {"lotrisk_l","lotrisk_v","sl_l","sl_v","tp_l","tp_v","tp1_l","tp1_v","tp2_l","tp2_v",
+                          "tp3_l","tp3_v","pl_l","pl_v"};
       for(int pi = 0; pi < ArraySize(posOnly); pi++)
          ObjectDelete(0, prefix + posOnly[pi]);
    }
@@ -569,14 +571,14 @@ void AdxEmaDrawDashboard()
 
    double todayProfit; int todayTrades;
    AdxEmaComputeTodayStats(todayProfit, todayTrades);
-   PL_DashLabel(prefix + "today_l", "วันนี้", xLabel, y, clrSilver, FS, CN, AN);
+   PL_DashLabel(prefix + "today_l", "Today", xLabel, y, clrSilver, FS, CN, AN);
    PL_DashLabel(prefix + "today_v",
                 (todayProfit >= 0 ? "+" : "") + DoubleToString(todayProfit, 0) + " " + curr +
                 " · " + IntegerToString(todayTrades) + " ไม้",
                 xValue, y, todayProfit > 0 ? clrLimeGreen : (todayProfit < 0 ? clrTomato : clrSilver), FS, CN, AN);
    y += dy;
 
-   PL_DashLabel(prefix + "cutoff_l", "เหลือเวลาเทรด", xLabel, y, clrSilver, FS, CN, AN);
+   PL_DashLabel(prefix + "cutoff_l", "Time left", xLabel, y, clrSilver, FS, CN, AN);
    PL_DashLabel(prefix + "cutoff_v",
                 InpUseCutoff ? PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour) : "ปิดใช้งาน",
                 xValue, y, clrWhite, FS, CN, AN);
@@ -634,14 +636,18 @@ void AdxEmaSendStatusSummary()
    bool hasPos = (gMtDir != 0);
    if(hasPos)
    {
+      // ลำดับ/กลุ่มตามที่ผู้ใช้ขอ 2026-09-23 (รอบที่ 4): Position, Lot/Risk รวมแถวเดียว, SL, TP1-3,
+      // Price (ราคาตลาดปัจจุบันฝั่งที่จะใช้ปิดไม้จริง — BUY ปิดที่ Bid, SELL ปิดที่ Ask), P/L
+      // "(hit)" เปลี่ยนเป็นเครื่องหมายถูก "✓" ต่อท้าย label แทน (ตรงกับที่ dashboard บนกราฟใช้อยู่แล้ว)
       s += "Position: " + PL_DirStr(gMtDir) + " " + DoubleToString(gMtEntry, _Digits) + "\n";
+      s += "Lot / Risk: " + DoubleToString(gMtLot, 2) + " / " +
+           DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr + "\n";
       s += "SL: " + DoubleToString(gMtSlInit, _Digits) + "\n";
-      s += "Lot: " + DoubleToString(gMtLot, 2) + "\n";
 
       if(gCurUsePartials)
       {
-         s += "TP1" + (gMtHitTp1 ? " (hit)" : "") + ": " + DoubleToString(gMtTp1, _Digits) + "\n";
-         s += "TP2" + (gMtHitTp2 ? " (hit)" : "") + ": " + DoubleToString(gMtTp2, _Digits) + "\n";
+         s += "TP1" + (gMtHitTp1 ? " ✓" : "") + ": " + DoubleToString(gMtTp1, _Digits) + "\n";
+         s += "TP2" + (gMtHitTp2 ? " ✓" : "") + ": " + DoubleToString(gMtTp2, _Digits) + "\n";
          s += "TP3: " + DoubleToString(gMtTp3, _Digits) + "\n";
       }
       else
@@ -649,7 +655,8 @@ void AdxEmaSendStatusSummary()
          s += "TP: " + DoubleToString(gMtTp3, _Digits) + "\n";
       }
 
-      s += "Risk: " + DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr + "\n";
+      double curPrice = (gMtDir == 1) ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      s += "Price: " + DoubleToString(curPrice, _Digits) + "\n";
 
       double posProfit = 0;
       ulong ticket = 0;
@@ -681,7 +688,7 @@ void AdxEmaSendStatusSummary()
    s += (gLastEvent == "") ? "ยังไม่มีเหตุการณ์" :
         (TimeToString(gLastEventTime, TIME_MINUTES) + "  " + gLastEvent);
 
-   DC_Send("```\n" + s + "\n```");
+   DC_Send(s); // DC_Send() ห่อ code block + account tag ให้เองแล้ว (2026-09-23) ไม่ต้องห่อซ้ำที่นี่
 }
 
 //+------------------------------------------------------------------+
