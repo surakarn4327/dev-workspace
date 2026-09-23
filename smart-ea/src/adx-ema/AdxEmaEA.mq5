@@ -63,4 +63,8 @@ input group "[ไม่จูน] แสดงผลบนกราฟ"
 input bool InpShowChartObjects = false; // วาดลูกศรจุดเข้า + เส้น SL/TP1-3 บนชาร์ต — default false เพราะทำให้ backtest/optimize ช้าลง (วาด object ทุก pass) เปิดเป็น true เฉพาะตอนดูสดบนชาร์ตจริงเท่านั้น
 input bool InpShowDashboard     = true;  // แสดงพาเนลสรุปสถานะมุมขวาบนของชาร์ต (ไม้/SL/TP/risk/balance/equity/เวลาเทรด/เหตุการณ์ล่าสุด) — เหมือน BestSATS ปิดได้ถ้าไม่ต้องการ (ไม่กระทบตอน optimize เพราะ throttle ไว้ 2 วิ/ครั้งและ MT5 ไม่วาดกราฟระหว่าง optimize อยู่แล้ว)
 
+input group "[ไม่จูน] สรุปสถานะเข้า Discord เป็นระยะ"
+input int  InpSummaryEveryMin      = 10;   // ส่งสรุปสถานะ (เหมือน dashboard บนกราฟ) เข้า Discord ทุกกี่นาที — 0 = ปิด ไม่ส่งเป็นระยะ (ยังแจ้งเข้า/ปิดไม้/ปัญหาตามปกติ)
+input bool InpSummaryOnlyTradeHours = true; // true = ส่งเฉพาะช่วงที่อนุญาตให้เทรด (06:00-24:00 ไทยตาม InpUseCutoff), false = ส่งตลอด 24 ชม. แม้นอกเวลาเทรด
+
 #include "AdxEmaCore.mqh"

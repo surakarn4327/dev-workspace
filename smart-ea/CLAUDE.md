@@ -42,6 +42,20 @@ process คืนค่าก่อนเขียน log เสร็จ — �
 หลังย้าย — ถ้าเพิ่มกลยุทธ์ใหม่ในอนาคต ให้สร้างโฟลเดอร์ย่อยของตัวเองตามแบบนี้ทันที ไม่ปล่อยไฟล์ลอยที่ root
 `src\` อีก
 
+**รีเซ็ตโปรเจกต์ครั้งที่ 2 (2026-09-23) ตามคำสั่งผู้ใช้ — เหลือแค่ AdxEma กลยุทธ์เดียว** ระหว่างทำฟีเจอร์
+แจ้งเตือน Discord ให้ AdxEma ผู้ใช้ตัดสินใจเลิกใช้ SATS และ AMD Po3 ทั้งคู่ ลบไฟล์ทิ้งทั้งหมด (**กู้จาก git
+history ได้** ต่างจากรอบ 2026-09-14 ด้านล่างที่กู้ไม่ได้ เพราะรอบนี้ทุกไฟล์เคย `git mv`/commit เข้า repo
+มาแล้วตอนย้ายเข้าโฟลเดอร์ย่อยเมื่อเช้าวันเดียวกัน):
+- ลบ `src\sats\` ทั้งโฟลเดอร์ (`SelfAwareTrendTypes.mqh`, `SelfAwareTrendCore.mqh`, `SelfAwareTrendEA.mq5`,
+  `BestSATS.mq5`) + `.set` ทุกไฟล์ที่ขึ้นต้น `sats_`/`SATS_` ใน `optimizer\sets\`
+- ลบ `src\amd-po3\` ทั้งโฟลเดอร์ (`AmdPo3Types.mqh`, `AmdPo3Core.mqh`, `AmdPo3EA.mq5`, `BestM5_AmdPo3.mq5`)
+  + `.set` ทุกไฟล์ที่ขึ้นต้น `amdpo3_`/`AmdPo3_` ใน `optimizer\sets\`
+- `src\shared\` (`PositionLib.mqh`/`TesterMetrics.mqh`/`DiscordNotify.mqh`/`SymbolInfoDump.mq5`) และ
+  `src\adx-ema\` เป็นสิ่งเดียวที่เหลืออยู่ใน `src\` ตอนนี้ — โฟลเดอร์ `src\sats\`/`src\amd-po3\` ว่างเปล่า
+  (git ไม่ track โฟลเดอร์ว่าง) ถ้าจะเพิ่มกลยุทธ์ใหม่ในอนาคตสร้างโฟลเดอร์ใหม่ตามแบบเดิมได้เลย
+- ผลบันทึกทุกอย่างของ AMD Po3/SATS ด้านล่างนี้ (รวมทั้งหัวข้อ "ยังไม่มี EA ที่ถอนกำไรได้สม่ำเสมอ") **เก็บ
+  ไว้เป็นประวัติทั้งหมด ไม่ลบทิ้ง** เผื่อกลับมาอ่านอ้างอิงในอนาคต แต่ไฟล์โค้ดจริงไม่มีแล้วในเวิร์กสเปซ
+
 **รีเซ็ตโปรเจกต์ 2026-09-14 ตามคำสั่งผู้ใช้ — เหลือแค่ AMD Po3 + SATS** ลบโค้ด, ผล optimize
 (`optimizer\results\*`, `optimizer\sets\*`) และ `.ex5` ของ 3 ตระกูลนี้ทิ้งทั้งหมด (**กู้จาก git history
 ได้** เฉพาะ MA Ribbon ซึ่งเคย commit ไว้ — SMC/SmartIndicator ไม่เคย commit เข้า repo กู้ไม่ได้):
@@ -240,6 +254,44 @@ copy ทั้ง `.mq5` และ `.ex5` ไปที่ `MQL5\Experts\` ขอ
    - Discord content จำกัด 2000 ตัวอักษร (สั้นกว่า Telegram 4096) — `DC_Send()` ตัดที่ 1900 กันชนลิมิต
      และต้องส่ง body เป็น JSON (`{"content":"..."}`) ไม่ใช่ form-urlencoded แบบ Telegram เดิม ต้อง
      escape เป็น JSON string ให้ถูก (quote/backslash/newline) ไม่ใช่ percent-encode
+
+**2026-09-23 เพิ่ม "สรุปสถานะเต็ม" (ผู้ใช้ขอ ทำแค่ AdxEma) — ใช้ทั้งกับตัวจับเวลาเป็นระยะและ 4 เหตุการณ์
+เข้า/ปิดไม้/ปิดบางส่วน/BE** เดิมข้อ 9 มีแค่ข้อความสั้นๆ ต่อเหตุการณ์ ผู้ใช้ขอเพิ่มให้ "เข้าไม้ ปิดไม้
+ปิดบางส่วน ขยับ BE" ส่งเป็น**สรุปสถานะเต็มแบบเดียวกับ dashboard บนกราฟทุกแถว** (ไม่ใช่ข้อความสั้นเหมือน
+เดิม) บวกกับส่งสรุปเดียวกันนี้ **เป็นระยะทุก `InpSummaryEveryMin` นาที** (default 10, `0`=ปิด) — ส่วน
+"ปัญหา"/"สถานะเปลี่ยน" (ข้อ 9 เดิม) ยังใช้ข้อความสั้นเหมือนเดิม ไม่เปลี่ยน:
+- `AdxEmaSendStatusSummary()` (`AdxEmaCore.mqh`) คือฟังก์ชันเดียวที่ประกอบเนื้อหา ลำดับเหมือน
+  `AdxEmaDrawDashboard()` ทุกแถว (Version, Progress, Position/SL-Lot/TP1-3/Risk/Floating P/L หรือ
+  "ไม่มีไม้เปิดอยู่", Balance, Equity, Today, Time left, เหตุการณ์ล่าสุด)
+- **ฟอร์แมตตัดสินใจหลังลองผิดลองถูกหลายรอบกับผู้ใช้ 2026-09-23**: ตอนแรกลองใช้ Discord Embed Fields
+  (คิดว่า Discord จัด 2 คอลัมน์ label/value ให้เองสวยๆ) แต่พบว่า **Embed Field บังคับให้ name อยู่บรรทัด
+  บน value อยู่บรรทัดล่างเสมอ เปลี่ยนไม่ได้ไม่ว่าตั้งค่าไหน** ผู้ใช้อยากได้ label+value อยู่บรรทัดเดียวกัน
+  แบบ dashboard MT5 (`Position   SELL 4354.828`) จึงเปลี่ยนมาใช้ **plain text ครอบด้วย code block
+  (` ``` `)** แทน — ปัญหาต่อมาคือ Discord ฟอนต์ปกติเป็น proportional เว้นวรรคเฉยๆ จัดคอลัมน์ให้ตรงกัน
+  ไม่ได้ ลองแก้ด้วย CSS mockup ก่อนแล้วพบว่าหลอกตาไม่ตรงกับที่ Discord render จริง สรุปสุดท้าย:
+  **code block (ฟอนต์ monospace จริง) + label เป็นภาษาอังกฤษล้วนเท่านั้น** (`AdxEmaPad()` เติมช่องว่าง
+  ท้าย label ให้ครบ 16 ตัวอักษร) ถึงจะจัดคอลัมน์ตรงกันได้จริง 100% เพราะตัวอักษรไทยกว้างไม่เท่ากันใน
+  ฟอนต์ monospace ของ Discord (ปัญหาเดียวกับที่เคยเจอตอนคาลิเบรต `colGap` ของ dashboard บนกราฟ MT5)
+  — แปล label 2 ตัวเป็นอังกฤษเฉพาะข้อความ Discord นี้เท่านั้น (`วันนี้`→`Today`,
+  `เหลือเวลาเทรด`→`Time left`) **dashboard บนกราฟ MT5 ยังเป็นภาษาไทยเหมือนเดิม ไม่กระทบ** ค่า (value)
+  หลัง label ยังใส่ภาษาไทยได้ปกติ (เช่น "1 ไม้") เพราะอยู่หลังจุดจัดคอลัมน์แล้วไม่กระทบแถวอื่น
+- **`gPlSummaryHook` ใน `PositionLib.mqh`** — callback function pointer (`typedef void (*PlSummaryHookFunc)()`)
+  ที่เข้าไม้/ปิดที่ TP-SL/ปิดบางส่วน TP1-TP2/ขยับ BE ใน `PL_Open()`/`PL_Manage()`/`PL_ClassifyClosed()`
+  เช็คก่อนเสมอ — ถ้าตั้งไว้ (AdxEma ตั้งใน `OnInit()` เป็น `AdxEmaSendStatusSummary`) เรียก hook แทน
+  `DC_NotifyEntry`/`DC_NotifyClose`/`DC_NotifyPartial`/`DC_NotifyBreakeven` เดิม ถ้าไม่ตั้ง (`NULL` ค่า
+  default) พฤติกรรมเดิมเป๊ะ — ทำแบบนี้แทนฮาร์ดโค้ดชื่อฟังก์ชันของ AdxEma ลงใน `PositionLib.mqh` ตรงๆ
+  เพราะไฟล์นี้ตั้งใจให้ใช้ร่วมกันได้ทุกกลยุทธ์ในอนาคต แม้ตอนนี้จะเหลือ AdxEma ใช้อยู่ตัวเดียวก็ตาม
+- **บั๊กที่เจอ+แก้แล้วระหว่างทำ**: `PL_Manage()` เดิมเรียก `PL_ClassifyClosed()` (จุดที่ยิง
+  `DC_NotifyClose`/hook ตอนปิดที่ TP/SL) **ก่อน** เคลียร์ `gMtDir = 0` ทำให้สรุปสถานะเต็มที่อ่าน `gMtDir`
+  ตัดสิน "มีไม้เปิดอยู่ไหม" เห็นไม้ที่เพิ่งปิดไปแล้วว่ายังเปิดอยู่ผิดพลาด — ย้าย `gMtDir = 0` ไปไว้ก่อน
+  เรียก `PL_ClassifyClosed()` แทน (ไม่กระทบ `PL_ClassifyClosed()` เองเพราะข้างในใช้ `gMtPosId` ไม่ใช่
+  `gMtDir`) แก้ไฟล์เดียว (`PositionLib.mqh`) กระทบทุกกลยุทธ์ที่ใช้ `PL_Manage()` เหมือนกัน
+- เพิ่ม input group `[ไม่จูน] สรุปสถานะเข้า Discord เป็นระยะ` ใน `AdxEmaEA.mq5`: `InpSummaryEveryMin`
+  (default 10, นาที, `0`=ปิด) และ `InpSummaryOnlyTradeHours` (default `true` = ส่งเฉพาะช่วงที่
+  `InpUseCutoff` อนุญาตให้เทรด, `false` = ส่งตลอด 24 ชม.) เช็คใน `OnTimer()` (รันทุก 30 วิแน่นอน ไม่ต้อง
+  พึ่ง tick เหมือนพาเนลบนกราฟ) — อัปเดต `.set` ที่ใช้เทรดจริงแล้ว (`C:\Users\surak\Downloads\ADX-opt\Best.set`)
+- compile ผ่าน 0 errors 0 warnings แล้ว **ยังไม่เคยเห็นข้อความจริงส่งเข้า Discord จากฟีเจอร์นี้เลย** ต้อง
+  copy `.ex5` ใหม่ไปทับ `MQL5\Experts\` แล้ว reattach ถึงจะเห็นผลจริง
 
 **ข้อ 1-2, 4, 7, 8, 9 ไม่มีกลไกภาษาบังคับข้ามไฟล์ — MQL5 ไม่มี inheritance ระหว่าง EA** ต้องเขียนซ้ำ/เรียก
 ฟังก์ชันที่มีอยู่แล้วด้วยมือทุกครั้งที่สร้างไฟล์ `.mq5` ใหม่ (ข้อ 9 คือแค่ `#include "..\shared\DiscordNotify.mqh"`

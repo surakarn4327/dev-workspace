@@ -92,9 +92,12 @@ string DC_JsonEscape(const string text)
 }
 
 //+------------------------------------------------------------------+
-//| ยิงข้อความเข้า Discord — จุดเดียวที่คุยกับ WebRequest จริง              |
+//| ยิง JSON body ที่ประกอบไว้แล้วเข้า Discord — จุดเดียวที่คุยกับ WebRequest  |
+//| จริง ใช้ร่วมกันทั้ง DC_Send (content ธรรมดา) และ DC_SendEmbedFields      |
+//| (embed 2 คอลัมน์) แยกออกมาจาก DC_Send เดิม 2026-09-23 กันโค้ด           |
+//| WebRequest/error-handling ซ้ำซ้อนกัน 2 จุด                             |
 //+------------------------------------------------------------------+
-bool DC_Send(const string text)
+bool DC_PostJson(const string body)
 {
    // กันสแปมตอน backtest/optimize (โปรเจกต์นี้รันเป็นพัน/หมื่น combination) — สำคัญที่สุด
    if(MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION))
@@ -105,13 +108,8 @@ bool DC_Send(const string text)
    if(!g_DcReady)
       return false;
 
-   string full = DC_AccountTag() + " " + text;
-   if(StringLen(full) > 1900) // เผื่อ margin จาก limit จริง 2000 ตัวอักษรของ Discord content
-      full = StringSubstr(full, 0, 1900);
-
    string url     = g_DcWebhookUrl;
    string headers = "Content-Type: application/json\r\n";
-   string body    = "{\"content\":\"" + DC_JsonEscape(full) + "\"}";
 
    char post[];
    int len = StringToCharArray(body, post, 0, WHOLE_ARRAY, CP_UTF8) - 1;
@@ -134,6 +132,17 @@ bool DC_Send(const string text)
       return false;
    }
    return true;
+}
+
+//+------------------------------------------------------------------+
+//| ยิงข้อความธรรมดาเข้า Discord (content เดี่ยว)                          |
+//+------------------------------------------------------------------+
+bool DC_Send(const string text)
+{
+   string full = DC_AccountTag() + " " + text;
+   if(StringLen(full) > 1900) // เผื่อ margin จาก limit จริง 2000 ตัวอักษรของ Discord content
+      full = StringSubstr(full, 0, 1900);
+   return DC_PostJson("{\"content\":\"" + DC_JsonEscape(full) + "\"}");
 }
 
 //+------------------------------------------------------------------+

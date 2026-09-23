@@ -31,6 +31,9 @@
 #include "..\shared\PositionLib.mqh"
 #include "..\shared\TesterMetrics.mqh"
 
+// forward declaration — เรียกใช้ก่อนตัวจริง (นิยามอยู่ท้ายไฟล์) ตอนปิดไม้จาก momentum-exit/cutoff
+void AdxEmaSendStatusSummary();
+
 #define ADXEMA_VERSION "1.0"
 #define ADXEMA_UPDATED "19/09/26"
 
@@ -49,6 +52,7 @@ datetime gLastBarTime   = 0;
 bool     gCurUsePartials = false;
 double   gTradeRiskUsd   = 0; // ทุนเสี่ยง USD/USC ของไม้ที่เปิดอยู่ — โชว์บน dashboard เท่านั้น
 ulong    gLastTickMs     = 0; // heartbeat — ดู OnTimer()
+datetime gLastSummarySent = 0; // ครั้งล่าสุดที่ส่งสรุปสถานะเข้า Discord — ดู AdxEmaSendStatusSummary()/OnTimer()
 
 // ── สถานะ EMA ของ ADX main line (running EMA เอง ไม่ใช้ iMA) ──
 double gEmaAdx           = 0;   // EMA ณ แท่งที่เพิ่งปิด (shift1) — หลังอัปเดต
@@ -202,10 +206,10 @@ void CheckMomentumExit(const double adxShift1)
    {
       PL_CloseAll(InpMagic);
       string reason = "โมเมนตัมหมด (ADX ต่ำกว่า EMA)";
+      PL_SetLastEvent("ไม้ปิดแล้ว: " + reason); // ต้องตั้งก่อนส่งสรุป ไม่งั้นแถวเหตุการณ์ล่าสุดจะค้างอันเก่า
       double closedNet;
       if(AdxEmaClosedNet(closedNet))
-         DC_NotifyClose(_Symbol, reason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
-      PL_SetLastEvent("ไม้ปิดแล้ว: " + reason);
+         AdxEmaSendStatusSummary();
       gCnt_MomentumExit++;
    }
 }
@@ -588,9 +592,117 @@ void AdxEmaDrawDashboard()
    ChartRedraw();
 }
 
+// เติมช่องว่างท้าย label ให้ครบ width ตัวอักษร — ใช้จัดคอลัมน์ label/value ให้ตรงกันในโค้ดบล็อก
+// (font monospace ของ Discord) ต้องเป็น label ภาษาอังกฤษล้วนเท่านั้นถึงจะตรงเป๊ะทุกแถว เพราะอักษรไทย
+// กว้างไม่เท่ากันในฟอนต์ monospace (ปัญหาเดียวกับที่เจอตอนคาลิเบรต colGap ของ dashboard บนกราฟ) —
+// ค่าที่ตามหลัง label ยังใส่ภาษาไทยได้ปกติ (เช่น "ไม้") เพราะอยู่หลังจุดจัดคอลัมน์แล้ว ไม่กระทบแถวอื่น
+string AdxEmaPad(const string label, const int width)
+{
+   string s = label;
+   while(StringLen(s) < width) s += " ";
+   return s;
+}
+
+//+------------------------------------------------------------------+
+//| สร้างข้อความสรุปสถานะเป็น code block (ผู้ใช้ขอ 2026-09-23 — ยืนยันดีไซน์  |
+//| หลายรอบ: label อังกฤษ+เว้นวรรคจัดคอลัมน์แทน Discord Embed Fields เพราะ    |
+//| ต้องการ label กับ value อยู่บรรทัดเดียวกัน ซึ่ง Embed Field ทำไม่ได้ —     |
+//| name/value ของ Embed Field ถูก Discord บังคับให้อยู่คนละบรรทัดเสมอ)      |
+//| เนื้อหา/ลำดับเหมือน AdxEmaDrawDashboard() ทุกแถว ใช้ทั้งกับตัวจับเวลาทุก   |
+//| InpSummaryEveryMin นาที และทั้ง 4 เหตุการณ์ (เข้าไม้/ปิดไม้ทุกสาเหตุ/     |
+//| ปิดบางส่วน/ขยับ BE) ผ่าน gPlSummaryHook ใน PositionLib.mqh              |
+//+------------------------------------------------------------------+
+void AdxEmaSendStatusSummary()
+{
+   string curr = AccountInfoString(ACCOUNT_CURRENCY);
+   StringToLower(curr);
+   string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)ADXEMA_TRADE_TF), 7);
+   const int W = 16;
+   string divider = "------------------------------";
+
+   string statusText;
+   if(gLastProblem != "")
+      statusText = gLastProblem;
+   else if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) || !MQLInfoInteger(MQL_TRADE_ALLOWED))
+      statusText = "ปิด Algo Trading อยู่";
+   else if(!AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+      statusText = "บัญชีไม่อนุญาตให้ EA เทรด";
+   else if((ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_MODE) != SYMBOL_TRADE_MODE_FULL)
+      statusText = "broker ปิดเทรด " + _Symbol + " ชั่วคราว";
+   else
+      statusText = "กำลังทำงาน";
+
+   string s = "AdxEma " + _Symbol + " " + tf + " - " + statusText + "\n";
+   s += AdxEmaPad("Version", W) + "v" + ADXEMA_VERSION + " . " + ADXEMA_UPDATED + "\n";
+   s += divider + "\n";
+
+   int progressPct = AdxEmaComputeProgress();
+   s += AdxEmaPad("Progress", W) + IntegerToString(progressPct) + "%\n";
+
+   bool hasPos = (gMtDir != 0);
+   if(hasPos)
+   {
+      s += AdxEmaPad("Position", W) + PL_DirStr(gMtDir) + " " + DoubleToString(gMtEntry, _Digits) + "\n";
+      s += AdxEmaPad("SL / Lot", W) + DoubleToString(gMtSlInit, _Digits) + " / " + DoubleToString(gMtLot, 2) + "\n";
+
+      if(gCurUsePartials)
+      {
+         double volLast = MathMax(gMtLot - 2.0 * gMtPartVol, 0.0);
+         double gain1 = gMtPartVol * (MathAbs(gMtTp1 - gMtEntry) / InpRiskPointUnit);
+         double gain2 = gMtPartVol * (MathAbs(gMtTp2 - gMtEntry) / InpRiskPointUnit);
+         double gain3 = volLast    * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
+         s += AdxEmaPad(gMtHitTp1 ? "TP1 (hit)" : "TP1", W) + DoubleToString(gMtTp1, _Digits) + " (+" + DoubleToString(gain1, 0) + " " + curr + ")\n";
+         s += AdxEmaPad(gMtHitTp2 ? "TP2 (hit)" : "TP2", W) + DoubleToString(gMtTp2, _Digits) + " (+" + DoubleToString(gain2, 0) + " " + curr + ")\n";
+         s += AdxEmaPad("TP3", W) + DoubleToString(gMtTp3, _Digits) + " (+" + DoubleToString(gain3, 0) + " " + curr + ")\n";
+      }
+      else
+      {
+         double gainTp = gMtLot * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
+         s += AdxEmaPad("TP", W) + DoubleToString(gMtTp3, _Digits) + " (+" + DoubleToString(gainTp, 0) + " " + curr + ")\n";
+      }
+
+      s += AdxEmaPad("Risk (" + curr + ")", W) + DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr + "\n";
+
+      double posProfit = 0;
+      ulong ticket = 0;
+      if(PL_Select(InpMagic, ticket) && PositionSelectByTicket(ticket))
+         posProfit = PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+      s += AdxEmaPad("Floating P/L", W) + (posProfit >= 0 ? "+" : "") + DoubleToString(posProfit, 0) + " " + curr + "\n";
+   }
+   else
+   {
+      s += AdxEmaPad("Position", W) + "ไม่มีไม้เปิดอยู่\n";
+   }
+
+   s += divider + "\n";
+
+   double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+   double eq  = AccountInfoDouble(ACCOUNT_EQUITY);
+   s += AdxEmaPad("Balance", W) + DoubleToString(bal, 0) + " " + curr + "\n";
+   s += AdxEmaPad("Equity", W) + DoubleToString(eq, 0) + " " + curr + "\n";
+
+   double todayProfit; int todayTrades;
+   AdxEmaComputeTodayStats(todayProfit, todayTrades);
+   s += AdxEmaPad("Today", W) + (todayProfit >= 0 ? "+" : "") + DoubleToString(todayProfit, 0) + " " + curr +
+        " . " + IntegerToString(todayTrades) + " ไม้\n";
+
+   s += AdxEmaPad("Time left", W) +
+        (InpUseCutoff ? PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour) : "ปิดใช้งาน") + "\n";
+
+   s += divider + "\n";
+   s += (gLastEvent == "") ? "ยังไม่มีเหตุการณ์" :
+        (TimeToString(gLastEventTime, TIME_MINUTES) + "  " + gLastEvent);
+
+   DC_Send("```\n" + s + "\n```");
+}
+
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   // เสียบสรุปสถานะเต็มแบบ dashboard เข้า hook ของ PositionLib.mqh (ผู้ใช้ขอ 2026-09-23) — ทำให้
+   // เข้าไม้/ปิดไม้(TP,SL)/ปิดบางส่วน/BE ที่เกิดใน PL_Open()/PL_Manage() ส่งสรุปเต็มแทนข้อความสั้นเดิม
+   gPlSummaryHook = AdxEmaSendStatusSummary;
+
    hADX = iADX(_Symbol, ADXEMA_TRADE_TF, InpADXPeriod);
    hATR = iATR(_Symbol, ADXEMA_TRADE_TF, InpATRPeriod);
    if(hADX == INVALID_HANDLE || hATR == INVALID_HANDLE)
@@ -688,6 +800,23 @@ void OnTimer()
       if(StringFind(gLastProblem, "ไม่มี tick เข้ามา") == 0)
          gLastProblem = "";
    }
+
+   // สรุปสถานะเข้า Discord เป็นระยะ (ผู้ใช้ขอ 2026-09-23) — InpSummaryEveryMin=0 ปิดฟีเจอร์นี้
+   // InpSummaryOnlyTradeHours=true ส่งเฉพาะช่วงที่ InpUseCutoff อนุญาตให้เทรด (ไม่ส่งตอนนอกเวลา
+   // แม้ EA จะยังทำงาน/monitor อยู่ก็ตาม) — เช็คใน OnTimer() ที่รันทุก 30 วิแน่นอนอยู่แล้ว ไม่ต้อง
+   // พึ่ง tick เหมือนพาเนลบนกราฟ (มีไม้เปิดหรือไม่ก็ยังส่งได้แม้ไม่มี tick เข้ามาเลย)
+   if(InpSummaryEveryMin > 0)
+   {
+      bool withinTradeHours = !InpUseCutoff || !PL_PastCutoff(InpCutoffServerHour, InpTradeStartServerHour);
+      if(!InpSummaryOnlyTradeHours || withinTradeHours)
+      {
+         if(TimeCurrent() - gLastSummarySent >= InpSummaryEveryMin * 60)
+         {
+            gLastSummarySent = TimeCurrent();
+            AdxEmaSendStatusSummary();
+         }
+      }
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -771,10 +900,10 @@ void OnTick()
    {
       PL_CloseAll(InpMagic);
       string cutoffReason = "หมดเวลาเทรด (cutoff)";
+      PL_SetLastEvent("ไม้ปิดแล้ว: " + cutoffReason); // ต้องตั้งก่อนส่งสรุป เหมือน momentum-exit ด้านบน
       double closedNet;
       if(AdxEmaClosedNet(closedNet))
-         DC_NotifyClose(_Symbol, cutoffReason, closedNet, AccountInfoString(ACCOUNT_CURRENCY));
-      PL_SetLastEvent("ไม้ปิดแล้ว: " + cutoffReason);
+         AdxEmaSendStatusSummary();
       gCnt_CutoffClose++;
    }
    PL_Manage(InpMagic, gCurUsePartials, false, false);

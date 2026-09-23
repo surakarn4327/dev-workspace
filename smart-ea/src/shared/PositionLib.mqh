@@ -535,6 +535,17 @@ double PL_Lot(const double riskUsd, const double slDist, const double pointUnit)
 }
 
 //+------------------------------------------------------------------+
+//| callback เสริม (ผู้ใช้ขอ 2026-09-23) — ถ้ากลยุทธ์ไหน "เสียบ" ฟังก์ชันของ  |
+//| ตัวเองเข้า gPlSummaryHook ไว้ (เช่นใน OnInit) จุดที่ปกติเรียก DC_Notify*   |
+//| (เข้าไม้/ปิดที่ TP-SL/ปิดบางส่วน/BE) จะเรียก hook นี้แทนข้อความสั้นเดิม —   |
+//| ปล่อยเป็น NULL (ค่า default) กลยุทธ์นั้นจะได้ข้อความสั้นแบบเดิมเป๊ะ ไม่กระทบ |
+//| ทำแบบนี้แทนที่จะฮาร์ดโค้ดชื่อฟังก์ชันของกลยุทธ์ใดกลยุทธ์หนึ่งลงในไฟล์ที่ตั้งใจ  |
+//| ให้ใช้ร่วมกันทุกกลยุทธ์                                              |
+//+------------------------------------------------------------------+
+typedef void (*PlSummaryHookFunc)();
+PlSummaryHookFunc gPlSummaryHook = NULL;
+
+//+------------------------------------------------------------------+
 //| เปิดไม้จริง — SL กับ TP3 วางไว้ที่ broker (Pine ต้นฉบับตรวจเองในสคริปต์) |
 //+------------------------------------------------------------------+
 bool PL_Open(const int dir, const double slPrice,
@@ -620,10 +631,14 @@ bool PL_Open(const int dir, const double slPrice,
       PL_DrawTrade(PL_ChartPrefix(magic), dir, entry, slAdj, tp1Adj, tp2Adj, tp3Adj,
                    usePartials || useBe);
 
-   // จุดเดียวที่แจ้งเข้าไม้ — ครอบคลุมทั้งเข้าไม้สด (cmt="SATS") และเข้าไม้ย้อนหลัง
-   // (cmt="SATS-catchup") เพราะทั้งสองทางเรียก PL_Open() นี้เหมือนกัน ไม่ต้องแยกจุดเรียก
-   DC_NotifyEntry(_Symbol, dir, entry, slAdj, tp3Adj, lot, riskUsd, AccountInfoString(ACCOUNT_CURRENCY),
-                  AccountInfoDouble(ACCOUNT_BALANCE), StringFind(cmt, "catchup") >= 0);
+   // จุดเดียวที่แจ้งเข้าไม้ — ครอบคลุมทั้งเข้าไม้สดและเข้าไม้ย้อนหลัง (ถ้ามี) เพราะทุกทางเรียก
+   // PL_Open() นี้เหมือนกัน ไม่ต้องแยกจุดเรียก — ถ้ากลยุทธ์เสียบ gPlSummaryHook ไว้ (ผู้ใช้ขอ
+   // 2026-09-23) ใช้ hook แทนข้อความสั้นเดิม
+   if(gPlSummaryHook != NULL)
+      gPlSummaryHook();
+   else
+      DC_NotifyEntry(_Symbol, dir, entry, slAdj, tp3Adj, lot, riskUsd, AccountInfoString(ACCOUNT_CURRENCY),
+                     AccountInfoDouble(ACCOUNT_BALANCE), StringFind(cmt, "catchup") >= 0);
 
    return true;
 }
@@ -693,7 +708,8 @@ void PL_ClassifyClosed()
       gPlClosedTp++;
       PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: TP ที่ %s", DoubleToString(lastPrice, _Digits)));
       Print(gLastEvent);
-      DC_NotifyClose(_Symbol, StringFormat("TP ที่ %s", DoubleToString(lastPrice, _Digits)),
+      if(gPlSummaryHook != NULL) gPlSummaryHook();
+      else DC_NotifyClose(_Symbol, StringFormat("TP ที่ %s", DoubleToString(lastPrice, _Digits)),
                      totalProfit, AccountInfoString(ACCOUNT_CURRENCY));
    }
    else if(lastReason == DEAL_REASON_SL)
@@ -701,7 +717,8 @@ void PL_ClassifyClosed()
       gPlClosedSl++;
       PL_SetLastEvent(StringFormat("ไม้ปิดแล้ว: SL ที่ %s", DoubleToString(lastPrice, _Digits)));
       Print(gLastEvent);
-      DC_NotifyClose(_Symbol, StringFormat("SL ที่ %s", DoubleToString(lastPrice, _Digits)),
+      if(gPlSummaryHook != NULL) { gPlSummaryHook(); }
+      else DC_NotifyClose(_Symbol, StringFormat("SL ที่ %s", DoubleToString(lastPrice, _Digits)),
                      totalProfit, AccountInfoString(ACCOUNT_CURRENCY));
    }
    gMtPosId = 0;
@@ -750,6 +767,11 @@ bool PL_Manage(const long magic, const bool usePartials,
    {
       if(gMtDir != 0)
       {
+         // เคลียร์ gMtDir ก่อนเรียก PL_ClassifyClosed() (2026-09-23) — ข้างในเรียก DC_NotifyClose/
+         // gPlSummaryHook ซึ่งถ้าเป็นสรุปสถานะเต็มแบบ dashboard จะอ่าน gMtDir ตัดสินว่า "มีไม้เปิดอยู่
+         // ไหม" ถ้ายังไม่เคลียร์ก่อน จะโชว์ไม้ที่เพิ่งปิดไปแล้วว่ายังเปิดอยู่ผิดพลาด (ไม่กระทบ
+         // PL_ClassifyClosed เองเพราะข้างในใช้ gMtPosId ไม่ใช่ gMtDir)
+         gMtDir = 0;
          PL_ClassifyClosed();
          PL_ClearChartObjects(PL_ChartPrefix(magic));
          PL_DeleteState(magic); // ไม้ปิดเองจาก broker (SL/TP) — ไม่ต้องเก็บสถานะไม้นี้ต่อ
@@ -777,11 +799,13 @@ bool PL_Manage(const long magic, const bool usePartials,
          {
             if(gTrade.PositionClosePartial(ticket, gMtPartVol))
             {
-               DC_NotifyPartial(_Symbol, "TP1", gMtTp1, gMtPartVol);
-               // อัปเดต lot ที่เหลือจริงหลังปิดบางส่วน — เดิม gMtLot ค้างเป็น lot เต็มตอนเปิดไม้
-               // ตลอดไป ทำให้ dashboard โชว์ "SL / Lot" ผิดหลัง TP1/TP2 (บั๊ก 2026-09-22)
+               // อัปเดต lot ที่เหลือจริงหลังปิดบางส่วนก่อนแจ้ง — ถ้า gPlSummaryHook อ่าน gMtLot
+               // (สรุปสถานะเต็มแบบ dashboard) ต้องเห็นค่าที่อัปเดตแล้ว ไม่ใช่ lot เต็มตอนเปิดไม้
                if(PositionSelectByTicket(ticket))
                   gMtLot = PositionGetDouble(POSITION_VOLUME);
+               PL_SetLastEvent(StringFormat("ปิดบางส่วน: TP1 ที่ %s", DoubleToString(gMtTp1, _Digits)));
+               if(gPlSummaryHook != NULL) gPlSummaryHook();
+               else DC_NotifyPartial(_Symbol, "TP1", gMtTp1, gMtPartVol);
             }
          }
       }
@@ -793,7 +817,9 @@ bool PL_Manage(const long magic, const bool usePartials,
          if(PL_MoveSl(ticket, gMtEntry + beSpread))
          {
             gMtBeDone = true;
-            DC_NotifyBreakeven(_Symbol, gMtEntry + beSpread);
+            PL_SetLastEvent(StringFormat("ขยับ SL เป็น Breakeven ที่ %s", DoubleToString(gMtEntry + beSpread, _Digits)));
+            if(gPlSummaryHook != NULL) gPlSummaryHook();
+            else DC_NotifyBreakeven(_Symbol, gMtEntry + beSpread);
          }
       }
       PL_SaveState(magic); // เก็บสถานะทันทีที่ TP1/BE เปลี่ยน กันรีสตาร์ทกลางไม้แล้วเดาผิด (บั๊ก 2026-09-22)
@@ -809,9 +835,11 @@ bool PL_Manage(const long magic, const bool usePartials,
          {
             if(gTrade.PositionClosePartial(ticket, gMtPartVol))
             {
-               DC_NotifyPartial(_Symbol, "TP2", gMtTp2, gMtPartVol);
                if(PositionSelectByTicket(ticket))
                   gMtLot = PositionGetDouble(POSITION_VOLUME);
+               PL_SetLastEvent(StringFormat("ปิดบางส่วน: TP2 ที่ %s", DoubleToString(gMtTp2, _Digits)));
+               if(gPlSummaryHook != NULL) gPlSummaryHook();
+               else DC_NotifyPartial(_Symbol, "TP2", gMtTp2, gMtPartVol);
             }
          }
       }
