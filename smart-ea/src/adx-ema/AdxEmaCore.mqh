@@ -34,8 +34,8 @@
 // forward declaration — เรียกใช้ก่อนตัวจริง (นิยามอยู่ท้ายไฟล์) ตอนปิดไม้จาก momentum-exit/cutoff
 void AdxEmaSendStatusSummary();
 
-#define ADXEMA_VERSION "1.1"
-#define ADXEMA_UPDATED "23/09/26"
+#define ADXEMA_VERSION "1.2"
+#define ADXEMA_UPDATED "24/09/26"
 
 const int ADXEMA_HEARTBEAT_MAX_SEC = 120; // ค่าเดียวกับ SATS (ผู้ใช้เลือกไว้ 2026-09-17)
 
@@ -595,7 +595,7 @@ void AdxEmaDrawDashboard()
    y += 10;
 
    string evText = (gLastEvent == "") ? "ยังไม่มีเหตุการณ์" :
-                   PL_ServerTimeToThaiStr(gLastEventTime, InpCutoffServerHour) + "  " + gLastEvent;
+                   PL_ServerTimeToThaiStr(gLastEventTime) + "  " + gLastEvent;
    PL_DashLabel(prefix + "event", evText, xLabel, y, clrOrange, FS, CN, AN);
 
    ChartRedraw();
@@ -693,7 +693,7 @@ void AdxEmaSendStatusSummary()
 
    s += "\n";
    s += (gLastEvent == "") ? "ยังไม่มีเหตุการณ์" :
-        (PL_ServerTimeToThaiStr(gLastEventTime, InpCutoffServerHour) + "  " + gLastEvent);
+        (PL_ServerTimeToThaiStr(gLastEventTime) + "  " + gLastEvent);
 
    DC_Send(s); // DC_Send() ห่อ code block + account tag ให้เองแล้ว (2026-09-23) ไม่ต้องห่อซ้ำที่นี่
 }
