@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿//+------------------------------------------------------------------+
 //| AdxEmaVolCore.mqh — สำเนาของ adx-ema\AdxEmaCore.mqh + หยุดเปิดไม้ใกล้ cutoff + ปรับขนาดไม้ตาม tick volume          |
 //| (ผลงานวิจัย 2026-09-26 ดู CLAUDE.md หัวข้อ "ชุดที่น่าใช้")                                                      |
 //|                                                                    |
@@ -42,7 +42,7 @@ void AdxEmaSendStatusSummary();
 // เหตุการณ์ของไม้ก่อนหน้า (บั๊กเดียวกันมีใน AdxEma ต้นฉบับ — แก้ใน v1 2026-09-26) ส่งสรุปเองหลังตั้งค่าครบแทน
 void AdxEmaNoopHook() {}
 
-#define ADXEMA_VERSION "V1.2" // เวอร์ชันของ AdxEmaVol (ตั้งต้นจาก AdxEma 1.2) — นับแยกจาก AdxEma ต้นฉบับ
+#define ADXEMA_VERSION "V1.3" // เวอร์ชันของ AdxEmaVol (ตั้งต้นจาก AdxEma 1.2) — นับแยกจาก AdxEma ต้นฉบับ
 #define ADXEMA_UPDATED "26/09/26"
 
 const int ADXEMA_HEARTBEAT_MAX_SEC = 120; // ค่าเดียวกับ SATS (ผู้ใช้เลือกไว้ 2026-09-17)
@@ -346,8 +346,7 @@ void CheckEntrySignal(const double adxShift1)
       gCurUsePartials = usePartials;
       gTradeRiskUsd   = riskUsd;
       // สั้นๆ ให้พอดีกล่อง dashboard — รายละเอียด volume อยู่แถว Volume แล้ว
-      PL_SetLastEvent(StringFormat("เข้าไม้: %s %s x%s", PL_DirStr(gMtDir), DoubleToString(gMtEntry, _Digits),
-                                   DoubleToString(volMult, 2)));
+      PL_SetLastEvent(StringFormat("เข้าไม้: %s %s", PL_DirStr(gMtDir), DoubleToString(gMtEntry, _Digits)));
       AdxEmaSendStatusSummary(); // แจ้ง Discord ตอนเข้าไม้ หลังตั้งค่าไม้ใหม่ครบแล้ว
       gCnt_Entered++;
       if(InpUseVolSizing && volRatio >= 0) { if(volRatio < InpVolSizeThreshold) gCnt_VolLow++; else gCnt_VolHigh++; }
@@ -491,7 +490,7 @@ void AdxEmaDrawDashboard()
    // จนกินเกือบเต็มจอ) ไม่ว่าสูตรประมาณด้านบนจะคลาดเคลื่อนแค่ไหน กล่องจะไม่มีวันหลุดช่วงนี้ไปได้
    colGap = (int)MathMax(170, MathMin(260, colGap));
    // 250 = พื้นที่คอลัมน์ value (ต้นฉบับ 210) — v1 มีข้อความยาวขึ้น: "Time left ... (ไม่เปิดไม้ใหม่แล้ว)" และแถว Volume
-   int panelW = colGap + 250;
+   int panelW = colGap + 180;
 
    bool hasPos = (gMtDir != 0);
    int tpRows = gCurUsePartials ? 3 : 1;
@@ -589,30 +588,26 @@ void AdxEmaDrawDashboard()
          if(!gMtHitTp1) volLast -= gMtPartVol;
          if(!gMtHitTp2) volLast -= gMtPartVol;
          volLast = MathMax(volLast, 0.0);
-         double gain1 = gMtPartVol * (MathAbs(gMtTp1 - gMtEntry) / InpRiskPointUnit);
-         double gain2 = gMtPartVol * (MathAbs(gMtTp2 - gMtEntry) / InpRiskPointUnit);
-         double gain3 = volLast    * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
 
          PL_DashLabel(prefix + "tp1_l", "TP1", xLabel, y, gMtHitTp1 ? clrLimeGreen : clrSilver, FS, CN, AN);
-         PL_DashLabel(prefix + "tp1_v", DoubleToString(gMtTp1, _Digits) + " (+" + DoubleToString(gain1, 0) + " " + curr + ")" +
+         PL_DashLabel(prefix + "tp1_v", DoubleToString(gMtTp1, _Digits) +
                       (gMtHitTp1 ? " ✓" : ""), xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
 
          PL_DashLabel(prefix + "tp2_l", "TP2", xLabel, y, gMtHitTp2 ? clrLimeGreen : clrSilver, FS, CN, AN);
-         PL_DashLabel(prefix + "tp2_v", DoubleToString(gMtTp2, _Digits) + " (+" + DoubleToString(gain2, 0) + " " + curr + ")" +
+         PL_DashLabel(prefix + "tp2_v", DoubleToString(gMtTp2, _Digits) +
                       (gMtHitTp2 ? " ✓" : ""), xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
 
          PL_DashLabel(prefix + "tp3_l", "TP3", xLabel, y, clrSilver, FS, CN, AN);
-         PL_DashLabel(prefix + "tp3_v", DoubleToString(gMtTp3, _Digits) + " (+" + DoubleToString(gain3, 0) + " " + curr + ")",
+         PL_DashLabel(prefix + "tp3_v", DoubleToString(gMtTp3, _Digits),
                       xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
       }
       else
       {
-         double gainTp = gMtLot * (MathAbs(gMtTp3 - gMtEntry) / InpRiskPointUnit);
          PL_DashLabel(prefix + "tp_l", "TP", xLabel, y, clrSilver, FS, CN, AN);
-         PL_DashLabel(prefix + "tp_v", DoubleToString(gMtTp3, _Digits) + " (+" + DoubleToString(gainTp, 0) + " " + curr + ")",
+         PL_DashLabel(prefix + "tp_v", DoubleToString(gMtTp3, _Digits),
                       xValue, y, clrLimeGreen, FS, CN, AN);
          y += dy;
       }
