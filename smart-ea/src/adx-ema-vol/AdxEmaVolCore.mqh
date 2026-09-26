@@ -37,7 +37,12 @@
 // forward declaration — เรียกใช้ก่อนตัวจริง (นิยามอยู่ท้ายไฟล์) ตอนปิดไม้จาก momentum-exit/cutoff
 void AdxEmaSendStatusSummary();
 
-#define ADXEMA_VERSION "V1.0" // เวอร์ชันของ AdxEmaVol (ตั้งต้นจาก AdxEma 1.2) — นับแยกจาก AdxEma ต้นฉบับ
+// hook เปล่า — ใช้แทน gPlSummaryHook ชั่วคราวระหว่าง PL_Open() เพราะ PL_Open() เรียก hook ทันทีหลังเปิดไม้ ก่อนที่
+// CheckEntrySignal() จะได้ตั้ง "เหตุการณ์ล่าสุด"/gCurUsePartials ของไม้ใหม่ ทำให้ข้อความ Discord ตอนเข้าไม้โชว์
+// เหตุการณ์ของไม้ก่อนหน้า (บั๊กเดียวกันมีใน AdxEma ต้นฉบับ — แก้ใน v1 2026-09-26) ส่งสรุปเองหลังตั้งค่าครบแทน
+void AdxEmaNoopHook() {}
+
+#define ADXEMA_VERSION "V1.2" // เวอร์ชันของ AdxEmaVol (ตั้งต้นจาก AdxEma 1.2) — นับแยกจาก AdxEma ต้นฉบับ
 #define ADXEMA_UPDATED "26/09/26"
 
 const int ADXEMA_HEARTBEAT_MAX_SEC = 120; // ค่าเดียวกับ SATS (ผู้ใช้เลือกไว้ 2026-09-17)
@@ -108,8 +113,7 @@ string AdxEmaVolText(const double ratio)
 {
    if(!InpUseVolSizing) return "ปิดใช้งาน";
    if(ratio < 0) return "ข้อมูลไม่พอ (x1)";
-   return DoubleToString(ratio, 2) + (ratio < InpVolSizeThreshold ? " เงียบ" : " คึกคัก") +
-          " → x" + DoubleToString(AdxEmaVolMult(ratio), 2);
+   return ratio < InpVolSizeThreshold ? "Low" : "High";
 }
 
 //+------------------------------------------------------------------+
@@ -333,13 +337,18 @@ void CheckEntrySignal(const double adxShift1)
    double volMult  = AdxEmaVolMult(volRatio);
    riskUsd *= volMult;
 
-   if(PL_Open(dir, sl, tp1, tp2, tp3, riskUsd, InpRiskPointUnit, InpMagic, "AdxEmaVol",
-              usePartials, 0, InpShowChartObjects, false))
+   gPlSummaryHook = AdxEmaNoopHook; // ดูเหตุผลที่ AdxEmaNoopHook() ต้นไฟล์
+   bool opened = PL_Open(dir, sl, tp1, tp2, tp3, riskUsd, InpRiskPointUnit, InpMagic, "AdxEmaVol",
+                         usePartials, 0, InpShowChartObjects, false);
+   gPlSummaryHook = AdxEmaSendStatusSummary;
+   if(opened)
    {
       gCurUsePartials = usePartials;
       gTradeRiskUsd   = riskUsd;
-      PL_SetLastEvent(StringFormat("เข้าไม้: %s %s (volume %s)", PL_DirStr(gMtDir), DoubleToString(gMtEntry, _Digits),
-                                   AdxEmaVolText(volRatio)));
+      // สั้นๆ ให้พอดีกล่อง dashboard — รายละเอียด volume อยู่แถว Volume แล้ว
+      PL_SetLastEvent(StringFormat("เข้าไม้: %s %s x%s", PL_DirStr(gMtDir), DoubleToString(gMtEntry, _Digits),
+                                   DoubleToString(volMult, 2)));
+      AdxEmaSendStatusSummary(); // แจ้ง Discord ตอนเข้าไม้ หลังตั้งค่าไม้ใหม่ครบแล้ว
       gCnt_Entered++;
       if(InpUseVolSizing && volRatio >= 0) { if(volRatio < InpVolSizeThreshold) gCnt_VolLow++; else gCnt_VolHigh++; }
    }
@@ -481,11 +490,12 @@ void AdxEmaDrawDashboard()
    // เพดานบน/ล่างตายตัว — กันพลาดซ้ำแบบที่เจอมาแล้ว 2 รอบ (ครั้งแรกแคบเกินจนล้น ครั้งที่สองกว้างเกิน
    // จนกินเกือบเต็มจอ) ไม่ว่าสูตรประมาณด้านบนจะคลาดเคลื่อนแค่ไหน กล่องจะไม่มีวันหลุดช่วงนี้ไปได้
    colGap = (int)MathMax(170, MathMin(260, colGap));
-   int panelW = colGap + 210; // 210 = พื้นที่คอลัมน์ value (ยาวสุดที่เจอจริงคือ "4396.290 (+1234 usc)")
+   // 250 = พื้นที่คอลัมน์ value (ต้นฉบับ 210) — v1 มีข้อความยาวขึ้น: "Time left ... (ไม่เปิดไม้ใหม่แล้ว)" และแถว Volume
+   int panelW = colGap + 250;
 
    bool hasPos = (gMtDir != 0);
    int tpRows = gCurUsePartials ? 3 : 1;
-   int rowCount = 1 + 1 + 1 + 1 + (hasPos ? (4 + tpRows) : 1) + 4 + 1; // +1 = แถว Volume // header + version + progress + ไม้ + (balance/equity/วันนี้/เวลาเทรด) + เหตุการณ์ล่าสุด
+   int rowCount = 1 + 1 + 1 + 1 + (hasPos ? (4 + tpRows) : 1) + 4 + 1 + ((InpUseCutoff && AdxEmaInLateWindow()) ? 1 : 0); // +1 = แถว Volume, +1 = แถว "ไม่เปิดไม้ใหม่แล้ว" // header + version + progress + ไม้ + (balance/equity/วันนี้/เวลาเทรด) + เหตุการณ์ล่าสุด
    int panelH = padTop + rowCount * dy + 30 + padBottom;
 
    string statusText;
@@ -652,9 +662,14 @@ void AdxEmaDrawDashboard()
 
    PL_DashLabel(prefix + "cutoff_l", "Time left", xLabel, y, clrSilver, FS, CN, AN);
    PL_DashLabel(prefix + "cutoff_v",
-                InpUseCutoff ? PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour) + (AdxEmaInLateWindow() ? " (ไม่เปิดไม้ใหม่แล้ว)" : "") : "ปิดใช้งาน",
+                InpUseCutoff ? PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour) : "ปิดใช้งาน",
                 xValue, y, clrWhite, FS, CN, AN);
    y += dy;
+   if(InpUseCutoff && AdxEmaInLateWindow())
+   {
+      PL_DashLabel(prefix + "late_v", "(ไม่เปิดไม้ใหม่แล้ว)", xValue, y, clrOrange, FS, CN, AN);
+      y += dy;
+   }
 
    PL_DashPanelBg(prefix + "div3", boxX + 8, y + 5, panelW - 16, 1, C'58,63,77', C'58,63,77', CN);
    y += 10;
@@ -741,7 +756,6 @@ void AdxEmaSendStatusSummary()
       s += "Position: ไม่มีไม้เปิดอยู่\n";
    }
 
-   s += "Volume: " + AdxEmaVolText(AdxEmaVolRatio()) + "\n";
    s += "\n";
 
    double bal = AccountInfoDouble(ACCOUNT_BALANCE);
@@ -755,7 +769,8 @@ void AdxEmaSendStatusSummary()
    s += "Trades: " + IntegerToString(todayTrades) + " ไม้\n";
 
    s += "Time left: " +
-        (InpUseCutoff ? PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour) + (AdxEmaInLateWindow() ? " (ไม่เปิดไม้ใหม่แล้ว)" : "") : "ปิดใช้งาน") + "\n";
+        (InpUseCutoff ? PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour) : "ปิดใช้งาน") + "\n";
+   if(InpUseCutoff && AdxEmaInLateWindow()) s += "(ไม่เปิดไม้ใหม่แล้ว)\n";
 
    s += "\n";
    s += (gLastEvent == "") ? "ยังไม่มีเหตุการณ์" :
