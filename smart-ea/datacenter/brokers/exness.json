@@ -1,0 +1,15 @@
+{
+  "name": "exness",
+  "note": "Exness MT5 real/demo, cent account. Everything broker-specific lives in this file; scripts never hard-code it.",
+  "symbol": "XAUUSDc",
+  "digits": 3,
+  "server_time": "UTC",
+  "data_start_utc": "2024-04-12",
+  "data_start_reason": "before this date every M1 bar is flat (O=H=L=C, tick volume 1) - checked 2026-09-28 dq.py/dq2.py",
+  "real_ticks_from_utc": "2026-01-01",
+  "bar_spread_reliable_from_utc": "2026-03-01",
+  "bar_spread_note": "bar spread is a fixed 0.16 USD on ~95% of 2025 bars and 100% of Jan 2026 bars, while real ticks in 2026 show ~0.26; the bar value changes from Feb 2026 (mixed) / Mar 2026. Do not use bar spread before this date as a cost - use real ticks (broker_check.py)",
+  "bars_file": "bars.npz",
+  "db_file": "gold_dc.sqlite",
+  "bardump_common_subdir": "adxres"
+}
