@@ -117,6 +117,15 @@ def build(cut=None, out=None, log=print):
             raise RuntimeError(f"bars differ: gold_dc.sqlite last bar {last_dc} ({len(t)} bars), trade library last bar {last_lib}, bars file "
                                f"{int(keep.sum())} bars -> run dc_build.py (+ catalog steps) and adx_build.py on the same bars file first")
         if E.max() - 60 > t[-1]: raise RuntimeError("entries after the last bar of gold_dc.sqlite")
+    C, D, dE, i1 = compute(E, M, COST, CUT_H, log, t0)
+    return _write(E, M, C, D, dE, i1, tdb, out, cut, log, t0)
+
+def compute(E, M, COST, CUT_H, log=print, t0=None):
+    """context columns for an array of UTC times E (sorted), as if a trade entered at each E. Same TIME RULE as the ctx table:
+    only M1 bars with t <= E-60 and TF bars fully closed at E. Used by build() (E = entry times) and by phase 3B (E = decision
+    times while a trade is open, hold_build.py). Returns (columns {name: (array, sql type)}, descriptions, trading day, last M1 index)."""
+    t0 = time.time() if t0 is None else t0
+    E = np.asarray(E, dtype=np.int64); t = M["t"]; nE = len(E)
     _, dE, _ = sessions(E)
     i1 = np.searchsorted(t, E - 60, "right") - 1                     # last M1 bar closed before E
     now = M["c"][i1]
@@ -303,12 +312,19 @@ def build(cut=None, out=None, log=print):
         log(f"TF {tf} done {time.time() - t0:.0f}s")
     put("d_r10_atr5", (now - np.round(now / 10) * 10) / C["a_m5_atr_usd"][0], "ระยะจากราคาปัจจุบันถึงเลขกลม $10 ที่ใกล้สุด ÷ ATR ของ M5 (บวก = อยู่เหนือเลขกลม)")
 
-    # ---------------- write ------------------------------------------------------------------------------------------------------
     infs = {x: int(np.isinf(v).sum()) for x, (v, _) in C.items() if np.isinf(v).any()}
     if infs: raise ValueError(f"+-inf values (would be stored as NULL silently): {infs}")
+    return C, D, dE, i1
+
+def column_order(C):
     names = list(C)
-    order = [x for x in names if x.startswith("t_")] + [x for x in names if x.startswith("a_")] + [x for x in names if x.startswith("d_")] + \
-            [x for x in names if x.startswith("f_")] + [x for x in names if x[0] in "mh" and not x.startswith("f_")]
+    return [x for x in names if x.startswith("t_")] + [x for x in names if x.startswith("a_")] + [x for x in names if x.startswith("d_")] + \
+           [x for x in names if x.startswith("f_")] + [x for x in names if x[0] in "mh" and not x.startswith("f_")]
+
+def _write(E, M, C, D, dE, i1, tdb, out, cut, log, t0):
+    # ---------------- write ------------------------------------------------------------------------------------------------------
+    t = M["t"]; nE = len(E)
+    order = column_order(C)
     base_cols = [("entry_t", "INTEGER", "เวลาเข้าไม้ (UTC epoch วินาที) = คีย์จับคู่กับ trades.entry_t; ทุกค่าในแถวใช้เฉพาะข้อมูลก่อนเวลานี้"),
                  ("day", "INTEGER", "วันเทรดมาตรฐาน (คีย์เดียวกับ trades.day / days.day)"),
                  ("m1_last_t", "INTEGER", "เวลาเปิดของแท่ง M1 ล่าสุดที่ใช้ (ต้อง ≤ entry_t − 60)")]
