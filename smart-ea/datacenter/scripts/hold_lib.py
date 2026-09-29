@@ -85,43 +85,48 @@ def sessions_levels(M):
         if am.any(): ah[s] = M["h"][a:b][am].max(); al[s] = M["l"][a:b][am].min()
     return dict(ss=ss, pdh=pdh, pdl=pdl, ah=ah, al=al)
 
-def tf_events(M, tf, SL=None):
+def tf_events(M, tf, SL=None, big_k=2.0, pin_w=0.6, vsp_k=3.0, zz_k=ZZ_K, box_n=20, stand_min=STAND_MIN):
     """event bits + directions for every bar of TF `tf` (session-aware bars of adx_ctx.resample). Every value of bar b uses bars <= b only.
     Returns dict with B (the bars), flags, dirs, dec_t (UTC time of the decision tick = first M1 bar at/after the natural bar end;
-    -1 when no later M1 bar exists in the data)."""
+    -1 when no later M1 bar exists in the data).
+    Keyword thresholds (defaults = the 3B-a library definitions) exist only for the neighbour definitions of phase 3B-b: big bar k x ATR,
+    pinbar wick share, volume spike k x mean, zigzag k ATR (pivot / regime), sideway box min bars, new day extreme stand minutes.
+    All comparisons stay in integer points (thresholds kept as tenths / hundredths)."""
     SL = sessions_levels(M) if SL is None else SL
     B = X.resample(M, tf); n = len(B["c"]); P = BK.POINT
     h, l, o, c, S = B["hi"], B["li"], B["oi"], B["ci"], B["s20p"]
     rng = h - l; body = np.abs(c - o); up = h - np.maximum(o, c); dn = np.minimum(o, c) - l; okb = S > 0
     fl = np.zeros(n, np.int64); dirs = {k: np.zeros(n, np.int64) for k in ("big", "pin", "piv", "reg", "box")}
-    big = okb & (20 * rng >= 2 * S); fl[big] |= BIT["big"]; dirs["big"][big] = np.sign(c - o)[big]
-    pin = okb & (20 * rng >= S) & (10 * body <= 3 * rng) & ((10 * up >= 6 * rng) | (10 * dn >= 6 * rng))
-    fl[pin] |= BIT["pin"]; dirs["pin"][pin] = np.where(10 * dn >= 6 * rng, 1, -1)[pin]
+    bk = int(round(10 * big_k)); pw = int(round(100 * pin_w)); vk = int(round(10 * vsp_k))
+    big = okb & (200 * rng >= bk * S); fl[big] |= BIT["big"]; dirs["big"][big] = np.sign(c - o)[big]
+    pin = okb & (20 * rng >= S) & (10 * body <= 3 * rng) & ((100 * up >= pw * rng) | (100 * dn >= pw * rng))
+    fl[pin] |= BIT["pin"]; dirs["pin"][pin] = np.where(100 * dn >= pw * rng, 1, -1)[pin]
     W = max(20, X.DAYBARS // tf); tvi = B["tv"].astype(np.int64); ctb = np.r_[0, np.cumsum(tvi)]
     sw = np.full(n, -1, np.int64); sw[W:] = ctb[W:n] - ctb[:n - W]
-    fl[(sw >= 0) & (W * tvi >= 3 * sw)] |= BIT["vspike"]
+    fl[(sw >= 0) & (10 * W * tvi >= vk * sw)] |= BIT["vspike"]
     same = np.r_[False, B["sid"][1:] == B["sid"][:-1]]; hp = np.r_[h[0], h[:-1]]; lp = np.r_[l[0], l[:-1]]
     fl[okb & same & (h < hp) & (l > lp)] |= BIT["inside"]
     # structure: zigzag 3 ATR (adx_ctx.zigzag_state / regime_after = the verified phase-2 code)
-    idx, pp, kind, conf, ncf, EP = X.zigzag_state(B, ZZ_K)
+    idx, pp, kind, conf, ncf, EP = X.zigzag_state(B, zz_k)
     reg, known, chg, dH, dL = X.regime_after(pp, kind)
     fl[conf] |= BIT["pivot"]; dirs["piv"][conf] = -kind
     rc = known & (chg == np.arange(len(pp)))
     fl[conf[rc]] |= BIT["regime"]; dirs["reg"][conf[rc]] = reg[rc]
     # box break: box = maximal run of bars ending at u = b-1 (same session, <= 1440 min) with high-low <= 4 x ATR(20 TR ending at u)
     csi = B["csi"]; LB = X.LB_MIN // tf; sidb = B["sid"]
-    if n > 40:
+    bn = int(box_n)
+    if n > 2 * max(20, bn):
         from numpy.lib.stride_tricks import sliding_window_view as swv
-        wh = swv(h, 20).max(1); wl = swv(l, 20).min(1)                          # window ending at u = i + 19
-        u = np.arange(20, n - 1); s_now = np.full(n, -1, np.int64); s_now[19:] = csi[20:n + 1] - csi[:n - 19]
-        cand = u[(sidb[u - 19] == sidb[u]) & (sidb[u + 1] == sidb[u]) & (20 * (wh[u - 19] - wl[u - 19]) <= 4 * s_now[u])]
+        wh = swv(h, bn).max(1); wl = swv(l, bn).min(1)                          # window of bn bars ending at u = i + bn - 1
+        u = np.arange(max(20, bn), n - 1); s_now = np.full(n, -1, np.int64); s_now[19:] = csi[20:n + 1] - csi[:n - 19]   # ATR = 20 TR
+        cand = u[(sidb[u - bn + 1] == sidb[u]) & (sidb[u + 1] == sidb[u]) & (20 * (wh[u - bn + 1] - wl[u - bn + 1]) <= 4 * s_now[u])]
         sstart = np.searchsorted(sidb, sidb, "left")
         for uu in cand:
             lo_i = max(uu - LB + 1, sstart[uu])
             hs = h[lo_i:uu + 1][::-1]; ls = l[lo_i:uu + 1][::-1]
             mx = np.maximum.accumulate(hs); mn = np.minimum.accumulate(ls)
             bad = np.flatnonzero(20 * (mx - mn) > 4 * s_now[uu]); nn = bad[0] if len(bad) else len(hs)
-            if nn < 20: continue
+            if nn < bn: continue
             bh, bl = mx[nn - 1], mn[nn - 1]; b = uu + 1
             if c[b] > bh: fl[b] |= BIT["boxbreak"]; dirs["box"][b] = 1
             elif c[b] < bl: fl[b] |= BIT["boxbreak"]; dirs["box"][b] = -1
@@ -148,10 +153,10 @@ def tf_events(M, tf, SL=None):
             if b > a:
                 tb = tL[b]
                 if hL[b] > hi_v:
-                    if tb - hi_t >= STAND_MIN * 60: add.append((b, BIT["dayhigh"]))
+                    if tb - hi_t >= stand_min * 60: add.append((b, BIT["dayhigh"]))
                     hi_v, hi_t = hL[b], tb
                 if lL[b] < lo_v:
-                    if tb - lo_t >= STAND_MIN * 60: add.append((b, BIT["daylow"]))
+                    if tb - lo_t >= stand_min * 60: add.append((b, BIT["daylow"]))
                     lo_v, lo_t = lL[b], tb
     for b, bit in add: fl[b] |= bit
     # decision tick of bar b: first M1 bar with t >= natural end of the TF bar (the bar is closed then; the same rule as ctx last_closed)
