@@ -154,7 +154,7 @@ def write_ctx(db, M, cost, cut_h, log):
             base = [("dec_t", "INTEGER", "เวลาตัดสิน (UTC epoch) = คีย์จับคู่ dec.dec_t; ทุกค่าในแถวใช้เฉพาะข้อมูลก่อนเวลานี้ (กติกาเดียวกับตาราง ctx)"),
                     ("day", "INTEGER", "วันเทรดมาตรฐานของเวลาตัดสิน"), ("m1_last_t", "INTEGER", "เวลาเปิดแท่ง M1 ล่าสุดที่ใช้ (≤ dec_t − 60)")]
             db.execute("CREATE TABLE ctx_dec (" + ", ".join(f"{x} {y}" for x, y, _ in base) + ", " + ", ".join(f"{x} {C[x][1]}" for x in order) + ")")
-            db.executemany("INSERT INTO columns VALUES ('ctx_dec',?,?,?)", base + [(x, C[x][1], Dd[x].replace("เวลาเข้าไม้", "เวลาตัดสิน")
+            db.executemany("INSERT INTO columns VALUES ('ctx_dec',?,?,?)", base + [(x, C[x][1], Dd[x].replace("เวลาเข้าไม้", "เวลาตัดสิน").replace("ก่อนเข้าไม้", "ก่อนเวลาตัดสิน")
                                                                                      + " [ณ เวลาตัดสิน dec_t; นิยามเดียวกับตาราง ctx]") for x in order])
             exists = True
         cols = [E, dE, M["t"][i1]] + [C[x][0] for x in order]; kinds = ["INTEGER"] * 3 + [C[x][1] for x in order]
