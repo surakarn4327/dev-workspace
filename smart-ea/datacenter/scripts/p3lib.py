@@ -9,7 +9,8 @@ Decisions agreed with the user 2026-09-28:
   time, footprints, day levels, M15/H1 background). Direction-carrying features are read relative to the trade (x dir).
 - trades at the same entry time in different sets are not independent -> standard errors are clustered by trading day
   (ratio estimator), which also absorbs several trades of one set on one day.
-- continuous features are cut at percentiles of the FIRST half (distinct entry times of that TF only); neighbour thresholds = the same
+- continuous features are cut at percentiles of the FIRST half (the first-half TRADES of that TF, so direction-relative values use each
+  trade's own direction); neighbour thresholds = the same
   percentile band shifted -5 / +5 points; structural features are also recomputed with zigzag 2 and 4 ATR; regime labels also with
   a tolerance of 0.25 / 0.5 ATR on the pivot differences (dh/dl).
 Outputs are descriptive statistics of trade outcomes per pattern; nothing here selects parameters (that is phase 4)."""
@@ -19,6 +20,9 @@ import numpy as np
 LIB_FROM = calendar.timegm(datetime.datetime(2024, 4, 15).timetuple())
 SANDBOX_END = calendar.timegm(datetime.datetime(2026, 6, 1).timetuple())     # exam = 2026-06-01 onwards: never read
 HALF_T = calendar.timegm(datetime.datetime(2025, 5, 8).timetuple())          # middle of the sandbox (by calendar)
+# halves are split by TRADING DAY (17:00 New York key, same as trades.day), not by UTC midnight: the trading day 2025-05-08 starts at
+# 17:00 NY on May 7 and was cut in two by a UTC split (bugs.md 2026-09-29). Second half = trading days >= 2025-05-08.
+HALF_DAY = HALF_T // 86400
 TFS = (1, 3, 5)
 PCT = [0, 20, 40, 60, 80, 100]
 
@@ -39,7 +43,7 @@ def load(dbt):
     assert np.all(key[pos] == T["entry_t"]), "trade without ctx row"
     X = {c: C[:, i] for i, c in enumerate(cols)}
     T["ci"] = pos                                                    # row of ctx for every trade
-    T["half"] = (T["entry_t"] >= HALF_T).astype(np.int64)
+    T["half"] = (T["day"] >= HALF_DAY).astype(np.int64)
     # residual vs own set x direction x half
     g = (T["set_id"] * 2 + (T["dir"] > 0)) * 2 + T["half"]
     ug, gi = np.unique(g, return_inverse=True)

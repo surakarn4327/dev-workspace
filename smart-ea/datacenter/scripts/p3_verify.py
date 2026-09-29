@@ -9,6 +9,7 @@ import adx_asof
 DB = adx_asof.DBT
 ts = lambda s: int(datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
 LO, END, HALF = ts("2024-04-15"), ts("2026-06-01"), ts("2025-05-08")
+HALFD = HALF // 86400                               # halves by trading day (trades.day), not UTC midnight
 
 def pct(vals, p):                                   # numpy 'linear' percentile, written out
     v = sorted(vals); k = (len(v) - 1) * p / 100.0; f = math.floor(k); c = min(f + 1, len(v) - 1)
@@ -21,7 +22,7 @@ def main():
                          c.d_broke_pdh, c.d_broke_pdl, c.a_m3_cost_atr, c.m3k3_reg, c.m3k3_dh_atr, c.m3k3_dl_atr
                          FROM trades t JOIN ctx c ON c.entry_t = t.entry_t WHERE t.entry_t >= ? AND t.exit_t + 60 <= ?""", (LO, END)).fetchall()
     grp = defaultdict(list)
-    for r in rows: grp[(r[0], r[3] > 0, r[1] >= HALF)].append(r[4])
+    for r in rows: grp[(r[0], r[3] > 0, r[2] >= HALFD)].append(r[4])
     mean = {k: sum(v) / len(v) for k, v in grp.items()}
     def stat(tfv, pred):
         per = defaultdict(lambda: [0.0, 0])
@@ -29,15 +30,15 @@ def main():
             if tf[r[0]] != tfv: continue
             p = pred(r)
             if p is None or not p: continue
-            e = r[4] - mean[(r[0], r[3] > 0, r[1] >= HALF)]; per[r[2]][0] += e; per[r[2]][1] += 1
+            e = r[4] - mean[(r[0], r[3] > 0, r[2] >= HALFD)]; per[r[2]][0] += e; per[r[2]][1] += 1
         S = sum(a for a, b in per.values()); N = sum(b for a, b in per.values()); mu = S / N; D = len(per)
         se = math.sqrt(sum((a - mu * b) ** 2 for a, b in per.values()) * D / (D - 1)) / N
         return mu, mu / se, N
     # percentile bands of d_day_pos (relative) for M1 trades of the first half
     rel = lambda r: None if r[5] is None else (r[5] if r[3] > 0 else 1 - r[5])
-    ref = [rel(r) for r in rows if tf[r[0]] == 1 and r[1] < HALF and rel(r) is not None]
+    ref = [rel(r) for r in rows if tf[r[0]] == 1 and r[2] < HALFD and rel(r) is not None]
     q20 = pct(ref, 20)
-    ref3 = [r[12] for r in rows if tf[r[0]] == 3 and r[1] < HALF and r[12] is not None]; c80 = pct(ref3, 80)
+    ref3 = [r[12] for r in rows if tf[r[0]] == 3 and r[2] < HALFD and r[12] is not None]; c80 = pct(ref3, 80)
     def ph(h): return "asia" if (h >= 17 or h < 3) else "london" if h < 8 else "newyork" if h < 13 else "late"
     def reg_m(r, m):
         if r[13] is None: return None
