@@ -115,7 +115,11 @@ static class Installer
         {
             StopRunning(target);
             Directory.CreateDirectory(dir);
+            // A downloaded .exe can carry the read-only attribute, and File.Copy
+            // preserves it — so the next update would fail with "access denied".
+            if (File.Exists(target)) File.SetAttributes(target, FileAttributes.Normal);
             File.Copy(self, target, overwrite: true);
+            File.SetAttributes(target, FileAttributes.Normal);
             Autostart.Set(true, target);
             Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
             return true;

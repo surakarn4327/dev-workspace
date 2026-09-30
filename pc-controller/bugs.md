@@ -215,3 +215,16 @@ Win32 `SetWindowPos` กันคนกด ระบบนับจนหมด�
 **วิธีแก้**: [`agent/MainForm.cs`](agent/MainForm.cs) ใช้ `Clipboard.SetDataObject(text, true, 10, 150)` (ลองซ้ำ 10 ครั้ง)
 ครอบ try/catch แล้วแสดง "คัดลอกไม่ได้ ลองอีกครั้ง" ที่ปุ่มแทน · และ [`agent/Program.cs`](agent/Program.cs) จับ
 `Application.ThreadException` เขียนลง `error.log` แทนการเด้งหน้าต่างบนเครื่องที่อาจไม่มีคนเฝ้า
+
+---
+
+## 13. อัปเดต agent ครั้งที่สองไม่ได้: "Access to the path ... PcControllerAgent.exe is denied"
+
+**อาการ**: ดับเบิลคลิก `.exe` เวอร์ชันใหม่ → ตอบ Yes ตอนถามอัปเดต → ขึ้น "ติดตั้งไม่สำเร็จ: Access to the path
+'...\AppData\Local\PcControllerAgent\PcControllerAgent.exe' is denied" (การติดตั้งครั้งแรกผ่านปกติ)
+
+**สาเหตุ**: ไฟล์ `.exe` ที่ดาวน์โหลดมา (artifact จาก GitHub) มี attribute read-only ติดมา `File.Copy` คัดลอก attribute
+นี้ไปด้วย ไฟล์ที่ติดตั้งจึงเป็น read-only และ `File.Copy(..., overwrite: true)` ครั้งถัดไปทับไม่ได้
+
+**วิธีแก้**: [`agent/Program.cs`](agent/Program.cs) `Installer.OfferInstall` ล้าง read-only ของไฟล์ปลายทางก่อนทับ และล้างหลังคัดลอก
+ด้วย `File.SetAttributes(target, FileAttributes.Normal)` — ตอนทดสอบเองไม่เจอเพราะรอบเดียวที่ติดตั้งจริงคือรอบแรก
