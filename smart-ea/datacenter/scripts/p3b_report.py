@@ -85,7 +85,9 @@ def main():
     pr(f"patterns (primary): {nT}  (with >= 1 trade: {ok.sum()}); per TF x alt: " +
        ", ".join(f"M{tf}/{a} {sum(1 for r in rows if r['tf']==tf and r['alt']==a)}" for tf in B.TFS for a in B.ALTS))
     pr(f"neighbour statistics: {sum(len(r['var_t']) for r in rows)}; BE-far versions: {sum(1 for r in rows if r['alt']=='be')}")
-    pr(f"real |t|>=3: {np.sum(np.abs(rt[ok])>=3)}, |t|>=2: {np.sum(np.abs(rt[ok])>=2)}, sd of t {np.std(rt[ok]):.2f}")
+    tst = np.array([r["days"] >= MIN_DAYS_T for r in rows]) & ok
+    pr(f"real |t|>=3: {np.sum(np.abs(rt[ok])>=3)} (testable {np.sum(np.abs(rt[tst])>=3)}), |t|>=2: {np.sum(np.abs(rt[ok])>=2)}, "
+       f"sd of t (testable, days >= {MIN_DAYS_T}) {np.std(rt[tst]):.2f}")
     Tp = Tn[:, :npr][:, ok]
     zr_all = np.array([r["z_null"] for r in rows])
     pr(f"null ({nP} draws): sd of t {np.nanstd(Tp):.2f}, share |t|>=3 {np.nanmean(np.abs(Tp)>=3):.4f} (x {ok.sum()} = {np.nanmean(np.abs(Tp)>=3)*ok.sum():.1f}); "
@@ -94,7 +96,8 @@ def main():
        f"{np.nanmean(np.abs(Zn) >= 3) * testable.sum():.1f}; max |z| per draw median {np.median(mxz):.2f}, 95% {np.percentile(mxz, 95):.2f}")
     for grp in ("E", "S", "C"):
         m = np.array([r["grp"] == grp for r in rows]) & ok
-        pr(f"  group {grp}: {m.sum()} patterns, real |t|>=3 {np.sum(np.abs(rt[m])>=3)}, null expected {np.nanmean(np.abs(Tn[:, :npr][:, m])>=3)*m.sum():.1f}, "
+        m = m & tst
+        pr(f"  group {grp}: {m.sum()} testable patterns, real |t|>=3 {np.sum(np.abs(rt[m])>=3)}, null expected {np.nanmean(np.abs(Tn[:, :npr][:, m])>=3)*m.sum():.1f}, "
            f"real sd {np.std(rt[m]):.2f} null sd {np.nanstd(Tn[:, :npr][:, m]):.2f}")
     if sfs:
         st = np.array([[s[i]["t"] for i in range(nT)] for s in sfs])
