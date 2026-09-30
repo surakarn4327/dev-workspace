@@ -44,7 +44,7 @@ def near(P, lv):
     lv = [v for v in lv if v is not None and np.isfinite(v)]; return min(abs(v - P) for v in lv) if lv else np.nan
 def tfbars(tf):
     B = X.resample(M, tf); return B
-BB = {tf: tfbars(tf) for tf in (5, 15, 60)}
+BB = {tf: tfbars(tf) for tf in (1, 3, 5, 15, 60)}
 def closed_idx(B, tf, T, d):
     j = np.searchsorted(B["t_open"], T - 60, "right") - 1
     while j >= 0 and not ((B["t_open"][j] // (tf * 60) + 1) * tf * 60 <= T or B["day"][j] < d): j -= 1
@@ -53,7 +53,7 @@ def ema(c, pp):
     a = 2 / (pp + 1); e = [c[0]]
     for v in c[1:]: e.append(e[-1] + a * (v - e[-1]))
     e = np.array(e); e[:pp] = np.nan; return e
-EM = {(tf, pp): ema(BB[tf]["c"], pp) for tf in (5, 15, 60) for pp in (20, 50, 200)}
+EM = {(tf, pp): ema(BB[tf]["c"], pp) for tf in (1, 3, 5, 15, 60) for pp in (20, 50, 200)}
 PIV = {s: ZL.zigzag_usd(M, s) for s in ZL.SW_SCALES}
 def brk_close(c_, lvl, kd, i):
     return np.any((M["c"][c_ + 1:i] - lvl) * kd > 0)
@@ -75,7 +75,42 @@ def zones_tf(tf):
             if B["sid"][kk] != B["sid"][a]: break
             if (B["c"][kk] - B["o"][kk]) * s < 0: ob.append((B["l"][kk], B["h"][kk], s, st)); break
     return dict(fvg=fv, ds=dz, ob=ob)
-ZT = {tf: zones_tf(tf) for tf in (5, 15)}
+ZT = {tf: zones_tf(tf) for tf in (1, 3, 5, 15)}
+ZST = {tf: {nm: np.array([z[3] for z in ZT[tf][nm]]) for nm in ZT[tf]} for tf in ZT}      # start index of each zone (ascending)
+# independent ATR of each TF per M1 bar (own true range, mean of the 20 TF bars before the containing bar)
+def atr_bar(tf):
+    # integer price points (exact), because a zigzag chain is sensitive to the last digit of its threshold (bugs.md 2026-09-30)
+    B = BB[tf]; H_, L_, C_ = (np.rint(B[x] / BK.POINT).astype(np.int64) for x in ("h", "l", "c")); pc = np.r_[C_[0], C_[:-1]]
+    tr = np.maximum(H_, pc) - np.minimum(L_, pc); a = np.full(len(tr), np.nan)
+    for b in range(20, len(tr)): a[b] = int(tr[b - 20:b].sum()) * BK.POINT / 20
+    return a[np.searchsorted(B["t_open"], t, "right") - 1]
+ATRB = {tf: atr_bar(tf) for tf in ZL.ATR_SW}
+SWA = {(tf, k): ZL.zigzag_path(M, k * ATRB[tf]) for tf, ks in ZL.ATR_SW.items() for k in ks}
+for tf in ZL.ATR_SW:
+    dA = np.abs(ATRB[tf] - Z.atr_tf[tf]); e_ = int(np.sum(~((np.isnan(ATRB[tf]) & np.isnan(Z.atr_tf[tf])) | (dA == 0))))
+    print(f"ATR of M{tf} per M1 bar vs zn_lib: differences {e_}"); bad += e_
+# zigzag with a varying threshold: rule check on the 4-point path (threshold of the bar that holds the point)
+# rule: retracement = DEEPEST point since the pivot; the pivot is confirmed at the first point where that depth >= the threshold of that
+# point; the next pivot is the extreme of the leg (so it may lie before the confirmation point)
+for (tf, kz) in ((1, 3), (3, 2), (5, 5)):
+    th = np.repeat(kz * ATRB[tf], 4); ip, p_, k_, cp = ZL.zigzag_path(M, kz * ATRB[tf], points=True); e = int(np.sum(k_[1:] == k_[:-1]))
+    e += int(np.sum(np.abs(PATH[ip] - p_) > 1e-6))
+    # definition (causal, a confirmed pivot is never removed): pivot q = the extreme of the path from the previous pivot to q's
+    # confirmation; confirmed at the first point, from the previous confirmation on, where the deepest retracement since q >= the
+    # threshold of that point. (A later move beyond q under a grown threshold does not remove q.)
+    for q in range(1, len(p_) - 1):
+        a, c, a0_, c0 = ip[q], cp[q], ip[q - 1], cp[q - 1]; seg = PATH[a0_ + 1:c + 1]
+        if not (a0_ < a <= c and abs((seg.max() if k_[q] > 0 else seg.min()) - p_[q]) < 1e-6): e += 1
+        r = (p_[q] - PATH[a:c + 1]) if k_[q] > 0 else (PATH[a:c + 1] - p_[q]); depth = np.maximum.accumulate(r)
+        thr = np.round(th[a:c + 1] / BK.POINT) * BK.POINT; okb = np.isfinite(thr)
+        pre = np.arange(a, c + 1) < c; act = np.arange(a, c + 1) >= c0                     # points before confirmation while the leg is active
+        if not (depth[-1] >= thr[-1] - 1e-6 and np.all(~(pre & act & okb) | (depth < thr - 1e-6))): e += 1
+    print(f"zigzag {kz} x ATR(M{tf}): pivots {len(p_)} rule violations {e}"); bad += e
+# with a constant threshold zigzag_path must give zigzag_usd's pivots (after the first one)
+for x in (10, 20):
+    A1 = ZL.zigzag_path(M, np.full(n, float(x))); B1 = ZL.zigzag_usd(M, x)
+    e = sum(int(np.sum(a_[1:] != b_[1:])) if len(a_) == len(b_) else 10 ** 6 for a_, b_ in zip(A1, B1))
+    print(f"zigzag_path(constant ${x}) vs zigzag_usd: differences {e}"); bad += e
 wk = (ud + 3) // 7; mo = np.array([(datetime.date(1970, 1, 1) + datetime.timedelta(days=int(x))).strftime("%Y%m") for x in ud])
 nb = 0; cnt = {}
 for q, (i, P, kd) in enumerate(zip(idx[pick], p[pick], k[pick])):
@@ -106,7 +141,7 @@ for q, (i, P, kd) in enumerate(zip(idx[pick], p[pick], k[pick])):
     if i > s_ and v.sum() > 0:
         x_ = tp - tp[0]; mu_ = (x_ * v).sum() / v.sum(); vw = tp[0] + mu_; sd = np.sqrt(max((x_ * x_ * v).sum() / v.sum() - mu_ * mu_, 0))   # centred sums
         W["vwap_b1"] = near(P, [vw + sd, vw - sd]); W["vwap_b2"] = near(P, [vw + 2 * sd, vw - 2 * sd])
-    for tf, nm in ((5, "m5"), (15, "m15"), (60, "h1")):
+    for tf, nm in ZL.LINE_TF:
         j = closed_idx(BB[tf], tf, t[i], days[i])
         for pp in (20, 50, 200): W[f"ema_{nm}_{pp}"] = near(P, [EM[(tf, pp)][j]]) if j >= 0 else np.nan
         if tf < 60 and j >= 19:
@@ -131,11 +166,12 @@ for q, (i, P, kd) in enumerate(zip(idx[pick], p[pick], k[pick])):
             q1, q2 = same[-2], same[-1]; t1, t2 = t[pi[q1]], t[pi[q2]]
             W["tl"] = near(P, [pp_s[q2] + (pp_s[q2] - pp_s[q1]) / (t2 - t1) * (t[i] - t2)]) if (t2 > t1 and t2 - t1 <= 5 * 86400) else np.nan
         else: W["tl"] = np.nan
-    for tf in (5, 15):
+    for tf in (1, 3, 5, 15):
+        a0z = ds0[max(0, di - ZL.ZONE_AGE[tf])]
         for nm in ("fvg", "ds", "ob"):
-            best = np.inf
-            for lo, hi, s, st in ZT[tf][nm]:
-                if not (a0 <= st < i): continue
+            best = np.inf; lo_i, hi_i = np.searchsorted(ZST[tf][nm], a0z), np.searchsorted(ZST[tf][nm], i)
+            for lo, hi, s, st in ZT[tf][nm][lo_i:hi_i]:
+                if not (a0z <= st < i): continue
                 edge = lo if s > 0 else hi
                 if nm == "ob": dead = np.any((M["c"][st:i] - edge) * -s > 0)
                 elif nm == "fvg": dead = np.any((M["l"][st:i] < edge) if s > 0 else (M["h"][st:i] > edge))
@@ -160,14 +196,19 @@ for q, (i, P, kd) in enumerate(zip(idx[pick], p[pick], k[pick])):
     W["sess_open"] = near(P, so)
     ws = ds0[np.flatnonzero(wk == wk[di])[0]]; tp = (M["h"][ws:i] + M["l"][ws:i] + M["c"][ws:i]) / 3; v = M["tv"][ws:i]
     if i > ws and v.sum() > 0: W["vwap_w"] = near(P, [(tp * v).sum() / v.sum()])
-    for tf, nm in ((5, "m5"), (15, "m15")):
+    for tf, nm in ((1, "m1"), (3, "m3"), (5, "m5"), (15, "m15")):
         j = closed_idx(BB[tf], tf, t[i], days[i]); B_ = BB[tf]
         if j >= 10:
             tr = [max(B_["h"][jj], B_["c"][jj - 1]) - min(B_["l"][jj], B_["c"][jj - 1]) for jj in range(j - 9, j + 1)]
-            e20 = EM[(tf, 20)][j] if tf in (5, 15) else np.nan
+            e20 = EM[(tf, 20)][j]
             W[f"kc_{nm}"] = near(P, [e20 + 2 * np.mean(tr), e20 - 2 * np.mean(tr)])
     for s in ZL.SW_SCALES:
         pi, pp_s, pk, pc = PIV[s]; W[f"swing_same_s{s}"] = near(P, [lvl for lvl, kk, c_ in zip(pp_s, pk, pc) if a0 <= c_ < i and kk == kd and not brk_close(c_, lvl, kk, i)])
+    for (tf, kk), (pi, pp_s, pk, pc) in SWA.items():
+        a0a = ds0[max(0, di - ZL.ATR_SW_AGE[tf])]
+        w0, w1 = np.searchsorted(pc, a0a), np.searchsorted(pc, i); cand = list(zip(pp_s[w0:w1], pk[w0:w1], pc[w0:w1]))
+        W[f"swa_same_m{tf}k{kk}"] = near(P, [lvl for lvl, k_, c_ in cand if a0a <= c_ < i and k_ == kd and not brk_close(c_, lvl, k_, i)])
+        W[f"swa_flip_m{tf}k{kk}"] = near(P, [lvl for lvl, k_, c_ in cand if a0a <= c_ < i and k_ == -kd and brk_close(c_, lvl, k_, i)])
     # visits before this approach, from the level identity reported by zn_lib (plain loop)
     for ty in ("pd_hl", "swing_same", "fvg_m5", "ds_m5", "rn10", "sess_hl"):
         if not (D[ty][q] <= 1.0 and D[ty + "_s"][q] >= 0): continue

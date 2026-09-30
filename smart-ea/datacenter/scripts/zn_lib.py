@@ -35,6 +35,54 @@ import numpy as np, broker as BK, adx_ctx as X
 
 DAY = 86400; SW_SCALES = (5, 10, 20, 50); MAXAGE = 20        # trading days
 
+def tf_atr_bar(M, tf):
+    """for every M1 bar: ATR20 ($) of the TF, from the 20 TF bars closed before the TF bar that contains it (known at that bar)"""
+    B = X.resample(M, tf); b = np.searchsorted(B["t_open"], M["t"], "right") - 1
+    return B["atr_prev"][b]
+
+def _deepest(P, a, j, side):
+    """highest (side +1) / lowest (side -1) path point in (a, j], the later one on ties; (P[a], a) if the range is empty"""
+    best, bi = P[a], a
+    for q in range(a + 1, j + 1):
+        if (side > 0 and P[q] >= best) or (side < 0 and P[q] <= best): best, bi = P[q], q
+    return best, bi
+
+def zigzag_path(M, th_bar, points=False):
+    """zigzag on the 4-point path with a threshold per M1 bar ($; the threshold of the bar holding the path point is used).
+    Causal: a confirmed pivot is never removed, so under a threshold that grows later price may move beyond an older pivot without a
+    reversal. Returns pivot bar, price, kind, conf bar. Bars with an unknown threshold (nan) do not confirm."""
+    o, h, l, c = (np.rint(M[x] / BK.POINT).astype(np.int64) for x in ("o", "h", "l", "c"))
+    bull = c >= o; P = np.empty(4 * len(o), np.int64)
+    P[0::4] = o; P[1::4] = np.where(bull, l, h); P[2::4] = np.where(bull, h, l); P[3::4] = c
+    thp = np.where(np.isfinite(th_bar), np.rint(np.nan_to_num(th_bar) / BK.POINT), -1).astype(np.int64)
+    # A varying threshold can shrink after the deepest retracement already happened. The retracement is therefore the DEEPEST point
+    # since the leg's extreme (rx at ri), a pivot is confirmed at the first point where that depth >= the threshold of the current
+    # point, and the new leg starts from that deepest point (bugs.md 2026-09-30). With a constant threshold the deepest point is always
+    # the confirming point -> identical to zigzag_usd.
+    TH = np.repeat(thp, 4).tolist(); P = P.tolist(); out = []; d = 0; ep = ei = 0; hi0 = lo0 = P[0]; ihi = ilo = 0; rx = ri = 0
+    for j in range(1, len(P)):
+        x = P[j]; th = TH[j]
+        if d == 0:                                    # before the first pivot (start of the data only)
+            if x >= hi0: hi0, ihi = x, j
+            if x <= lo0: lo0, ilo = x, j
+            if th > 0 and hi0 - lo0 >= th:
+                if ihi > ilo: out.append((ilo, lo0, -1, j)); d, ep, ei = 1, hi0, ihi
+                else: out.append((ihi, hi0, 1, j)); d, ep, ei = -1, lo0, ilo
+                rx, ri = _deepest(P, ei, j, -d)
+            if d == 0: continue
+        elif d == 1:
+            if x >= ep: ep, ei = x, j; rx, ri = x, j
+            elif x <= rx: rx, ri = x, j
+        else:
+            if x <= ep: ep, ei = x, j; rx, ri = x, j
+            elif x >= rx: rx, ri = x, j
+        # confirm; the new leg may already be deep enough at this same point -> check again (bugs.md 2026-09-30: was one point late)
+        while th > 0 and ((d == 1 and ep - rx >= th) or (d == -1 and rx - ep >= th)):
+            out.append((ei, ep, d, j)); ep, ei = rx, ri; d = -d; rx, ri = _deepest(P, ei, j, -d)
+    a = np.array(out, dtype=np.int64).reshape(-1, 4)
+    if points: return a[:, 0], a[:, 1] * BK.POINT, a[:, 2], a[:, 3]
+    return a[:, 0] // 4, a[:, 1] * BK.POINT, a[:, 2], a[:, 3] // 4
+
 def zigzag_usd(M, X_usd, points=False):
     """fixed-$ zigzag on the 4-point price path of the M1 bars (O, L, H, C for a bull bar, O, H, L, C for a bear bar = the ordering
     used by the pattern library and verified against MT5), so one bar can hold both a pivot and the reversal that confirms it
@@ -83,12 +131,16 @@ def profile(l, h, v):
         else: a -= 1; acc += dn
     return (base + poc + 0.5) * 0.5, (base + b + 1) * 0.5, (base + a) * 0.5
 
+ZONE_TF = (1, 3, 5, 15); ZONE_AGE = {1: 2, 3: 5, 5: 20, 15: 20}          # imbalance zones per TF, max age in trading days
+ATR_SW = {1: (2, 3, 5), 3: (2, 3, 5), 5: (2, 3, 5)}; ATR_SW_AGE = {1: 2, 3: 5, 5: 10}   # swings measured in ATR of the TF
+LINE_TF = ((1, "m1"), (3, "m3"), (5, "m5"), (15, "m15"), (60, "h1")); BAND_TF = (1, 3, 5, 15)
+
 class Zones:
     def __init__(self, M):
         self.M = M; t = M["t"]; n = len(t); self.n = n
         d = M["day"]; self.days, self.dstart = np.unique(d, return_index=True)
         self.dend = np.r_[self.dstart[1:], n]; self.di = np.searchsorted(self.days, d)
-        self.maxbars = MAXAGE * 1450
+        self.maxbars = (MAXAGE + 2) * 1450          # break search must cover the whole age window (age counts from a day start)
         et = (t - np.where(BK.us_dst(t), 4, 5) * 3600); self.et_min = (et // 60) % 1440      # New York clock, minute of day
         self._day_levels(); self._swings(); self._imbalance(); self._vwap(); self._lines()
 
@@ -142,11 +194,19 @@ class Zones:
             brk = np.array([first_through(M, c + 1, pp, k, self.maxbars, use_close=True) for pp, k, c in zip(p, kind, conf)])
             self.sw[s] = dict(idx=idx, p=p, kind=kind, conf=conf, brk=brk)
         self.z10 = self.sw[10]
+        self.swa = {}; self.atr_tf = {}
+        for tf, ks in ATR_SW.items():
+            A = tf_atr_bar(M, tf); self.atr_tf[tf] = A; mb = (ATR_SW_AGE[tf] + 2) * 1450
+            for k in ks:
+                idx, p, kind, conf = zigzag_path(M, k * A)
+                brk = np.array([first_through(M, c + 1, pp, kd, mb, use_close=True) for pp, kd, c in zip(p, kind, conf)])
+                self.swa[(tf, k)] = dict(idx=idx, p=p, kind=kind, conf=conf, brk=brk, age=ATR_SW_AGE[tf])
 
     # ---------------- B imbalance ----------------
     def _imbalance(self):
-        M = self.M; self.zn = {}
-        for tf in (5, 15):
+        M = self.M; self.zn = {}; self.zn_age = {}
+        for tf in ZONE_TF:
+            mb = (ZONE_AGE[tf] + 2) * 1450                                 # bugs.md 2026-09-30: was age x 1450 (too short)
             B = X.resample(M, tf); m1end = np.searchsorted(M["t"], B["t_last"], "right")      # first M1 bar after the bar
             same = (B["sid"][2:] == B["sid"][:-2]) & (B["sid"][1:-1] == B["sid"][:-2])
             bull = np.r_[False, False, (B["l"][2:] > B["h"][:-2]) & same]; bear = np.r_[False, False, (B["h"][2:] < B["l"][:-2]) & same]
@@ -154,18 +214,18 @@ class Zones:
             for c in np.flatnonzero(bull | bear):
                 a = c - 2; s = 1 if bull[c] else -1; start = m1end[c]
                 lo, hi = (B["h"][a], B["l"][c]) if s > 0 else (B["h"][c], B["l"][a])
-                fvg.append((lo, hi, s, start, first_through(M, start, lo if s > 0 else hi, -s, self.maxbars)))
+                fvg.append((lo, hi, s, start, first_through(M, start, lo if s > 0 else hi, -s, mb)))
                 make = True if (last_dir != s or a > expA) else (a == expA)          # user's chain rule
                 if make:
                     zlo, zhi = B["l"][a], B["h"][a]
-                    ds.append((zlo, zhi, s, start, first_through(M, start, zlo if s > 0 else zhi, -s, self.maxbars))); expA = c
+                    ds.append((zlo, zhi, s, start, first_through(M, start, zlo if s > 0 else zhi, -s, mb))); expA = c
                 last_dir = s
                 for k in range(a, max(a - 6, -1), -1):
                     if B["sid"][k] != B["sid"][a]: break
                     if (B["c"][k] - B["o"][k]) * s < 0:
-                        ob.append((B["l"][k], B["h"][k], s, start, first_through(M, start, B["l"][k] if s > 0 else B["h"][k], -s, self.maxbars, True))); break
+                        ob.append((B["l"][k], B["h"][k], s, start, first_through(M, start, B["l"][k] if s > 0 else B["h"][k], -s, mb, True))); break
             for nm, L_ in (("fvg", fvg), ("ds", ds), ("ob", ob)):
-                a_ = np.array(L_, dtype=float).reshape(-1, 5); o_ = np.argsort(a_[:, 3], kind="stable"); self.zn[f"{nm}_m{tf}"] = a_[o_]
+                a_ = np.array(L_, dtype=float).reshape(-1, 5); o_ = np.argsort(a_[:, 3], kind="stable"); self.zn[f"{nm}_m{tf}"] = a_[o_]; self.zn_age[f"{nm}_m{tf}"] = ZONE_AGE[tf]
 
     # ---------------- C vwap (sums of prices centred on the day / week open, so the sums stay small: bugs.md 2026-09-30) ----------------
     def _vwap(self):
@@ -186,10 +246,10 @@ class Zones:
             a = 2 / (p + 1); e = np.empty(len(c)); e[0] = c[0]
             for j in range(1, len(c)): e[j] = e[j - 1] + a * (c[j] - e[j - 1])
             e[:p] = np.nan; return e
-        for tf, nm in ((5, "m5"), (15, "m15"), (60, "h1")):
+        for tf, nm in LINE_TF:
             B = X.resample(M, tf); c = B["c"]
             for p in (20, 50, 200): self.ma[f"ema_{nm}_{p}"] = (B, ema(c, p)[:, None])
-            if tf in (5, 15):
+            if tf in BAND_TF:
                 w = swv(c, 20); mu = np.r_[np.full(19, np.nan), w.mean(1)]; sd = np.r_[np.full(19, np.nan), w.std(1)]
                 self.ma[f"bb_{nm}"] = (B, np.c_[mu + 2 * sd, mu - 2 * sd])
                 e20 = ema(c, 20); tr = B["tr"]; atr10 = np.r_[np.full(9, np.nan), swv(tr, 10).mean(1)]
@@ -246,7 +306,8 @@ class Zones:
             j = X.last_closed(B, t[ev_i], M["day"][ev_i]); jj = np.clip(j, 0, None); val = np.where((j >= 0)[:, None], e[jj], np.nan)
             put(k_, [val[:, c] for c in range(val.shape[1])])
         # swings, pools, flips, fib, trendline, imbalance zones: per event
-        loop = ["swing_same"] + [f"swing_same_s{s}" for s in SW_SCALES] + ["swing_flip", "swing_unbroken_any", "eq_pool", "fib_r", "fib_x", "tl"] + list(self.zn)
+        loop = ["swing_same"] + [f"swing_same_s{s}" for s in SW_SCALES] + ["swing_flip", "swing_unbroken_any", "eq_pool", "fib_r", "fib_x", "tl"] + list(self.zn) \
+            + [f"swa_{w}_m{tf}k{k}" for (tf, k) in self.swa for w in ("same", "flip")]
         for key in loop:
             out[key] = np.full(ne, np.nan); out[key + "_lo"] = np.full(ne, np.nan); out[key + "_hi"] = np.full(ne, np.nan); out[key + "_s"] = np.full(ne, -1, np.int64)
         def keep(key, q, dist, lo, hi, s):
@@ -277,8 +338,16 @@ class Zones:
                     q1, q2 = ks[-2], ks[-1]; t1, t2 = t[z["idx"][q1]], t[z["idx"][q2]]
                     if t2 > t1 and t2 - t1 <= 5 * DAY:
                         lv = z["p"][q2] + (z["p"][q2] - z["p"][q1]) / (t2 - t1) * (t[i] - t2); keep("tl", q, abs(lv - P), lv, lv, -1)
+            for (tf, kk), z in self.swa.items():                                                          # swings in ATR of M1 / M3 / M5
+                c = z["conf"]; lo = np.searchsorted(c, self.dstart[max(0, di[q] - z["age"])]); hi = np.searchsorted(c, i)
+                if hi <= lo: continue
+                p_, k_, b_, c_ = z["p"][lo:hi], z["kind"][lo:hi], z["brk"][lo:hi], c[lo:hi]; unb = b_ >= i; d_ = np.abs(p_ - P)
+                for key, m in ((f"swa_same_m{tf}k{kk}", unb & (k_ == k)), (f"swa_flip_m{tf}k{kk}", (~unb) & (k_ == -k))):
+                    if m.any():
+                        j = np.flatnonzero(m)[d_[m].argmin()]; keep(key, q, d_[j], p_[j], p_[j], c_[j] + 1)
             for key, Z in self.zn.items():
-                lo = np.searchsorted(Z[:, 3], a0); hi = np.searchsorted(Z[:, 3], i)                     # created at M1 index in [a0, i)
+                a0z = self.dstart[max(0, di[q] - self.zn_age[key])]
+                lo = np.searchsorted(Z[:, 3], a0z); hi = np.searchsorted(Z[:, 3], i)                    # created at M1 index in [a0z, i)
                 if hi <= lo: continue
                 zz = Z[lo:hi]; zz = zz[zz[:, 4] >= i]                                                    # not dead before bar i
                 if not len(zz): continue
@@ -295,10 +364,11 @@ class Zones:
         M = self.M; t = M["t"]; Q = {}
         for ty in self.types(D):
             vis = np.full(len(ev_i), -1); age = np.full(len(ev_i), np.nan)
-            for q in np.flatnonzero((D[ty] <= near) & (D[ty + "_s"] >= 0)):
-                s = int(D[ty + "_s"][q]); i = int(ev_i[q])
+            nr = np.broadcast_to(np.asarray(near, float), (len(ev_i),)); bd = np.broadcast_to(np.asarray(band, float), (len(ev_i),))
+            for q in np.flatnonzero((D[ty] <= nr) & (D[ty + "_s"] >= 0)):
+                s = int(D[ty + "_s"][q]); i = int(ev_i[q]); band_q = bd[q]
                 if s >= i: vis[q] = 0; age[q] = 0; continue
-                lo, hi = D[ty + "_lo"][q] - band, D[ty + "_hi"][q] + band
+                lo, hi = D[ty + "_lo"][q] - band_q, D[ty + "_hi"][q] + band_q
                 tch = (M["l"][s:i] <= hi) & (M["h"][s:i] >= lo)
                 runs = int(tch[0]) + int(np.sum(tch[1:] & ~tch[:-1]))
                 vis[q] = runs - int(tch[-1]); age[q] = (t[i] - t[s]) / 60          # a run still going on at bar i-1 = the current approach
