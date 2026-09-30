@@ -6,20 +6,20 @@ import sys
 sys.path.insert(0, r"C:\trade datacenter\scripts")
 import numpy as np, po_lib as PO, zn_lib as ZL, adx_ctx as X
 M = PO.load_market("real"); t = M["t"]; n = len(t)
-Z = ZL.Zones(M); idx, p, k, conf = ZL.zigzag_usd(M["h"], M["l"], 10)
+Z = ZL.Zones(M); idx, p, k, conf = ZL.zigzag_usd(M, 10)
 i0 = np.searchsorted(t, 1715558400); m = idx >= i0; idx, p, k = idx[m], p[m], k[m]
-FULL = Z.distances(idx, p, k); bad = 0
+FULL = Z.distances(idx, p, k); FULL.update(Z.quality(idx, FULL)); bad = 0
 for T in (1725000000, 1745000000, 1765000000, 1785000000):
     c = np.searchsorted(t, T); Mc = {kk: (v[:c] if isinstance(v, np.ndarray) and len(v) == n else v) for kk, v in M.items()}
     Zc = ZL.Zones(Mc); sel = idx < c
     # the pivot itself must be known in the cut data: its confirmation bar < c (otherwise it would not be an event yet)
-    D = Zc.distances(idx[sel], p[sel], k[sel]); nd = 0
+    D = Zc.distances(idx[sel], p[sel], k[sel]); D.update(Zc.quality(idx[sel], D)); nd = 0
     for kk in FULL:
         a, b = FULL[kk][sel], D[kk]; nd += int(np.sum(~((np.isnan(a) & np.isnan(b)) | (np.abs(a - b) < 1e-9))))
     bad += nd; print(f"A cut {T}: events {sel.sum()} differences {nd}", flush=True)
 rng = np.random.default_rng(3); pick = rng.choice(len(idx), 400, replace=False); bB = 0
 days = M["day"]; ud = np.unique(days)
-PIV = {sc: ZL.zigzag_usd(M["h"], M["l"], sc) for sc in ZL.SW_SCALES}
+PIV = {sc: ZL.zigzag_usd(M, sc) for sc in ZL.SW_SCALES}
 B5 = X.resample(M, 5); m1end = np.searchsorted(t, B5["t_last"], "right")
 for q in pick:
     i, P, kk = idx[q], p[q], k[q]; d = days[i]; di = np.searchsorted(ud, d)
