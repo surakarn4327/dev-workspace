@@ -145,7 +145,7 @@ public sealed class AgentCore : IDisposable
 
     public async Task PublishStateAsync()
     {
-        string envelope = Envelope.Seal(Config.Token, "state", BuildState());
+        string envelope = Envelope.Seal(Config.Key, "state", BuildState());
         await Bridge.PublishAsync(MqttBridge.Topics(Config.AgentId).State, envelope, retain: true);
     }
 
@@ -159,8 +159,8 @@ public sealed class AgentCore : IDisposable
 
     async Task HandleMessageAsync(string kind, string text)
     {
-        var body = Envelope.Open(Config.Token, "cmd", text);
-        if (body is not { } msg) return; // wrong token / tampered / not for us
+        var body = Envelope.Open(Config.Key, "cmd", text);
+        if (body is not { } msg) return; // wrong key / tampered / not for us
 
         long ts = msg.TryGetProperty("ts", out var tsEl) && tsEl.TryGetInt64(out long t) ? t : 0;
         if (kind == "cfg") await ApplyConfigAsync(msg, ts);
@@ -238,15 +238,21 @@ public sealed class AgentCore : IDisposable
 
     public async Task ResetTokenAsync()
     {
-        Config.ResetToken();
+        // The agent ID (topic namespace) is derived from the code, so a new code
+        // means new topics: wipe everything retained under the old ones first.
+        var old = MqttBridge.Topics(Config.AgentId);
+        await Bridge.PublishAsync(old.Cfg, "", retain: true);
+        await Bridge.PublishAsync(old.State, "", retain: true);
+        await Bridge.PublishAsync(old.Availability, "", retain: true);
+
+        Config.ResetCode();
         Config.CfgTs = 0;
         Config.Save(DataDir);
-        var t = MqttBridge.Topics(Config.AgentId);
-        // The retained config on the broker is encrypted with the old token.
-        await Bridge.PublishAsync(t.Cfg, "", retain: true);
-        await PublishStateAsync();
         Events.Add("สร้างรหัสเชื่อมต่อใหม่แล้ว");
         StatusChanged?.Invoke();
+
+        // The bridge reconnects on its own under the new ID and republishes state.
+        await Bridge.DisconnectAsync();
     }
 
     // ---------- schedule ----------

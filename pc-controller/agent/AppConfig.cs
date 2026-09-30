@@ -16,8 +16,12 @@ public sealed class SelectedApp
 
 public sealed class AppConfig
 {
-    public string AgentId { get; set; } = "";
-    public string Token { get; set; } = "";
+    // The pairing code (12 chars, see Pairing.cs). Everything else about the
+    // agent's identity is derived from it.
+    public string Code { get; set; } = "";
+
+    [JsonIgnore] public string AgentId { get; private set; } = "";
+    [JsonIgnore] public byte[] Key { get; private set; } = Array.Empty<byte>();
 
     public int[] Days { get; set; } = { 1, 2, 3, 4, 5 };
     public string Off { get; set; } = "18:00";
@@ -35,9 +39,6 @@ public sealed class AppConfig
     public string? LastHandledDate { get; set; }
     public string? SkippedDate { get; set; }
 
-    [JsonIgnore]
-    public string PairingCode => AgentId + Token;
-
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     public static string FilePath(string dir) => Path.Combine(dir, "config.json");
@@ -53,15 +54,21 @@ public sealed class AppConfig
         }
         catch
         {
-            // Corrupt file: start over rather than refuse to run. A new agent ID
-            // and token just means the phone has to be paired again.
+            // Corrupt file: start over rather than refuse to run. A new code
+            // just means the phone has to be paired again.
         }
 
         cfg ??= new AppConfig();
-        bool changed = false;
-        if (cfg.AgentId.Length != 8) { cfg.AgentId = RandomHex(4); changed = true; }
-        if (cfg.Token.Length != 32) { cfg.Token = RandomHex(16); changed = true; }
-        if (changed) cfg.Save(dir);
+        if (Pairing.Normalize(cfg.Code) is { } valid)
+        {
+            cfg.Code = valid;
+        }
+        else
+        {
+            cfg.Code = Pairing.NewCode();
+            cfg.Save(dir);
+        }
+        cfg.ApplyCode();
         return cfg;
     }
 
@@ -73,16 +80,19 @@ public sealed class AppConfig
         File.Move(tmp, FilePath(dir), overwrite: true);
     }
 
-    public void ResetToken() => Token = RandomHex(16);
+    void ApplyCode() => (AgentId, Key) = Pairing.Derive(Code);
+
+    // Returns the previous agent ID so the caller can clean up its retained
+    // messages on the broker.
+    public string ResetCode()
+    {
+        string oldId = AgentId;
+        Code = Pairing.NewCode();
+        ApplyCode();
+        return oldId;
+    }
 
     public static string RandomHex(int bytes) => Convert.ToHexString(RandomNumberGenerator.GetBytes(bytes)).ToLowerInvariant();
-
-    public static string FormatCode(string hex)
-    {
-        var parts = new List<string>();
-        for (int i = 0; i < hex.Length; i += 4) parts.Add(hex.Substring(i, Math.Min(4, hex.Length - i)));
-        return string.Join("-", parts);
-    }
 }
 
 public sealed record EventEntry(long Ts, string Text);

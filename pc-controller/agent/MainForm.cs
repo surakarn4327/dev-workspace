@@ -165,7 +165,7 @@ public sealed class MainForm : Form
     void RefreshCode()
     {
         _code.PasswordChar = _revealed ? '\0' : '•';
-        _code.Text = AppConfig.FormatCode(_core.Config.PairingCode);
+        _code.Text = Pairing.Format(_core.Config.Code);
         _code.Select(0, 0);
         _show.Text = _revealed ? "ซ่อน" : "แสดง";
     }
@@ -188,9 +188,22 @@ public sealed class MainForm : Form
 
     async void CopyCode()
     {
-        Clipboard.SetText(_core.Config.PairingCode);
-        _copy.Text = "คัดลอกแล้ว";
-        await Task.Delay(1500);
+        // Another program can hold the clipboard open for a moment (Chrome
+        // Remote Desktop syncs it constantly), which makes Clipboard.SetText
+        // throw. Retry, and if it still fails just say so instead of crashing.
+        bool ok;
+        try
+        {
+            Clipboard.SetDataObject(Pairing.Format(_core.Config.Code), true, 10, 150);
+            ok = true;
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            ok = false;
+        }
+
+        _copy.Text = ok ? "คัดลอกแล้ว" : "คัดลอกไม่ได้ ลองอีกครั้ง";
+        await Task.Delay(2000);
         if (!IsDisposed) _copy.Text = "คัดลอก";
     }
 

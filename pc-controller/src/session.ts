@@ -1,8 +1,8 @@
-import mqtt, { type MqttClient } from 'mqtt';
-import { open, seal } from './crypto';
+﻿import mqtt, { type MqttClient } from 'mqtt';
+import { open, seal, type DerivedPairing } from './crypto';
 import {
   MQTT_HOST, MQTT_WSS_PATH, MQTT_WSS_PORT, agentTopics, topics,
-  type AgentPairing, type BrokerSettings,
+  type BrokerSettings,
 } from './settings';
 
 // One MQTT connection shared by every screen. Screens subscribe to `session`
@@ -35,7 +35,7 @@ export interface AgentState {
 export type ConnState = 'connecting' | 'connected' | 'error';
 // unpaired: no code saved · waiting: code saved, nothing heard yet ·
 // notfound: waited, no agent with that ID · badcode: state seen but not
-// decryptable with our token · online/offline: paired, agent up / PC off.
+// decryptable with our key · online/offline: paired, agent up / PC off.
 export type AgentLink = 'unpaired' | 'waiting' | 'notfound' | 'badcode' | 'online' | 'offline';
 
 export interface SessionState {
@@ -51,7 +51,7 @@ const NOTFOUND_AFTER_MS = 8000;
 
 let client: MqttClient | null = null;
 let settings: BrokerSettings | null = null;
-let pairing: AgentPairing | null = null;
+let pairing: DerivedPairing | null = null;
 let notFoundTimer: number | undefined;
 let agentAvailability: 'online' | 'offline' | null = null;
 let agentDecryptOk = false;
@@ -102,7 +102,7 @@ function resetAgentTracking(): void {
   recomputeAgentLink();
 }
 
-export function startSession(s: BrokerSettings, p: AgentPairing | null): void {
+export function startSession(s: BrokerSettings, p: DerivedPairing | null): void {
   stopSession();
   settings = s;
   pairing = p;
@@ -150,8 +150,8 @@ export function startSession(s: BrokerSettings, p: AgentPairing | null): void {
   emit();
 }
 
-async function handleAgentState(text: string, forPairing: AgentPairing): Promise<void> {
-  const parsed = await open<AgentState>(forPairing.token, 'state', text);
+async function handleAgentState(text: string, forPairing: DerivedPairing): Promise<void> {
+  const parsed = await open<AgentState>(forPairing.key, 'state', text);
   if (pairing !== forPairing) return; // pairing changed while decrypting
   if (parsed) {
     agentDecryptOk = true;
@@ -186,7 +186,7 @@ export function patchAgentLocal(patch: AgentConfigPatch): void {
   emit();
 }
 
-export function setPairing(p: AgentPairing | null): void {
+export function setPairing(p: DerivedPairing | null): void {
   if (client && pairing) {
     const old = agentTopics(pairing.agentId);
     client.unsubscribe([old.availability, old.state]);
@@ -225,7 +225,7 @@ function randomId(): string {
 
 export async function sendAgentCommand(type: string): Promise<void> {
   if (!client || !pairing) return;
-  const envelope = await seal(pairing.token, 'cmd', { type, ts: Date.now(), id: randomId() });
+  const envelope = await seal(pairing.key, 'cmd', { type, ts: Date.now(), id: randomId() });
   client.publish(agentTopics(pairing.agentId).cmd, envelope);
 }
 
@@ -255,7 +255,7 @@ export async function sendAgentConfig(patch: AgentConfigPatch): Promise<boolean>
     // route Discord notifications through the ESP32.
     notifyDevice: settings.deviceId,
   };
-  const envelope = await seal(pairing.token, 'cmd', snapshot);
+  const envelope = await seal(pairing.key, 'cmd', snapshot);
   client.publish(agentTopics(pairing.agentId).cfg, envelope, { retain: true });
   return true;
 }

@@ -1,6 +1,7 @@
-import { q, screenHeader } from '../dom';
+﻿import { q, screenHeader } from '../dom';
+import { deriveFromCode, formatCode, normalizeCode } from '../crypto';
 import { setPairing, state, subscribe } from '../session';
-import { clearPairing, loadPairing, parsePairingCode, savePairing } from '../settings';
+import { clearPairingCode, loadPairingCode, savePairingCode } from '../settings';
 import type { Nav } from '../nav';
 
 const STATUS_TEXT: Record<string, string> = {
@@ -15,14 +16,14 @@ const STATUS_TEXT: Record<string, string> = {
 export function renderAgent(nav: Nav): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'screen sub';
-  const existing = loadPairing();
+  const existing = loadPairingCode();
 
   wrap.innerHTML = `
     ${screenHeader('เชื่อมต่อกับคอม')}
     <section class="card">
       <label class="field">รหัสเชื่อมต่อ (คัดลอกจากโปรแกรมบนคอม)
         <div class="input-row">
-          <input id="code" placeholder="วางรหัสที่นี่" autocomplete="off" value="${existing ? formatCode(existing.agentId + existing.token) : ''}">
+          <input id="code" placeholder="XXXX-XXXX-XXXX" autocomplete="off" value="${existing ? formatCode(existing) : ''}">
           <button type="button" class="icon-btn" id="paste" aria-label="วาง">📋</button>
         </div>
       </label>
@@ -48,20 +49,21 @@ export function renderAgent(nav: Nav): HTMLElement {
     }
   });
 
-  q(wrap, '#save-btn').addEventListener('click', () => {
-    const p = parsePairingCode(codeInput.value);
-    if (!p) {
+  q(wrap, '#save-btn').addEventListener('click', async () => {
+    const code = normalizeCode(codeInput.value);
+    if (!code) {
       error.textContent = 'รหัสไม่ถูกต้อง ลองคัดลอกใหม่จากโปรแกรมบนคอม';
       return;
     }
     error.textContent = '';
-    savePairing(p);
-    setPairing(p);
-    codeInput.value = formatCode(p.agentId + p.token);
+    savePairingCode(code);
+    codeInput.value = formatCode(code);
+    status.textContent = 'กำลังตรวจสอบรหัส...';
+    setPairing(await deriveFromCode(code));
   });
 
   wrap.querySelector('#unpair-btn')?.addEventListener('click', () => {
-    clearPairing();
+    clearPairingCode();
     setPairing(null);
     nav('agent');
   });
@@ -76,8 +78,4 @@ export function renderAgent(nav: Nav): HTMLElement {
   });
   update();
   return wrap;
-}
-
-function formatCode(hex: string): string {
-  return hex.replace(/(.{4})/g, '$1-').replace(/-$/, '');
 }

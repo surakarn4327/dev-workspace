@@ -7,7 +7,8 @@ namespace PcControllerAgent;
 // Runs the pure-logic checks (crypto, schedule, catalog scan) without any UI or
 // network, and writes selftest.txt. Exit code 0 = all passed. The optional
 // vector file is produced by the phone app's crypto (scripts/crypto-vector.mjs)
-// to prove both sides really speak the same envelope format.
+// to prove both sides really derive the same key/agent ID from a pairing code
+// and speak the same envelope format.
 static class SelfTest
 {
     public static int Run(Options opts)
@@ -20,20 +21,35 @@ static class SelfTest
             if (!ok) failures++;
         }
 
+        // --- pairing code ---
+        string code = Pairing.NewCode();
+        Check("new code is 12 valid characters", Pairing.Normalize(code) == code);
+        Check("formatted as xxxx-xxxx-xxxx", Pairing.Format("K7M2P9X4QA3D") == "K7M2-P9X4-QA3D");
+        Check("normalize accepts lower case, dashes, spaces", Pairing.Normalize(" k7m2-p9x4 qa3d ") == "K7M2P9X4QA3D");
+        Check("normalize maps look-alikes (O/I/L)", Pairing.Normalize("K7M2-P9X4-QA3D") == Pairing.Normalize("k7m2p9x4qa3d") && Pairing.Normalize("OIL0OIL0OIL0") == "011001100110");
+        Check("normalize rejects wrong length / bad chars", Pairing.Normalize("K7M2-P9X4") == null && Pairing.Normalize("K7M2-P9X4-QA3U") == null && Pairing.Normalize(null) == null);
+        var (idA, keyA) = Pairing.Derive("K7M2P9X4QA3D");
+        var (idB, keyB) = Pairing.Derive("K7M2P9X4QA3D");
+        var (idC, _) = Pairing.Derive("K7M2P9X4QA3E");
+        Check("derive is deterministic, 8-hex agent id, 32-byte key", idA == idB && keyA.SequenceEqual(keyB) && idA.Length == 8 && keyA.Length == 32);
+        Check("different code gives different agent id", idA != idC);
+
         // --- crypto ---
-        string token = "0123456789abcdef0123456789abcdef";
-        string sealedText = Envelope.Seal(token, "cmd", new { hello = "world", n = 42 });
-        var back = Envelope.Open(token, "cmd", sealedText);
+        byte[] key = keyA;
+        string sealedText = Envelope.Seal(key, "cmd", new { hello = "world", n = 42 });
+        var back = Envelope.Open(key, "cmd", sealedText);
         Check("envelope round-trip", back is { } b && b.GetProperty("hello").GetString() == "world" && b.GetProperty("n").GetInt32() == 42);
-        Check("wrong token rejected", Envelope.Open("ffffffffffffffffffffffffffffffff", "cmd", sealedText) == null);
-        Check("wrong direction rejected", Envelope.Open(token, "state", sealedText) == null);
-        Check("garbage rejected", Envelope.Open(token, "cmd", "not json") == null);
+        Check("wrong key rejected", Envelope.Open(Pairing.Derive("K7M2P9X4QA3E").Key, "cmd", sealedText) == null);
+        Check("wrong direction rejected", Envelope.Open(key, "state", sealedText) == null);
+        Check("garbage rejected", Envelope.Open(key, "cmd", "not json") == null);
 
         if (opts.VectorFile != null)
         {
             var v = JsonDocument.Parse(File.ReadAllText(opts.VectorFile)).RootElement;
-            string vToken = v.GetProperty("token").GetString()!;
-            var fromJs = Envelope.Open(vToken, v.GetProperty("direction").GetString()!, v.GetProperty("envelope").GetString()!);
+            string vCode = v.GetProperty("code").GetString()!;
+            var (vId, vKey) = Pairing.Derive(vCode);
+            Check("agent id derived from the code matches the phone app (JS)", vId == v.GetProperty("agentId").GetString());
+            var fromJs = Envelope.Open(vKey, v.GetProperty("direction").GetString()!, v.GetProperty("envelope").GetString()!);
             Check("decrypts envelope made by the phone app (JS)",
                 fromJs is { } j && j.GetProperty("type").GetString() == "cfg-test" && j.GetProperty("thai").GetString() == "สวัสดี ทดสอบ");
 
@@ -41,9 +57,9 @@ static class SelfTest
             string outPath = Path.Combine(Path.GetDirectoryName(opts.VectorFile)!, "vector-from-csharp.json");
             File.WriteAllText(outPath, JsonSerializer.Serialize(new
             {
-                token = vToken,
+                code = vCode,
                 direction = "state",
-                envelope = Envelope.Seal(vToken, "state", new { type = "state-test", thai = "สวัสดี ทดสอบ", n = 7 }),
+                envelope = Envelope.Seal(vKey, "state", new { type = "state-test", thai = "สวัสดี ทดสอบ", n = 7 }),
             }));
             log.AppendLine($"wrote {outPath}");
         }
@@ -63,11 +79,6 @@ static class SelfTest
         cfg.LastHandledDate = "2026-09-28";
         Check("does not fire twice in one day", !ScheduleLogic.ShouldStartCountdown(cfg, mon.AddHours(18).AddMinutes(1)));
         Check("time validation", ScheduleLogic.IsValidTime("08:00") && !ScheduleLogic.IsValidTime("8:00") && !ScheduleLogic.IsValidTime("24:00") && !ScheduleLogic.IsValidTime(null));
-
-        // --- pairing code format ---
-        string code = AppConfig.RandomHex(4) + AppConfig.RandomHex(16);
-        Check("pairing code is 40 hex chars", code.Length == 40 && code.All(Uri.IsHexDigit));
-        Check("pairing code formatting", AppConfig.FormatCode(code).Replace("-", "") == code && AppConfig.FormatCode(code).Split('-').Length == 10);
 
         // --- catalog ---
         try

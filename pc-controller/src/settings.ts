@@ -1,4 +1,4 @@
-// Public EMQX test broker: free, no account, no credentials. Trades a
+﻿// Public EMQX test broker: free, no account, no credentials. Trades a
 // little privacy (anyone who guesses your device ID could publish to your
 // topics) for a much simpler setup — mitigated by picking a long, random
 // device ID, the same way you'd pick an unguessable ntfy.sh topic name.
@@ -46,36 +46,23 @@ export function topics(deviceId: string) {
 
 // ---------- pairing with the Windows agent ----------
 
-// The agent can't know the ESP32's device ID, so it has its own identity. The
-// pairing code shown in the agent window is 40 hex chars: 8 for the agent ID
-// (topic namespace) + 32 for the secret token (encryption key, never sent).
-export interface AgentPairing {
-  agentId: string;
-  token: string;
-}
+// Only the normalized 12-character pairing code is stored; the agent ID and
+// encryption key are derived from it (see crypto.ts) each time the app starts.
+const PAIRING_KEY = 'pc-controller:agent-code';
 
-const PAIRING_KEY = 'pc-controller:agent-pairing';
-
-export function parsePairingCode(input: string): AgentPairing | null {
-  const hex = input.toLowerCase().replace(/[^0-9a-f]/g, '');
-  if (hex.length !== 40) return null;
-  return { agentId: hex.slice(0, 8), token: hex.slice(8) };
-}
-
-export function loadPairing(): AgentPairing | null {
+export function loadPairingCode(): string | null {
   try {
-    const raw = localStorage.getItem(PAIRING_KEY);
-    return raw ? (JSON.parse(raw) as AgentPairing) : null;
+    return localStorage.getItem(PAIRING_KEY);
   } catch {
     return null;
   }
 }
 
-export function savePairing(pairing: AgentPairing): void {
-  localStorage.setItem(PAIRING_KEY, JSON.stringify(pairing));
+export function savePairingCode(code: string): void {
+  localStorage.setItem(PAIRING_KEY, code);
 }
 
-export function clearPairing(): void {
+export function clearPairingCode(): void {
   localStorage.removeItem(PAIRING_KEY);
 }
 

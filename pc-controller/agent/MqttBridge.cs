@@ -102,6 +102,13 @@ public sealed class MqttBridge : IDisposable
         }
     }
 
+    // Drops the connection; the loop reconnects within a few seconds using
+    // whatever agent ID the config has by then.
+    public async Task DisconnectAsync()
+    {
+        try { await _client.DisconnectAsync(); } catch { }
+    }
+
     // Tells the broker we're going away on purpose (the will message only
     // fires on an unclean disconnect).
     public async Task GoOfflineAsync()

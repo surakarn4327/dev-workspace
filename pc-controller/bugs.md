@@ -201,3 +201,17 @@ Win32 `SetWindowPos` กันคนกด ระบบนับจนหมด�
 
 **วิธีแก้**: [`agent/CountdownForm.cs`](agent/CountdownForm.cs) ตั้ง `TabStop = false` ให้ทุกปุ่ม ไม่ให้ปุ่มไหนถือ focus
 ตอนหน้าต่างเด้ง (เมาส์คลิกยังทำงานปกติ) · ยังไม่ได้พิสูจน์ว่าการข้ามตอนทดสอบเกิดจากสาเหตุนี้จริง แต่เป็นความเสี่ยงจริงที่ปิดไว้ก่อน
+
+---
+
+## 12. กดคัดลอกรหัสใน agent แล้วเด้ง "Requested Clipboard operation did not succeed"
+
+**อาการ**: เปิด agent ผ่าน Chrome Remote Desktop กดปุ่ม "คัดลอก" แล้วโผล่หน้าต่าง error ของ .NET
+(Unhandled exception ... Continue / Quit)
+
+**สาเหตุ**: `Clipboard.SetText` ล้มเหลวเมื่อโปรแกรมอื่นถือคลิปบอร์ดค้างอยู่ชั่วขณะ — Chrome Remote Desktop ซิงก์
+คลิปบอร์ดตลอดเวลา จึงชนบ่อย และ exception ไม่ถูกจับเลยเด้งเป็นหน้าต่างของ WinForms
+
+**วิธีแก้**: [`agent/MainForm.cs`](agent/MainForm.cs) ใช้ `Clipboard.SetDataObject(text, true, 10, 150)` (ลองซ้ำ 10 ครั้ง)
+ครอบ try/catch แล้วแสดง "คัดลอกไม่ได้ ลองอีกครั้ง" ที่ปุ่มแทน · และ [`agent/Program.cs`](agent/Program.cs) จับ
+`Application.ThreadException` เขียนลง `error.log` แทนการเด้งหน้าต่างบนเครื่องที่อาจไม่มีคนเฝ้า

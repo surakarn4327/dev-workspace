@@ -1,5 +1,6 @@
-import './style.css';
-import { loadPairing, loadSettings, saveSettings, clearSettings, type BrokerSettings } from './settings';
+﻿import './style.css';
+import { loadPairingCode, loadSettings, saveSettings, clearSettings, type BrokerSettings } from './settings';
+import { deriveFromCode } from './crypto';
 import { registerSW } from 'virtual:pwa-register';
 import { escapeHtml } from './dom';
 import { startSession, stopSession } from './session';
@@ -77,13 +78,20 @@ function renderSetup(existing?: BrokerSettings, prefillDeviceId?: string): HTMLE
       deviceName: String(data.get('deviceName')).trim(),
     };
     saveSettings(settings);
-    startSession(settings, loadPairing());
+    void start(settings);
     show('home');
   });
 
   return wrap;
 }
 
+// Deriving the key from the pairing code (PBKDF2) takes a moment, so the MQTT
+// session starts once that's done; the UI renders immediately meanwhile.
+async function start(settings: BrokerSettings): Promise<void> {
+  const code = loadPairingCode();
+  startSession(settings, code ? await deriveFromCode(code) : null);
+}
+
 const initial = loadSettings();
-if (initial) startSession(initial, loadPairing());
+if (initial) void start(initial);
 show('home');

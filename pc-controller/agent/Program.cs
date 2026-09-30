@@ -29,6 +29,20 @@ static class Program
             return 0;
         }
 
+        // An unexpected error in one UI handler must not pop a scary .NET dialog
+        // on a PC that may be unattended (or kill the scheduler). Log it and go on.
+        string dataDir = opts.DataDir ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PcControllerAgent");
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) =>
+        {
+            try
+            {
+                Directory.CreateDirectory(dataDir);
+                File.AppendAllText(Path.Combine(dataDir, "error.log"), $"{DateTime.Now:s} {e.Exception}\n\n");
+            }
+            catch { }
+        };
+
         using var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, name + ".Show");
         Application.Run(new AgentContext(opts, showEvent));
         return 0;
