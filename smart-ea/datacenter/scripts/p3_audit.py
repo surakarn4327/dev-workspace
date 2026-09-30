@@ -74,6 +74,11 @@ def main():
         lb = max(BK.server_to_utc(z["t"][-1:])[0], s.execute("SELECT MAX(t) FROM bars_m1").fetchone()[0])
         le = max(a.execute("SELECT MAX(exit_t) FROM trades").fetchone()[0], a.execute("SELECT MAX(entry_t) FROM ctx").fetchone()[0])
         ok(lb < L.SANDBOX_END and le < L.SANDBOX_END, f"{os.path.basename(d)}: synthetic bars/trades/ctx all before 2026-06-01")
+        # the exam starts at trading day 2026-06-01 (Sunday-evening open), not UTC midnight: the trades the screen READS must end before it
+        # (the library itself holds 36 / 72 such trades in sf3 / sf5; p3lib.load drops them, bugs.md 2026-09-30)
+        Ts, _ = L.load(os.path.join(d, "adx_trades.sqlite"))
+        ok(Ts["day"].max() < L.SANDBOX_END // 86400, f"{os.path.basename(d)}: trades read end at trading day {time.strftime('%Y-%m-%d', time.gmtime(int(Ts['day'].max()) * 86400))}")
+    ok(T["day"].max() < L.SANDBOX_END // 86400, f"real: trades read end at trading day {time.strftime('%Y-%m-%d', time.gmtime(int(T['day'].max()) * 86400))}")
     # ---------------- B synthetic markets are really synthetic
     print("== B random-direction markets")
     rz = np.load(BK.BARS); rt = BK.server_to_utc(rz["t"])

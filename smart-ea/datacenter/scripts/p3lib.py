@@ -33,6 +33,10 @@ def load(dbt):
     P = {r[0]: r[1] for r in db.execute("SELECT set_id, tf FROM params")}
     q = ("SELECT set_id, entry_t, exit_t, day, dir, r_std FROM trades WHERE entry_t >= ? AND exit_t + 60 <= ? ORDER BY set_id, entry_t")
     R = np.array(db.execute(q, (LIB_FROM, SANDBOX_END)).fetchall(), dtype=float)
+    # the exam starts at TRADING DAY 2026-06-01 (17:00 NY May 31), not at UTC midnight: a trade opened after the Sunday-evening open and
+    # closed before midnight UTC passes the time filter above but belongs to the exam. None in the real library; 36 / 72 in the
+    # random-direction markets sf3 / sf5 (bugs.md 2026-09-30) -> drop by trading day.
+    R = R[R[:, 3] < SANDBOX_END // 86400]
     T = dict(set_id=R[:, 0].astype(np.int64), entry_t=R[:, 1].astype(np.int64), day=R[:, 3].astype(np.int64),
              dir=R[:, 4].astype(np.int64), r=R[:, 5])
     assert T["entry_t"].max() < SANDBOX_END
