@@ -1,4 +1,9 @@
 # Gold data center (broker-neutral; ตอนนี้ใช้ข้อมูล Exness XAUUSDc)
+5. **ถ้าแก้โค้ด/README**: `python scripts\sync_repo.py` แล้ว commit + push โฟลเดอร์ `dev-workspace\smart-ea\datacenter` (adx_check.py ฟ้องถ้าลืม)
+| `scripts\p3c_lib.py` / `p3c_pilot.py` | เฟส 3B-ค: ตัวคำนวณส่วนเกินระดับชุด (ชุด/กลุ่มพารามิเตอร์ × สภาพตลาด 270 ค่า, 530,269 ช่อง) + null 1b เลื่อนเวลาในวัน (`shift_ci`) + `load_sandbox` (ตัดตามวันเทรด) / ทดสอบชิ้นเล็ก: เทียบโค้ดแยก + วัดเวลา |
+| `scripts\p3c_run.py real\|sf<n>` / `p3c_perm.py` / `p3c_perm2.py` / `p3c_perm_top.py` | เฟส 3B-ค: สถิติทุกช่อง → `p3c\<ชื่อ>_res.pkl` / null สลับวัน (รอบ 1 ปรับมาตรฐาน seed 1000+, รอบ 2 seed 5000+) / รอบ 2 ใหม่โดยเทียบค่าสูงสุดเฉพาะช่อง ≥ 100 วัน / เติม 2,000 รอบให้ผู้สมัคร G1-G5 |
+| `scripts\p3c_report.py` / `p3c_audit.py` | เฟส 3B-ค: ด่านทุกช่อง → `p3c\p3c_results.csv` + `p3c_summary.txt` + `p3c_gates.pkl` / ตรวจอิสระ → `p3c\p3c_audit.txt` · ลำดับรัน: run real+sf1-5 → perm → perm2 → report → perm_top → report → audit |
+# Gold data center (broker-neutral; ตอนนี้ใช้ข้อมูล Exness XAUUSDc)
 
 คลังข้อมูลพฤติกรรมราคาทองสำหรับงานวิจัย smart-ea (ดูแผนเต็มใน `dev-workspace\smart-ea\CLAUDE.md` หัวข้อ "แผนใหม่: data center")
 
