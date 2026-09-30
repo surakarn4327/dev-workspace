@@ -1607,3 +1607,10 @@ pattern ที่เสี่ยง: **ใช้ค่าแทน "ไม่เ
 **อาการ**: `po_ctx_check.py` ดึงโค้ดจาก `po_eval2.py` ด้วย `exec(compile(src))` → `SyntaxError: invalid non-printable character U+FEFF` (po_eval2.py / po_check.py ถูกเขียนใหม่ด้วย BOM) · อีกครั้ง `WriteAllText` หลัง `.Replace` ที่ error ทำให้ `po_check_full.py` ว่างเปล่า
 **สาเหตุ**: Windows PowerShell 5.1 `Set-Content -Encoding utf8` = UTF-8 with BOM (Python รัน `.py` ที่มี BOM ได้ แต่ `compile()` จากสตริงที่อ่านมาไม่ตัด BOM) · คำสั่งแก้ไฟล์แบบ อ่าน→Replace→เขียนต่อกันในบรรทัดเดียว ถ้า Replace ล้มค่า `$s` เป็น null แล้วยังเขียนทับ
 **วิธีแก้**: ตัด BOM ออกจาก 2 ไฟล์ · แก้ไฟล์สคริปต์ด้วยเครื่องมือ Edit หรือ `[IO.File]::WriteAllText` เท่านั้น และเช็ค `$s` ไม่ null / ขนาดไฟล์หลังเขียนทุกครั้ง
+
+## 2026-09-30 — ตัวตรวจ `po_eval4_check.py` ตัดโค้ดของ `po_eval4.py` ผิดจุด (บั๊กของตัวตรวจ ไม่ใช่ข้อมูล)
+
+**อาการ**: `exec(compile(...))` ของส่วนนิยามล้ม `SyntaxError: unterminated string literal`
+**สาเหตุ**: ตัดโค้ดด้วย `.split("t0 = time.time()")` แต่ `po_eval4.py` เองมีบรรทัดที่ใส่ข้อความ `"t0 = time.time()"` ไว้ในสตริง (บรรทัดที่ตัดโค้ดของ `po_eval2`) → ตัดกลางสตริง
+**วิธีแก้**: ตัดด้วยข้อความที่ขึ้นบรรทัดใหม่และยาวพอจะเจอจุดเดียว (`"\nt0 = time.time(); L = {}"`)
+**บทเรียน**: การดึงนิยามจากสคริปต์อื่นด้วยการตัดข้อความเปราะมาก (ครั้งที่ 2 วันเดียวกันหลังเรื่อง BOM) — ถ้าจะใช้ต่ออีก ควรแยกนิยามของ po_eval2 ออกเป็นโมดูล (`po_evlib.py`) แล้วตรวจว่าผลเดิมไม่เปลี่ยนด้วย hash
