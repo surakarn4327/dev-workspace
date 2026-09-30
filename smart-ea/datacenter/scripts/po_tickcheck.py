@@ -10,10 +10,16 @@ Per trade three versions:
 Output: po\po_tickcheck.txt"""
 import sys, os
 sys.path.insert(0, r"C:\trade datacenter\scripts")
-import numpy as np, po_lib as PO, po_eval as EV, ticks_lib as TL
+import numpy as np, po_lib as PO, ticks_lib as TL
 import broker as BK
 
-R = EV.L["real"]; M = PO.load_market("real"); t = M["t"]
+TF = int(os.environ.get("PO_TF", 5))
+BIT = {n: 1 << i for i, n in enumerate(["big", "pin", "vspike", "inside", "pivot", "regime", "boxbreak", "pdh", "pdl", "dayhigh", "daylow", "asiahigh", "asialow", "check"])}
+LVi = lambda v: int(np.flatnonzero(np.isclose(PO.LV, v))[0])
+def pdx_events(R):
+    fl = R["flags"]; up = (fl & BIT["pdh"]) != 0; dn = (fl & BIT["pdl"]) != 0; m = up ^ dn; d = np.where(up, 1, -1)
+    rows = np.flatnonzero(m); return rows, d[rows]
+R = dict(np.load(os.path.join(PO.OUTD, f"po_m{TF}_real.npz"))); M = PO.load_market("real"); t = M["t"]
 TK = TL.load(); msc = TK["msc"]; bid = TK["bid"] * BK.POINT; ask = TK["ask"] * BK.POINT
 T0 = int(msc[0] // 1000); T1 = int(msc[-1] // 1000)
 out = []
@@ -47,11 +53,11 @@ def tick_versions(q, side, s_atr, tp_atr):
 rng = np.random.default_rng(1)
 in26 = (R["dec_t"] >= T0) & (R["dec_t"] < T1 - 86400)
 # (1) the pattern
-rows, d = EV.events(R, "pdx"); keep = in26[rows]; rows, d = rows[keep], d[keep]
+rows, d = pdx_events(R); keep = in26[rows]; rows, d = rows[keep], d[keep]
 say(f"\n(1) break of yesterday high/low, with the break, no TP: {len(rows)} trades in the real-tick period")
 say("   SL       model R   tickA R   tickB R   | same exit type (A)   mean |model-tickA|")
 for s in (0.5, 1, 1.5, 2, 3):
-    sk = EV.LVi(s); mr, ar, br, same = [], [], [], []
+    sk = LVi(s); mr, ar, br, same = [], [], [], []
     for q, sd in zip(rows, d):
         v = tick_versions(q, sd, s, None)
         if v is None: continue
@@ -76,10 +82,10 @@ say(f"   wick   {mr.mean():+8.3f}  {ar.mean():+8.3f}  {br.mean():+8.3f}   (n {le
 
 # (2) random calibration
 pool = np.flatnonzero(in26); samp = rng.choice(pool, 2000, replace=False)
-say(f"\n(2) random M5 bars (n 2000 x BUY/SELL): model vs real ticks, mean R")
+say(f"\n(2) random M{TF} bars (n 2000 x BUY/SELL): model vs real ticks, mean R")
 say("   SL   TP      model R   tickA R   tickB R   mean |model-tickA|   SL-hit rate model / tickA")
 for s, tp in ((0.5, 1), (0.5, 2), (1, 1), (1, 3), (1, None), (2, 2), (2, None)):
-    sk = EV.LVi(s); tk = None if tp is None else EV.LVi(s * tp)
+    sk = LVi(s); tk = None if tp is None else LVi(s * tp)
     mr, ar, br, hm, ha = [], [], [], [], []
     for q in samp:
         for sd in (1, -1):
@@ -90,4 +96,4 @@ for s, tp in ((0.5, 1), (0.5, 2), (1, 1), (1, 3), (1, None), (2, 2), (2, None)):
     mr, ar, br = map(np.array, (mr, ar, br))
     say(f"   {s:<4} {str(tp) + 'R' if tp else 'none':6s}  {mr.mean():+8.3f}  {ar.mean():+8.3f}  {br.mean():+8.3f}   {np.mean(np.abs(mr - ar)):.3f}"
         f"               {np.mean(hm):.1%} / {np.mean(ha):.1%}  (n {len(mr)})")
-open(os.path.join(PO.OUTD, "po_tickcheck.txt"), "w", encoding="utf-8").write("\n".join(out))
+open(os.path.join(PO.OUTD, f"po_tickcheck_m{TF}.txt"), "w", encoding="utf-8").write("\n".join(out))

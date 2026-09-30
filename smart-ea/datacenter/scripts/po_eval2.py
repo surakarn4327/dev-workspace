@@ -14,12 +14,12 @@ Search-wide calibration: in the random-direction markets, "excess" of market k v
 search finds by chance -> expected count of cells above each |t|.
 Gates (fixed before results): G1 |t_excess| >= 3.5, >= 100 days | G2 both halves same sign |t| >= 1.5 | G3 BUY & SELL same sign
 |t| >= 1.5 | G4 >= 75% of neighbour cells same sign | tradable = mean R > 0.
-Output: po\po_eval2_m5.csv + po_eval2_m5.txt"""
+Output: po\po_eval2_m{TF}.csv + po_eval2_m{TF}.txt"""
 import sys, os, csv, time
 sys.path.insert(0, r"C:\trade datacenter\scripts")
 import numpy as np, po_lib as PO, adx_ctx as X, broker as BK
 
-TF = 5; MK = ["real", "sf1", "sf2", "sf3"]
+TF = int(os.environ.get("PO_TF", 5)); MK = ["real", "sf1", "sf2", "sf3"]
 BITS = {n: 1 << i for i, n in enumerate(["big", "pin", "vspike", "inside", "pivot", "regime", "boxbreak", "pdh", "pdl", "dayhigh", "daylow",
                                          "asiahigh", "asialow", "check"])}
 FAMS = ["big", "pin", "vspike", "inside", "pivot", "regime", "boxbreak", "pdx", "dayext", "asia"]
@@ -166,7 +166,7 @@ for o in out:
     o["G4"] = bool(nb) and np.mean(nb) >= 0.75
     o["all"] = o["G1"] and o["G2"] and o["G3"] and o["G4"]
     o["tradable"] = o["all"] and o["excess"] > 0 and o["mean_R"] > 0
-with open(os.path.join(PO.OUTD, "po_eval2_m5.csv"), "w", newline="", encoding="utf-8") as f:
+with open(os.path.join(PO.OUTD, f"po_eval2_m{TF}.csv"), "w", newline="", encoding="utf-8") as f:
     w = csv.DictWriter(f, fieldnames=list(out[0].keys())); w.writeheader(); w.writerows(out)
 nz = np.abs(np.array(nullz)); nz = nz[np.isfinite(nz)]; tr = np.abs(np.array([o["t_excess"] for o in out], float)); tr = tr[np.isfinite(tr)]
 txt = []
@@ -183,5 +183,6 @@ av = sorted([o for o in out if o["all"] and o["excess"] < 0], key=lambda o: o["e
 say(f"\nAVOID (all gates, worse than random-direction market) {len(av)}:")
 for o in av[:30]:
     say(f"  {o['fam']:8s} {o['mode']:7s} {o['ctx']:11s} {o['cell']:15s} R {o['mean_R']:+.3f} null {o['null_R']:+.3f} excess {o['excess']:+.3f} t {o['t_excess']:+.1f}")
-open(os.path.join(PO.OUTD, "po_eval2_m5.txt"), "w", encoding="utf-8").write("\n".join(txt))
+open(os.path.join(PO.OUTD, f"po_eval2_m{TF}.txt"), "w", encoding="utf-8").write("\n".join(txt))
 print(f"done {time.time() - t0:.0f}s")
+

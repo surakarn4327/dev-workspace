@@ -1,6 +1,6 @@
 r"""Independent check of po_lib on a small piece: re-simulate random bars tick-point by tick-point with a plain loop over M1 bars
 (no cummax / searchsorted), for BUY/SELL, several SL/TP, with and without break-even, trailing and checkpoints; compare with po_lib."""
-import sys
+import sys, os
 sys.path.insert(0, r"C:\trade datacenter\scripts")
 import numpy as np, po_lib as PO
 
@@ -33,7 +33,7 @@ def brute_trail(M, e, j, je, a, side, d):
 M = PO.load_market("real")
 TF = int(sys.argv[1]) if len(sys.argv) > 1 else 5
 # build only a slice for speed: 1,500 random bars from the build of the first 40,000 bars
-R, E = PO.build(M, TF, limit=40000, verbose=False)
+R = dict(np.load(os.path.join(PO.OUTD, f"po_m{TF}_real.npz")))
 rng = np.random.default_rng(0); pick = rng.choice(len(R["b"]), 1500, replace=False)
 t = M["t"]; bad = 0; nchk = 0
 for q in pick:
