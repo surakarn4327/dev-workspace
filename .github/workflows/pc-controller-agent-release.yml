@@ -1,0 +1,28 @@
+name: pc-controller agent release
+
+# Push a tag like `pc-agent-v1.0.0` to publish PcControllerAgent.exe as a
+# GitHub Release (the repo is private, so the download needs a GitHub login).
+on:
+  push:
+    tags: ['pc-agent-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: pc-controller/agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish single-file exe
+        run: dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" publish/PcControllerAgent.exe --title "PC Controller Agent ${{ github.ref_name }}" --generate-notes

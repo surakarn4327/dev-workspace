@@ -23,20 +23,44 @@
 (ใครเดา Device ID ถูกจะส่งคำสั่งเปิด/ปิดคอมแทนได้) Device ID ที่ auto-gen ให้ยาวพอสมควรอยู่แล้ว
 ทำให้เดาถูกยาก แต่ถ้าอยากตั้งเองก็ตั้งยาวๆ สุ่มๆ ได้เหมือนกัน
 
-รายละเอียด topic ทั้งหมด: [firmware/README.md](firmware/README.md#หัวข้อ-mqtt-topics)
+รายละเอียด topic ทั้งหมด: [firmware/README.md](firmware/README.md#หัวข้อ-mqtt-topics) และ
+[PROTOCOL.md](PROTOCOL.md) (ข้อความที่คุยกับ PC agent)
+
+## ตั้งเวลา + โปรแกรม (PC agent)
+
+ESP32 กดได้แค่ปุ่ม power — ปิดคอมแบบสุภาพ, นับถอยหลังให้คนยกเลิก, เปิด/ปิดโปรแกรม ต้องมีโปรแกรมบนตัวคอมเอง
+จึงมี **PC agent** (`agent/` — Windows `.exe` ไฟล์เดียว) รันอยู่ที่ไอคอนข้างนาฬิกา คุยกับมือถือผ่าน broker ตัวเดิม:
+
+```
+[มือถือ] --ตารางเวลาเปิด (retained)--> [ESP32]  กดรีเลย์ตามเวลา (เช็คว่าคอมปิดอยู่จริงก่อน)
+[มือถือ] --config/คำสั่ง (เข้ารหัส)--> [PC agent] ปิดคอมตามเวลา + นับถอยหลัง + เปิด/ปิดโปรแกรม
+[PC agent] --ข้อความ--> [ESP32] --> Discord
+```
+
+- **ตั้งจากมือถือทั้งหมด**: เมนู "ตั้งเวลา" (วัน/เวลาเปิด/เวลาปิด/นับถอยหลัง/หยุดชั่วคราว), "โปรแกรม"
+  (agent สแกนรายการส่งมาให้กดเพิ่ม — เพิ่มแล้วคือทั้งเปิดตอนบูตและปิดตอนถึงเวลาปิดคอม), "เชื่อมต่อกับคอม"
+- **ต้อง flash firmware ใหม่หนึ่งครั้ง** ถึงจะมีเวลาเปิดคอมและส่งต่อแจ้งเตือนจาก agent (ค่า wifi/Device ID เดิมยังอยู่)
+- **ติดตั้ง agent**: ดาวน์โหลด `.exe` → ดับเบิลคลิก → Yes → คัดลอกรหัสเชื่อมต่อไปวางในแอป
+  ดูขั้นตอนเต็มที่ [agent/README.md](agent/README.md)
+- **ความปลอดภัย**: ข้อความถึง agent เข้ารหัส AES-GCM ด้วย token ที่ไม่เคยส่งผ่าน broker และ agent รับแค่ "id ของโปรแกรม"
+  ที่มันสแกนเอง ไม่รับ path/คำสั่งจากเครือข่าย (ดู [PROTOCOL.md](PROTOCOL.md))
 
 ## โครงสร้างโปรเจกต์
 
 ```
 pc-controller/
 ├── src/            เว็บแอป PWA (Vite + TypeScript, ไม่มี framework)
+├── agent/          PC agent (C# .NET 8 WinForms → .exe) — build ด้วย dotnet ไม่ใช่ npm
 ├── firmware/       โค้ด ESP32 (Arduino .ino) — เปิดด้วย Arduino IDE แยกต่างหาก ไม่ใช่ npm
-└── scripts/        สคริปต์ one-off (เช่น gen-icons.mjs สร้างไอคอน PWA)
+├── scripts/        สคริปต์ one-off (gen-icons.mjs สร้างไอคอน PWA, crypto-vector.mjs เทส crypto ข้ามภาษา)
+└── PROTOCOL.md     ข้อความระหว่างแอป/ESP32/agent
 ```
 
 CI (type-check+build) อยู่ที่ [`../.github/workflows/pc-controller-ci.yml`](../.github/workflows/pc-controller-ci.yml)
 (root ของ repo — ดูเหตุผลใน [bugs.md](bugs.md)) ส่วน deploy ใช้ Vercel's git integration เอง
-ไม่มี workflow แยกสำหรับ deploy
+ไม่มี workflow แยกสำหรับ deploy · ตัว agent build บน Windows runner ที่
+[`pc-controller-agent.yml`](../.github/workflows/pc-controller-agent.yml) (selftest + publish `.exe` เป็น artifact)
+และ [`pc-controller-agent-release.yml`](../.github/workflows/pc-controller-agent-release.yml) (ติด tag `pc-agent-v*` → GitHub Release)
 
 ## ตั้งค่าใช้งานจริง (ทำตามลำดับ)
 
@@ -105,7 +129,11 @@ npm run dev -- --port 5170     # ทดสอบก่อน deploy จริง
   ได้แม้ Windows Firewall จะบล็อก ping อยู่ (ค่า default ของ Windows ทุกเครื่อง) โดยไม่ต้องไปตั้งค่า
   firewall เองแม้แต่นิดเดียว — ย้าย ESP32 ไปคอมเครื่องอื่น หรือลง Windows ใหม่ก็ยังทำงานได้ทันที
 - สถานะ "ESP32" แยกต่างหาก บอกว่าตัว ESP32 เองยังออนไลน์อยู่ไหม (ไม่ใช่สถานะคอม)
-- ไม่มีระบบ login (ออกแบบมาให้ใช้คนเดียว) และไม่เก็บ log ประวัติการเปิด/ปิด
+- ไม่มีระบบ login (ออกแบบมาให้ใช้คนเดียว) และไม่เก็บ log ประวัติการเปิด/ปิด (หน้าต่าง agent เก็บ "เหตุการณ์ล่าสุด"
+  50 รายการไว้ในเครื่องคอมเท่านั้น ไม่ขึ้น cloud)
+- ตั้งเวลาเปิดคอม: ESP32 กดรีเลย์เมื่อถึงเวลาและคอมปิดอยู่ · ตั้งเวลาปิดคอม: agent เด้งหน้าต่างนับถอยหลังก่อนปิดเสมอ
+  (ไม่มีข้ามเมื่อไม่มีคนใช้ เผื่อกำลังดูหนัง)
+- สวิตช์ "หยุดชั่วคราว" ในแอปหยุดทั้งเวลาเปิดและเวลาปิด (ลาพักร้อน/วันหยุดยาว)
 
 ## Dev commands
 
@@ -120,7 +148,10 @@ npm run preview   # preview build ที่ทำเสร็จแล้ว
 
 ## ขอบเขตที่ยังไม่ทำ (เฟสถัดไป)
 
-- MT5 auto-start + กด Algo Trading อัตโนมัติหลังคอมเปิดเสร็จ (ตั้งใจแยกเป็นงานถัดไป)
+- กด Algo Trading ของ MT5 อัตโนมัติหลังเปิดโปรแกรม (ตอนนี้ agent เปิดโปรแกรมตามรายการได้ทั่วไปรวม MT5 แล้ว
+  แต่ยังไม่ได้ควบคุมปุ่มข้างในโปรแกรม — ตั้งใจแยกเป็นงานถัดไป)
+- ยังไม่ได้ทดสอบบนฮาร์ดแวร์จริง: เวลาเปิดคอมของ ESP32 (คอมไพล์ผ่านเท่านั้น), ตัวติดตั้ง/autostart ตอนลง Windows ใหม่,
+  การปิดเครื่องจริง (`shutdown`) — ทดสอบแบบ `--dry-run` และแอปมือถือ↔agent ผ่าน broker จริงแล้ว
 - **ลดขั้นตอนสำหรับขายต่อให้ผู้ใช้ที่ไม่เก่งคอม** (คุยไว้แล้ว):
   1. ✅ Discord webhook ไม่บังคับอยู่แล้วในโค้ด (เว้นว่างได้) — แค่ต้องปรับคู่มือผู้ซื้อให้บอกชัดว่าข้ามได้
   2. ✅ **auto-link Device ID** — ทำแล้ว: หน้า "Credentials saved" หลังกด Save บนพอร์ทัล ESP32 โชว์ลิงก์ที่ฝัง

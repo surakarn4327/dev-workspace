@@ -35,6 +35,7 @@
 #include <ESPping.h>
 #include <Preferences.h>
 #include <HTTPClient.h>
+#include <time.h>
 extern "C" {
 #include "lwip/etharp.h"
 #include "lwip/netif.h"
@@ -73,7 +74,15 @@ char cfgDeviceId[32] = ""; // must be filled in during setup — long/random for
 char cfgPcIp[16] = "192.168.1.100";
 char cfgDiscordWebhook[192] = ""; // e.g. https://discord.com/api/webhooks/<id>/<token>
 
-String topicStatus, topicAvailability, topicCmd;
+struct PowerOnSchedule {
+  bool valid = false;
+  bool paused = false;
+  uint8_t daysMask = 0;
+  int onMinutes = 0;
+  int tzMinutes = 0;
+};
+
+String topicStatus, topicAvailability, topicCmd, topicSched, topicNotify;
 
 WiFiClientSecure tlsClient;
 PubSubClient mqtt(tlsClient);
@@ -107,6 +116,28 @@ void serviceRelay() {
 }
 
 // ---------- notifications (Discord webhook) ----------
+
+void notify(const String& message);
+
+// Messages that arrive over MQTT (from the PC agent) are queued and sent from
+// loop(): the HTTPS POST to Discord takes a second or two, and blocking inside
+// the MQTT callback would starve the MQTT keep-alive.
+static const int NOTIFY_QUEUE_SIZE = 4;
+String notifyQueue[NOTIFY_QUEUE_SIZE];
+int notifyQueueCount = 0;
+
+void queueNotify(const String& message) {
+  if (notifyQueueCount >= NOTIFY_QUEUE_SIZE) return; // drop rather than grow unbounded
+  notifyQueue[notifyQueueCount++] = message;
+}
+
+void serviceNotifyQueue() {
+  if (notifyQueueCount == 0) return;
+  String message = notifyQueue[0];
+  for (int i = 1; i < notifyQueueCount; i++) notifyQueue[i - 1] = notifyQueue[i];
+  notifyQueueCount--;
+  notify(message);
+}
 
 String jsonEscape(const String& s) {
   String out;
@@ -176,10 +207,118 @@ void publishRetained(const String& topic, const char* payload) {
 unsigned long lastToggleAt = 0;
 static const unsigned long TOGGLE_DEBOUNCE_MS = 2000; // ignore a second "toggle" this soon after the last one
 
+// ---------- power-on schedule ----------
+//
+// The phone app publishes the schedule as a retained plain-JSON message on
+// <base>/sched, e.g. {"days":[1,2,3,4,5],"on":"08:00","paused":false,"tz":420}
+// (days: 0 = Sunday ... 6 = Saturday; tz: minutes east of UTC). It is kept in
+// flash so the schedule still runs after a reboot without the broker.
+// Shutting down is NOT done here — that is the PC agent's job (graceful, with
+// a countdown); this board can only press the power button.
+
+PowerOnSchedule sched; // struct is declared near the top (Arduino's auto-generated prototypes need it before any function)
+static const int SCHED_WINDOW_MIN = 3; // only fire within this many minutes after the set time
+long lastSchedFiredDay = -1;
+unsigned long lastSchedCheckAt = 0;
+
+bool parseSchedule(const String& json, PowerOnSchedule& out) {
+  int d = json.indexOf("\"days\":[");
+  int on = json.indexOf("\"on\":\"");
+  if (d < 0 || on < 0) return false;
+  int dEnd = json.indexOf(']', d);
+  if (dEnd < 0) return false;
+  uint8_t mask = 0;
+  for (int i = d + 8; i < dEnd; i++) {
+    char c = json[i];
+    if (c >= '0' && c <= '6') mask |= (1 << (c - '0'));
+  }
+  if ((int)json.length() < on + 11 || json[on + 8] != ':') return false;
+  int hh = json.substring(on + 6, on + 8).toInt();
+  int mm = json.substring(on + 9, on + 11).toInt();
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return false;
+  int tz = 0;
+  int t = json.indexOf("\"tz\":");
+  if (t >= 0) tz = json.substring(t + 5).toInt();
+  out.valid = true;
+  out.paused = json.indexOf("\"paused\":true") >= 0;
+  out.daysMask = mask;
+  out.onMinutes = hh * 60 + mm;
+  out.tzMinutes = tz;
+  return true;
+}
+
+void loadSchedule() {
+  prefs.begin("pc-ctrl", true);
+  String json = prefs.getString("sched", "");
+  prefs.end();
+  if (json.length() > 0) parseSchedule(json, sched);
+}
+
+void saveSchedule(const String& json) {
+  prefs.begin("pc-ctrl", false);
+  prefs.putString("sched", json);
+  prefs.end();
+}
+
+void serviceSchedule() {
+  if (millis() - lastSchedCheckAt < 10000) return;
+  lastSchedCheckAt = millis();
+  if (!sched.valid || sched.paused || sched.daysMask == 0) return;
+
+  time_t now = time(nullptr);
+  if (now < 1700000000) return; // clock not synced with NTP yet
+  time_t local = now + (time_t)sched.tzMinutes * 60;
+  struct tm t;
+  gmtime_r(&local, &t);
+
+  if (!(sched.daysMask & (1 << t.tm_wday))) return;
+  int nowMin = t.tm_hour * 60 + t.tm_min;
+  if (nowMin < sched.onMinutes || nowMin >= sched.onMinutes + SCHED_WINDOW_MIN) return;
+  long dayKey = (t.tm_year + 1900) * 1000L + t.tm_yday;
+  if (dayKey == lastSchedFiredDay) return;
+  if (!pcOnlineKnown) return; // wait for the first ARP check
+
+  lastSchedFiredDay = dayKey;
+  if (pcOnlineLast) {
+    Serial.println("[sched] power-on time reached, PC already on — nothing to do");
+    return;
+  }
+
+  // One missed ARP reply must never press the button on a PC that is really
+  // running (that would shut it down), so confirm offline a second time.
+  IPAddress ip;
+  if (!ip.fromString(cfgPcIp)) return;
+  delay(2000);
+  if (arpCheckOnline(ip)) {
+    Serial.println("[sched] PC answered on recheck — not pressing power");
+    return;
+  }
+
+  Serial.println("[sched] power-on time reached, PC off — pressing power");
+  lastToggleAt = millis();
+  triggerRelayPulse();
+  char hhmm[6];
+  snprintf(hhmm, sizeof(hhmm), "%02d:%02d", sched.onMinutes / 60, sched.onMinutes % 60);
+  notify(String(cfgDeviceId) + " เปิดคอมตามเวลาแล้ว (" + hhmm + ")");
+}
+
 void onMqttMessage(char* topic, byte* payload, unsigned int len) {
   String msg;
   for (unsigned int i = 0; i < len; i++) msg += (char)payload[i];
   Serial.printf("[mqtt] message on %s: %s\n", topic, msg.c_str());
+  if (String(topic) == topicSched) {
+    PowerOnSchedule parsed;
+    if (parseSchedule(msg, parsed)) {
+      sched = parsed;
+      saveSchedule(msg);
+      Serial.println("[sched] schedule updated");
+    }
+    return;
+  }
+  if (String(topic) == topicNotify) {
+    if (msg.length() > 0 && msg.length() <= 300) queueNotify(String(cfgDeviceId) + " " + msg);
+    return;
+  }
   if (String(topic) == topicCmd && msg == "toggle") {
     // Debounced: a duplicate/retried MQTT delivery of the same command would
     // otherwise press the power button a second time — which most
@@ -228,6 +367,7 @@ bool wasConnected = true;
 void mqttConnect() {
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setCallback(onMqttMessage);
+  mqtt.setBufferSize(1024); // PubSubClient's 256-byte default is too small for schedule/notify payloads
 
   String clientId = "esp32-" + String(cfgDeviceId);
   // No username/password: broker.emqx.io is a public broker that accepts
@@ -240,6 +380,8 @@ void mqttConnect() {
     Serial.println("[mqtt] connected");
     publishRetained(topicAvailability, "online");
     mqtt.subscribe(topicCmd.c_str());
+    mqtt.subscribe(topicSched.c_str());
+    mqtt.subscribe(topicNotify.c_str());
     if (!wasConnected) {
       // Best-effort only: we can't send anything while actually offline,
       // so this fires the moment we're back, not the moment we dropped.
@@ -432,6 +574,11 @@ void setup() {
   topicStatus = "pc-controller/" + String(cfgDeviceId) + "/status";
   topicAvailability = "pc-controller/" + String(cfgDeviceId) + "/availability";
   topicCmd = "pc-controller/" + String(cfgDeviceId) + "/cmd";
+  topicSched = "pc-controller/" + String(cfgDeviceId) + "/sched";
+  topicNotify = "pc-controller/" + String(cfgDeviceId) + "/notify";
+
+  loadSchedule();
+  configTime(0, 0, "pool.ntp.org", "time.google.com"); // UTC; the schedule carries its own tz offset
 
   tlsClient.setInsecure(); // broker.emqx.io uses a public CA; pin it properly if you want stricter TLS
 
@@ -455,5 +602,7 @@ void loop() {
   }
 
   serviceRelay();
+  serviceSchedule();
+  serviceNotifyQueue();
   serviceWifiResetButton();
 }

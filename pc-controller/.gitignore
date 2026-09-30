@@ -1,4 +1,6 @@
 node_modules/
+agent/bin/
+agent/obj/
 dist/
 build/
 .next/

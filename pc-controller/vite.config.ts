@@ -4,6 +4,12 @@ import { VitePWA } from 'vite-plugin-pwa';
 // Deployed on Vercel with the project root set to this folder (see README.md),
 // so it's served at its own domain root — no subpath base needed.
 export default defineConfig({
+  server: {
+    // agent/ (C#) and firmware/ (Arduino) aren't part of the web app. Without
+    // this, `dotnet build` churning agent/obj/*.tmp crashed the dev server with
+    // EBUSY (see bugs.md).
+    watch: { ignored: ['**/agent/**', '**/firmware/**', '**/scripts/**'] },
+  },
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
