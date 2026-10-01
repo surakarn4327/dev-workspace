@@ -117,7 +117,9 @@ def first_through(M, start, level, side, maxbars, use_close=False):
     n = len(M["t"]); e = min(n, start + maxbars)
     if start >= e: return n
     x = (M["c"] if use_close else (M["h"] if side > 0 else M["l"]))[start:e]
-    w = np.flatnonzero((x - level) * side > 0)
+    # integer points: a close EXACTLY at a pivot price is not beyond it (float noise used to decide such ties; bugs.md 2026-10-01)
+    xi = np.rint(x / BK.POINT).astype(np.int64); li = int(round(float(level) / BK.POINT))
+    w = np.flatnonzero((xi - li) * side > 0)
     return start + w[0] if len(w) else n
 
 def profile(l, h, v):

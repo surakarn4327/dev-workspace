@@ -19,8 +19,9 @@ def eq(a, b):
     except TypeError: pass
     return a == b
 
-M = PO.load_market("real"); Z = ZL.Zones(M); B = EV.obs_bars(M, tf); S, L = EV.instances(Z, M, B, tf)
-F = dict(np.load(os.path.join(OUT, f"zn_ev_m{tf}_real.npz"))); TY = EV.TYPES
+MKT = os.environ.get("ZN_MKT", "real")                                   # random-direction markets: A-D only (E needs a cut of the real data)
+M = PO.load_market(MKT); Z = ZL.Zones(M); B = EV.obs_bars(M, tf); S, L = EV.instances(Z, M, B, tf)
+F = dict(np.load(os.path.join(OUT, f"zn_ev_m{tf}_{MKT}.npz"))); TY = EV.TYPES
 t = M["t"]; sid = M["sid"]; s20 = B["s20p"]; bs = B["sid"]; st_b = B["st"]; nb = len(B["c"])
 hp = np.rint(B["h"] / BK.POINT).astype(np.int64); lp = np.rint(B["l"] / BK.POINT).astype(np.int64); cp = np.rint(B["c"] / BK.POINT).astype(np.int64)
 
@@ -118,10 +119,11 @@ for vi in (0, 3):
         nB += 1
         a = sm / 20.0; okv = j - 4 >= 0 and bs[j - 4] == bs[j] and bs[j - 1] == bs[j]
         v3 = s * (cp[j - 4] - cp[j - 1]) / a if okv else np.nan
-        if not eq(round(v3, 9), round(float(F[f"v{vi}_v3"][q]), 9)): fail("C v3", vi, q, v3, F[f"v{vi}_v3"][q])
+        close = lambda x, y: (np.isnan(x) and np.isnan(y)) or abs(x - y) <= 1e-9        # (was round(.., 9): 2e-13 apart can round apart)
+        if not close(v3, float(F[f"v{vi}_v3"][q])): fail("C v3", vi, q, v3, F[f"v{vi}_v3"][q])
         ws = [x for x in range(max(j - 12, 0), j) if bs[x] == bs[j]]
         lg = ((max(hp[x] for x in ws) - hi) / a if s > 0 else (lo - min(lp[x] for x in ws)) / a) if ws else np.nan
-        if not eq(round(lg, 9), round(float(F[f"v{vi}_leg12"][q]), 9)): fail("C leg", vi, q, lg, F[f"v{vi}_leg12"][q])
+        if not close(lg, float(F[f"v{vi}_leg12"][q])): fail("C leg", vi, q, lg, F[f"v{vi}_leg12"][q])
         if abs((hi - lo) / a - F[f"v{vi}_width"][q]) > 1e-9: fail("C width", vi, q)
 print(f"  B/C checked {nB} events", flush=True)
 
@@ -141,7 +143,7 @@ print("  D done", flush=True)
 # ---------------- E truncation ----------------
 print("E truncation", flush=True)
 nd = len(Z.days)
-for cut_day in (int(nd * 0.2), int(nd * 0.45), int(nd * 0.7), nd - 3):
+for cut_day in ((int(nd * 0.2), int(nd * 0.45), int(nd * 0.7), nd - 3) if MKT == "real" else ()):
     T = int(t[Z.dstart[cut_day] + 333]); Mc = X.load(T); Zc = ZL.Zones(Mc); Bc = EV.obs_bars(Mc, tf); Sc, Lc = EV.instances(Zc, Mc, Bc, tf)
     nc = len(Mc["t"]); J = len(Bc["c"]) - 2                                               # bars j <= J are complete in the cut data
     for vi in (0, 3):

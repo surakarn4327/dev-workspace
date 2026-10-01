@@ -11,8 +11,9 @@ sys.path.insert(0, r"C:\trade datacenter\scripts")
 import numpy as np, po_lib as PO, zn_lib as ZL, zn_ev as EV, zn_bh as BH, adx_ctx as X, broker as BK
 tf = int(sys.argv[1]); OUT = r"C:\trade datacenter\zn"; rng = np.random.default_rng(11 + tf); bad = []
 def fail(*a): bad.append(a); print("  FAIL", *a, flush=True)
-M = PO.load_market("real"); Z = ZL.Zones(M); B = EV.obs_bars(M, tf); S, Lns = EV.instances(Z, M, B, tf)
-E = dict(np.load(os.path.join(OUT, f"zn_ev_m{tf}_real.npz"))); H = dict(np.load(os.path.join(OUT, f"zn_bh_m{tf}_real.npz")))
+MKT = os.environ.get("ZN_MKT", "real")                                   # random-direction markets: A-C only
+M = PO.load_market(MKT); Z = ZL.Zones(M); B = EV.obs_bars(M, tf); S, Lns = EV.instances(Z, M, B, tf)
+E = dict(np.load(os.path.join(OUT, f"zn_ev_m{tf}_{MKT}.npz"))); H = dict(np.load(os.path.join(OUT, f"zn_bh_m{tf}_{MKT}.npz")))
 P = lambda x: np.rint(B[x] / BK.POINT).astype(np.int64)
 o, h, l, c = P("o"), P("h"), P("l"), P("c"); s20 = B["s20p"]; tv = B["tv"].astype(float); sid = B["sid"]
 
@@ -105,7 +106,7 @@ for vi in (0, 3):
 print(f"  B done (po exact-level ties accepted: {ties[0]})", flush=True)
 
 print("C rows", flush=True)
-fz = np.load(os.path.join(PO.OUTD, f"po_m{tf}_real.npz")); inpo = np.zeros(len(B["c"]), bool); inpo[fz["b"]] = True
+fz = np.load(os.path.join(PO.OUTD, f"po_m{tf}_{MKT}.npz")); inpo = np.zeros(len(B["c"]), bool); inpo[fz["b"]] = True
 for vi in range(len(EV.VARIANTS)):
     j, xe = E[f"v{vi}_j"], E[f"v{vi}_xend"]; exp = int(sum(inpo[a:z].sum() for a, z in zip(j, xe)))
     if exp != len(H[f"v{vi}_b"]): fail("C count", vi, exp, len(H[f"v{vi}_b"]))
@@ -116,7 +117,7 @@ print("  C done", flush=True)
 
 print("D truncation (labels)", flush=True)
 nd = len(Z.days)
-for cut_day in (int(nd * 0.4), nd - 3):
+for cut_day in ((int(nd * 0.4), nd - 3) if MKT == "real" else ()):
     T = int(M["t"][Z.dstart[cut_day] + 333]); Mc = X.load(T); Zc = ZL.Zones(Mc); Bc = EV.obs_bars(Mc, tf); Sc, Lc = EV.instances(Zc, Mc, Bc, tf)
     J = len(Bc["c"]) - 2
     for vi in (0, 3):
