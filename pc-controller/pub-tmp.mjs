@@ -1,0 +1,1 @@
+﻿import mqtt from 'mqtt'; const c = mqtt.connect('mqtts://broker.emqx.io:8883', { clientId: 'pub-' + Math.random().toString(16).slice(2) }); c.on('connect', async () => { await c.publishAsync('pc-controller/pc-92bbbc2c/sched', '{"days":[1,2,3,4,5,6,0],"on":"23:29","paused":false,"tz":420}', {retain:true,qos:1}); c.end(); });

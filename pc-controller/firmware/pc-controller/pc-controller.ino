@@ -1,4 +1,4 @@
-// pc-controller ESP32 firmware
+﻿// pc-controller ESP32 firmware
 //
 // Wiring: GPIO RELAY_PIN -> relay module IN. Relay COM/NO wired in parallel
 // across the motherboard's front-panel POWER SW header pins (same two pins
@@ -217,8 +217,11 @@ static const unsigned long TOGGLE_DEBOUNCE_MS = 2000; // ignore a second "toggle
 // a countdown); this board can only press the power button.
 
 PowerOnSchedule sched; // struct is declared near the top (Arduino's auto-generated prototypes need it before any function)
-static const int SCHED_WINDOW_MIN = 3; // only fire within this many minutes after the set time
-long lastSchedFiredDay = -1;
+static const int SCHED_WINDOW_MIN = 5;
+static const unsigned long SCHED_MIN_UPTIME_MS = 180000; // never fire in the first 3 minutes after a reset // only fire within this many minutes after the set time
+long lastSchedFiredDay = -1;     // day we actually pressed the button for
+long lastSchedNotifiedDay = -1;  // day we already explained why we did not press it
+String schedJson;               // last schedule text (to tell Discord only when it really changed)
 unsigned long lastSchedCheckAt = 0;
 
 bool parseSchedule(const String& json, PowerOnSchedule& out) {
@@ -251,7 +254,7 @@ void loadSchedule() {
   prefs.begin("pc-ctrl", true);
   String json = prefs.getString("sched", "");
   prefs.end();
-  if (json.length() > 0) parseSchedule(json, sched);
+  if (json.length() > 0 && parseSchedule(json, sched)) schedJson = json;
 }
 
 void saveSchedule(const String& json) {
@@ -260,27 +263,54 @@ void saveSchedule(const String& json) {
   prefs.end();
 }
 
+// Once a minute, say why the schedule isn't firing — a schedule that silently
+// does nothing is impossible to debug without a serial cable otherwise.
+unsigned long lastSchedLogAt = 0;
+
+void schedLog(const char* why, time_t utc) {
+  if (millis() - lastSchedLogAt < 60000) return;
+  lastSchedLogAt = millis();
+  Serial.printf("[sched] idle: %s (utc=%ld on=%02d:%02d days=0x%02x)\n", why, (long)utc,
+                sched.onMinutes / 60, sched.onMinutes % 60, sched.daysMask);
+}
+
 void serviceSchedule() {
   if (millis() - lastSchedCheckAt < 10000) return;
   lastSchedCheckAt = millis();
-  if (!sched.valid || sched.paused || sched.daysMask == 0) return;
-
   time_t now = time(nullptr);
-  if (now < 1700000000) return; // clock not synced with NTP yet
+  if (!sched.valid) { schedLog("no schedule received yet", now); return; }
+  if (sched.paused) { schedLog("paused", now); return; }
+  if (sched.daysMask == 0) { schedLog("no days selected", now); return; }
+
+  if (now < 1700000000) { schedLog("clock not synced with NTP yet", now); return; }
   time_t local = now + (time_t)sched.tzMinutes * 60;
   struct tm t;
   gmtime_r(&local, &t);
 
-  if (!(sched.daysMask & (1 << t.tm_wday))) return;
+  if (!(sched.daysMask & (1 << t.tm_wday))) { schedLog("today is not a scheduled day", now); return; }
   int nowMin = t.tm_hour * 60 + t.tm_min;
-  if (nowMin < sched.onMinutes || nowMin >= sched.onMinutes + SCHED_WINDOW_MIN) return;
+  if (nowMin < sched.onMinutes || nowMin >= sched.onMinutes + SCHED_WINDOW_MIN) { schedLog("outside the power-on window", now); return; }
   long dayKey = (t.tm_year + 1900) * 1000L + t.tm_yday;
   if (dayKey == lastSchedFiredDay) return;
-  if (!pcOnlineKnown) return; // wait for the first ARP check
+  if (!pcOnlineKnown) { schedLog("waiting for first ARP check", now); return; }
 
-  lastSchedFiredDay = dayKey;
+  // The board is powered from the PC's USB port here, so it resets whenever the
+  // PC powers on. Right after such a reset the PC is still booting and not on
+  // the network yet — looking "offline" — and pressing the button then would
+  // fire a second, unwanted power press. Wait until we have been up a while.
+  if (millis() < SCHED_MIN_UPTIME_MS) { schedLog("just booted, waiting before acting", now); return; }
+  char hhmm[6];
+  snprintf(hhmm, sizeof(hhmm), "%02d:%02d", sched.onMinutes / 60, sched.onMinutes % 60);
+
+  // Skipping is never silent (a schedule that quietly does nothing is
+  // impossible to debug from outside), and it does not use up the day: if the
+  // PC shows up as off later inside the window we still press the button.
   if (pcOnlineLast) {
     Serial.println("[sched] power-on time reached, PC already on — nothing to do");
+    if (dayKey != lastSchedNotifiedDay) {
+      lastSchedNotifiedDay = dayKey;
+      notify(String(cfgDeviceId) + " ถึงเวลาเปิดคอม (" + hhmm + ") แต่เห็นว่าคอมเปิดอยู่แล้ว เลยไม่ได้กดปุ่ม");
+    }
     return;
   }
 
@@ -291,14 +321,17 @@ void serviceSchedule() {
   delay(2000);
   if (arpCheckOnline(ip)) {
     Serial.println("[sched] PC answered on recheck — not pressing power");
+    if (dayKey != lastSchedNotifiedDay) {
+      lastSchedNotifiedDay = dayKey;
+      notify(String(cfgDeviceId) + " ถึงเวลาเปิดคอม (" + hhmm + ") แต่ตรวจซ้ำแล้วคอมยังตอบสนองอยู่ เลยไม่ได้กดปุ่ม");
+    }
     return;
   }
 
   Serial.println("[sched] power-on time reached, PC off — pressing power");
+  lastSchedFiredDay = dayKey;
   lastToggleAt = millis();
   triggerRelayPulse();
-  char hhmm[6];
-  snprintf(hhmm, sizeof(hhmm), "%02d:%02d", sched.onMinutes / 60, sched.onMinutes % 60);
   notify(String(cfgDeviceId) + " เปิดคอมตามเวลาแล้ว (" + hhmm + ")");
 }
 
@@ -312,6 +345,14 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
       sched = parsed;
       saveSchedule(msg);
       Serial.println("[sched] schedule updated");
+      if (msg != schedJson) {
+        // Tell Discord only when it really changed (the retained message is
+        // replayed on every reconnect). Confirms the board got the new time.
+        schedJson = msg;
+        char hhmm[6];
+        snprintf(hhmm, sizeof(hhmm), "%02d:%02d", parsed.onMinutes / 60, parsed.onMinutes % 60);
+        queueNotify(String(cfgDeviceId) + (parsed.paused ? " ตารางเปิดคอมถูกหยุดชั่วคราว" : " ตารางเปิดคอมอัปเดตแล้ว: เปิดเวลา ") + (parsed.paused ? "" : hhmm));
+      }
     }
     return;
   }
