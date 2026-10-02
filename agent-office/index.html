@@ -4,10 +4,80 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>agent-office</title>
+    <meta name="color-scheme" content="dark" />
+    <title>Agent Office</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <header class="top">
+        <div class="brand">
+          <span class="logo" aria-hidden="true"></span>
+          <h1>AGENT OFFICE</h1>
+          <span class="tag">stage 1 &middot; simulated</span>
+        </div>
+        <ol id="steps" class="steps" aria-label="Workflow progress"></ol>
+      </header>
+
+      <main class="layout">
+        <section class="stage-col">
+          <div class="job-bar">
+            <span class="label">JOB</span>
+            <span id="job-title" class="job-title">No active job &mdash; press Start or click Rex</span>
+          </div>
+
+          <div class="stage" id="stage">
+            <canvas id="office" aria-label="Pixel office"></canvas>
+            <div id="tooltip" class="tooltip hidden"></div>
+
+            <div id="dialog" class="dialog hidden" role="dialog" aria-live="polite">
+              <canvas id="dlg-portrait" class="portrait"></canvas>
+              <div class="dlg-main">
+                <div class="dlg-name" id="dlg-name"></div>
+                <div class="dlg-text" id="dlg-text"></div>
+                <div class="dlg-choices" id="dlg-choices"></div>
+                <form class="dlg-form" id="dlg-form" autocomplete="off">
+                  <input id="dlg-input" type="text" maxlength="400" />
+                  <button type="submit" class="btn primary">Send</button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls">
+            <div class="group">
+              <button id="btn-start" class="btn primary" type="button">Start job</button>
+              <button id="btn-reset" class="btn" type="button">Reset</button>
+            </div>
+            <div class="group" role="group" aria-label="Simulation speed">
+              <span class="label">SPEED</span>
+              <button class="btn speed active" data-speed="1" type="button">1x</button>
+              <button class="btn speed" data-speed="2" type="button">2x</button>
+              <button class="btn speed" data-speed="4" type="button">4x</button>
+              <button class="btn speed" data-speed="8" type="button">8x</button>
+            </div>
+            <label class="check"><input id="auto" type="checkbox" /> Auto-answer</label>
+            <div class="group">
+              <span class="label">TRY</span>
+              <button id="btn-reject" class="btn" type="button" title="The next QA review sends the work back once">QA reject</button>
+              <button id="btn-error" class="btn" type="button" title="Crash a working staff member">Agent error</button>
+              <button id="btn-jam" class="btn" type="button" title="Drop several memos on the courier">Courier jam</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="side">
+          <section class="panel" id="inspector" aria-label="Selected character"></section>
+          <section class="panel">
+            <h2>Courier queue</h2>
+            <ul id="queue" class="queue"></ul>
+          </section>
+          <section class="panel feed-panel">
+            <h2>Event feed</h2>
+            <ul id="feed" class="feed"></ul>
+          </section>
+        </aside>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

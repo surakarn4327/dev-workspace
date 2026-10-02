@@ -1,0 +1,169 @@
+import { nameOf } from './roster.ts';
+import type { Activity, AgentId, Doc, OfficeEvent, PlaceId, Stage } from './types.ts';
+import { AGENT_IDS } from './types.ts';
+
+export interface AgentState {
+  activity: Activity;
+  note: string;
+  place: PlaceId;
+  /** Label of the document this agent is currently carrying (courier, secretary). */
+  carrying: string | null;
+  /** Documents waiting on this agent's desk. */
+  inbox: number;
+}
+
+export interface LogLine {
+  t: number;
+  from: AgentId | 'user';
+  to?: AgentId;
+  text: string;
+}
+
+export interface ChatPrompt {
+  id: string;
+  from: AgentId;
+  text: string;
+  choices?: string[];
+  placeholder?: string;
+}
+
+export interface OfficeState {
+  agents: Record<AgentId, AgentState>;
+  job: { id: string; title: string } | null;
+  stage: Stage;
+  lastVerdict: { verdict: 'pass' | 'reject'; reason: string; round: number } | null;
+  queue: Doc[];
+  log: LogLine[];
+  chat: ChatPrompt | null;
+}
+
+function freshAgents(): Record<AgentId, AgentState> {
+  const out = {} as Record<AgentId, AgentState>;
+  for (const id of AGENT_IDS) {
+    out[id] = { activity: 'idle', note: '', place: `desk:${id}`, carrying: null, inbox: 0 };
+  }
+  return out;
+}
+
+export function freshState(): OfficeState {
+  return {
+    agents: freshAgents(),
+    job: null,
+    stage: 'idle',
+    lastVerdict: null,
+    queue: [],
+    log: [],
+    chat: null,
+  };
+}
+
+const LOG_LIMIT = 200;
+
+export class OfficeStore {
+  state: OfficeState = freshState();
+  private listeners = new Set<() => void>();
+
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  apply(e: OfficeEvent, t: number = Date.now()): void {
+    const s = this.state;
+    switch (e.type) {
+      case 'sim.reset':
+        this.state = freshState();
+        break;
+      case 'job.created':
+        s.job = { id: e.jobId, title: e.title };
+        break;
+      case 'job.stage':
+        s.stage = e.stage;
+        break;
+      case 'job.done':
+        s.stage = 'done';
+        break;
+      case 'agent.activity':
+        s.agents[e.agent].activity = e.activity;
+        s.agents[e.agent].note = e.note ?? '';
+        break;
+      case 'agent.walk':
+        s.agents[e.agent].place = e.to;
+        break;
+      case 'agent.carry':
+        s.agents[e.agent].carrying = e.label;
+        break;
+      case 'agent.say':
+        this.pushLog({ t, from: e.agent, to: e.to, text: e.text });
+        break;
+      case 'user.say':
+        this.pushLog({ t, from: 'user', to: e.to, text: e.text });
+        break;
+      case 'doc.queued':
+        s.queue.push(e.doc);
+        break;
+      case 'doc.pickup':
+        s.queue = s.queue.filter((d) => d.id !== e.doc.id);
+        s.agents.courier.carrying = e.doc.label;
+        break;
+      case 'doc.delivered':
+        s.agents.courier.carrying = null;
+        s.agents[e.doc.to].inbox += 1;
+        break;
+      case 'doc.consumed':
+        s.agents[e.agent].inbox = Math.max(0, s.agents[e.agent].inbox - 1);
+        break;
+      case 'review.verdict':
+        s.lastVerdict = { verdict: e.verdict, reason: e.reason, round: e.round };
+        break;
+      case 'chat.ask':
+        s.chat = {
+          id: e.id,
+          from: e.from,
+          text: e.text,
+          choices: e.choices,
+          placeholder: e.placeholder,
+        };
+        break;
+      case 'chat.closed':
+        if (s.chat?.id === e.id) s.chat = null;
+        break;
+    }
+    for (const fn of this.listeners) fn();
+  }
+
+  private pushLog(line: LogLine): void {
+    this.state.log.push(line);
+    if (this.state.log.length > LOG_LIMIT) this.state.log.splice(0, this.state.log.length - LOG_LIMIT);
+  }
+}
+
+/** One-line human description of an event for the feed, or null to skip it. */
+export function describeEvent(e: OfficeEvent): string | null {
+  switch (e.type) {
+    case 'sim.reset':
+      return 'Office reset';
+    case 'job.created':
+      return `New job: ${e.title}`;
+    case 'job.stage':
+      return `Stage: ${e.stage}`;
+    case 'job.done':
+      return 'Job complete';
+    case 'agent.say':
+      return `${nameOf(e.agent)}${e.to ? ` > ${nameOf(e.to)}` : ''}: ${e.text}`;
+    case 'user.say':
+      return `You > ${nameOf(e.to)}: ${e.text}`;
+    case 'doc.queued':
+      return `Queued "${e.doc.label}" ${nameOf(e.doc.from)} > ${nameOf(e.doc.to)}`;
+    case 'doc.delivered':
+      return `Delivered "${e.doc.label}" to ${nameOf(e.doc.to)}`;
+    case 'review.verdict':
+      return e.verdict === 'pass'
+        ? `QA passed (round ${e.round})`
+        : `QA rejected (round ${e.round}): ${e.reason}`;
+    case 'agent.activity':
+      return e.activity === 'error' ? `${nameOf(e.agent)} hit an error` : null;
+    default:
+      return null;
+  }
+}
