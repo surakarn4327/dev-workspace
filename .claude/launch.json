@@ -14,6 +14,20 @@
                                                    "5170"
                                                ],
                                "port":  5170
+                           },
+                           {
+                               "name":  "agent-office",
+                               "runtimeExecutable":  "npm",
+                               "runtimeArgs":  [
+                                                   "--prefix",
+                                                   "agent-office",
+                                                   "run",
+                                                   "dev",
+                                                   "--",
+                                                   "--port",
+                                                   "5171"
+                                               ],
+                               "port":  5171
                            }
                        ]
 }
