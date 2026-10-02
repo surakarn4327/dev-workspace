@@ -26,8 +26,8 @@ firmware เช็คด้วย `arduino-cli compile --fqbn esp32:esp32:esp32 
 
 - `src/` — เว็บแอป PWA (Vite + TypeScript vanilla ไม่มี framework) คุยกับ ESP32 ผ่าน MQTT
   over WebSocket (broker.emqx.io — broker สาธารณะ ไม่มี username/password) ด้วย `mqtt.js`;
-  `src/settings.ts` เก็บ/อ่าน Device ID จาก `localStorage` (host/port เป็นค่าคงที่ในโค้ด),
-  `src/main.ts` เป็น UI ทั้งหมด (หน้าตั้งค่า + หน้าปุ่มกดเปิด/ปิด)
+  `src/settings.ts` เก็บ/อ่าน Device ID และรหัสเชื่อมต่อ agent จาก `localStorage` (host/port เป็นค่าคงที่ในโค้ด),
+  `src/main.ts` เป็นตัวสลับหน้า + หน้าตั้งค่าอุปกรณ์ ส่วนหน้าอื่นๆ อยู่ใน `src/screens/` (ดูหัวข้อถัดไป)
 - `firmware/pc-controller/pc-controller.ino` — โค้ด ESP32 (Arduino) แยกจาก npm/vite build โดยสิ้นเชิง
   (ชื่อโฟลเดอร์ย่อยต้องตรงกับชื่อไฟล์ `.ino` ตามกฎของ Arduino) เปิดด้วย Arduino IDE เอง
   ดูรายละเอียดไลบรารี/การต่อสายที่ [firmware/README.md](firmware/README.md)
