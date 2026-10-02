@@ -1154,10 +1154,10 @@ OHLC), ปรับกลยุทธ์รายเดือนตามกำ�
   `SymbolInfoDump.mq5` (ยูทิลิตี้ dump ข้อมูล symbol ไม่ผูกกลยุทธ์ไหน)
 - `src\amd-po3\` — `AmdPo3Types.mqh`, `AmdPo3Core.mqh`, `AmdPo3EA.mq5`, `BestM5_AmdPo3.mq5`
 - `src\sats\` — `SelfAwareTrendTypes.mqh`, `SelfAwareTrendCore.mqh`, `SelfAwareTrendEA.mq5`, `BestSATS.mq5`
-- `src\adx-ema\` — `AdxEmaTypes.mqh`, `AdxEmaCore.mqh`, `AdxEmaEA.mq5`
-- `src\adx-ema-vol\` — **v1** `AdxEmaVolTypes.mqh`, `AdxEmaVolCore.mqh`, `AdxEmaVolEA.mq5` (AdxEma + หยุดเปิดไม้ใหม่ 21:00 +
-  ปรับขนาดไม้ตาม tick volume — ผู้ใช้เลือกใช้ตัวนี้ 2026-09-26 ดูหัวข้อ "⭐ ชุดที่น่าใช้")
-- `src\adx-ema-vol-v2\` — **AdxEmaVolV2 `V2.0`** (2026-10-01, ผู้ใช้สั่ง "copy ทุกอย่างจาก AdxEmaVol V1.4 แค่เพิ่ม input") `AdxEmaVolV2Types.mqh`,
+- **2026-10-02 ผู้ใช้สั่งลบ `src\adx-ema\` (AdxEma 1.2), `src\adx-ema-vol\` (AdxEmaVol V1.4), `src\adx-ema-vol-v2day\` (V2Day), `src\adx-ema-vol-v2-multi\` (V2Multi) + `src\shared\PositionLibMulti.mqh`
+  + `optimizer\sets\adxema_*.set`/`adxemavol_*.set` — กู้ได้เฉพาะส่วนที่เคย commit** · **EA ที่ผู้ใช้ใช้จริงตอนนี้ = `AdxEmaVolV2EA` (V2.4)** · โฟลเดอร์ที่เหลือ: `shared\`, `adx-ema-vol-v2\`, `adx-ema-vol-re\`
+  · ข้อความด้านล่างที่พูดถึง AdxEma / AdxEmaVol V1.x / V2Day / V2Multi เป็น **ประวัติ/ผลทดสอบเท่านั้น ไม่มีไฟล์โค้ดแล้ว**
+- `src\adx-ema-vol-v2\` — **AdxEmaVolV2 `V2.0` (ตอนนี้ V2.4) — ตัวที่ใช้จริง** (2026-10-01, ผู้ใช้สั่ง "copy ทุกอย่างจาก AdxEmaVol V1.4 แค่เพิ่ม input") `AdxEmaVolV2Types.mqh`,
   `AdxEmaVolV2Core.mqh`, `AdxEmaVolV2EA.mq5` = สำเนา V1.4 ทุกบรรทัด ต่างเฉพาะ: (1) input ใหม่ **`InpVolSurgeBars = 30`** ("จำการพุ่ง": อัตราส่วน volume = ค่าสูงสุดย้อนหลัง
   N แท่ง M1 ของ (volume 10 แท่ง ÷ ค่าเฉลี่ย 1440 แท่ง) · 0 = เท่า V1.4 ทุกบิต) ใน `AdxEmaVolRatio()` (2) ชื่อ/เวอร์ชัน/วันที่ (3) **magic default `20261001`** (V1 = 20260927) กัน
   ไม้ชนกันถ้าแนบทั้งคู่ (4) ชื่อโฟลเดอร์ dump `adxemavolv2_opt` และ comment ไม้/หัว dashboard เป็น `AdxEmaVolV2` · ตรวจ: diff กับ V1.4 มีแค่บรรทัดข้างบน · compile 0 errors 0 warnings ·
@@ -1165,7 +1165,7 @@ OHLC), ปรับกลยุทธ์รายเดือนตามกำ�
   RF 8.34 = ตรง AdxEmaVol V1.4 ทุกหลัก** · set บัญชีจริง `Downloads\ADX-opt\BestVolV2.set` (สำเนา BestVol.set + magic 20261001 + `InpVolSurgeBars=30`, `InpRiskPointUnit=0.01`) ·
   **ยังไม่ได้ copy `.ex5` เข้า terminal จริง / ยังไม่เคยรันสด / ยังไม่ commit** · ข้อระวัง: ผลเป็นปี 2026 ปีเดียว, ตัวคูณเฉลี่ยสูงขึ้น (1.51 → 1.63) ดูหัวข้อ "ขนาดไม้ตาม volume"
   · **V2.3 (2026-10-02, ผู้ใช้ออกแบบ)**: เฉพาะการแสดงผลบนกราฟสด ตรรกะเข้า/ออกไม้ไม่เปลี่ยน (ยังไม่ได้ทดสอบ V2.3 บนกราฟจริง/ยังไม่ commit) · **เคยทำเส้น DI บนกราฟราคา + ปุ่ม `Indicator : ON/OFF` (V2.1/V2.2) แล้วเอาออกทั้งหมด** ตามคำสั่งผู้ใช้ เพราะเส้นเกาะแท่ง/หยักบน M1 และตำแหน่งเส้นไม่ใช่ราคาจริง (แนวที่ลอง: เส้น = EMA ราคา 5 − DI gap เรียบ 12 × ATR × 3, 2 สี lime/แดง; ทดสอบ M1 จริง 2,000 แท่ง แท่งเหนือเส้น = +DI นำ ตรง ~97%) — ถ้าจะกลับมาทำอีก ทางเลือกที่คุยกันไว้คือระบายสีแท่งเทียนตาม DI ด้วยอินดิเคเตอร์แยกไฟล์ (เสียสีขึ้น/ลงของแท่ง) · ผู้ใช้ดูทิศ/เทรนด์จากลูกศรออเดอร์เอง · (1) **แถว Signal แทนแถว Ready**: `▲/▼ ██████░░░░ NN%` (ลูกศร lime/แดงสดตามทิศ, แถบ+เลขสีตามความพร้อม: 100 เขียว / 70-99 ส้ม / ต่ำกว่าเทา) = MIN ของ (ADX÷`InpMinADXLevel`, DI gap÷`InpMinDiGap`, จังหวะ ADX ตัด EMA: ใต้ EMA = ADX÷EMA สูงสุด 99 / เหนือ EMA ที่ตัดมาก่อน = 50 คงที่ / ตัดขึ้นพอดี = 100) คิดจากแท่งที่กำลังวิ่ง (คาดการณ์) · มีไม้ = 100 สีตามทิศไม้ · หลัง cutoff/ช่วงห้ามเปิด/EMA ไม่พร้อม/+DI = −DI = 0% · (2) **แก้บั๊ก `WarmupEma()`** (ดู bugs.md 2026-10-02): backtest 2026 ก่อน/หลังแก้ 37,948,089 → 37,814,064 USC (−0.35%), 1,085 → 1,083 ไม้
-- `src\adx-ema-vol-v2-multi\` — **AdxEmaVolV2Multi `M1.0`** (2026-10-01, ผู้ใช้สั่ง — พอร์ต 20,000 USC) สำเนา V2.0 + `src\shared\PositionLibMulti.mqh` (สำเนา PositionLib ที่ 1 ไม้ = หลายออร์เดอร์):
+- ~~`src\adx-ema-vol-v2-multi\`~~ **(ลบแล้ว 2026-10-02 — ผลทดสอบเก็บเป็นประวัติ)** AdxEmaVolV2Multi `M1.0` (2026-10-01, พอร์ต 20,000 USC) สำเนา V2.0 + `PositionLibMulti.mqh` (1 ไม้ = หลายออร์เดอร์):
   lot ตาม % เสี่ยงเต็มๆ ไม่ตัดเพดาน แล้วแบ่งเป็นก้อนเท่าๆ กัน ก้อนละ ≤ เพดาน (SL/TP เดียวกัน, partial TP1/TP2 ทำทุกก้อน) · input ใหม่ `InpMaxLotPerOrder` (0 = เพดาน broker 200),
   `InpMaxTotalLot` (0 = ไม่จำกัด) · magic `20261002` · lot ≤ เพดาน = ออร์เดอร์เดียวเหมือน V2 · **ตรวจ**: `InpMaxTotalLot=200` ทั้งปี 2026 real ticks ได้ 38,130,715 / PF 1.60 ตรง V2 เป๊ะ ·
   **แบ่ง lot จริง (ทุน 10,000 USC, 5%, BestVolV2.set, 01.01-09.30)**: กำไร 1.72 พันล้าน USC / **PF 1.26 / RF 2.16 / equity DD 62%** (V2 จำกัด 200: PF 1.60 / RF 9.35) — ผลเดียวกับที่เคยเจอกับ
