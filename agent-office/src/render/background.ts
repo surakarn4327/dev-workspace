@@ -190,20 +190,10 @@ function paintMargins(g: CanvasRenderingContext2D, r: Range): void {
   const outside = (x: number, y: number, w: number, h: number): boolean =>
     x + w <= -4 || x >= W + 4 || y >= H + 4 || y + h <= 0;
 
-  // Entrance: a glass door in a front wall at the bottom edge when the window leaves room for
-  // it (with a runner leading to it), otherwise just a doormat below the reception mat.
+  // Entrance: a glass door in a front wall along the bottom edge, when the window leaves room for it.
   const hasDoor = r.y1 - H >= 30;
   const floorBottom = hasDoor ? r.y1 - DOOR_WALL_H : r.y1;
-  if (hasDoor) {
-    rect(g, 154, 214, 44, floorBottom - 214, '#7a2f35');
-    rect(g, 156, 214, 40, floorBottom - 214, '#a6464d');
-    rect(g, 160, 214, 32, floorBottom - 214, '#7a2f35');
-    rect(g, 162, 214, 28, floorBottom - 214, '#c25a60');
-    paintDoorWall(g, r);
-    doormat(g, floorBottom - 9);
-  } else {
-    doormat(g, 216);
-  }
+  if (hasDoor) paintDoorWall(g, r);
 
   // soft rugs in wide side margins
   g.globalAlpha = 0.55;
@@ -225,7 +215,7 @@ function paintMargins(g: CanvasRenderingContext2D, r: Range): void {
   // plants dotted around the edges of the floor
   const plantAt = (x: number, y: number): void => {
     if (!outside(x, y, 14, 18) || x < r.x0 + 2 || x + 14 > r.x1 - 2 || y + 18 > floorBottom - 2) return;
-    if (x + 14 > 150 && x < 202 && y >= H - 12) return; // keep the entrance runner clear
+    if (x + 14 > 150 && x < 202 && y >= H - 12) return; // keep the way to the door clear
     drawPlant(g, { x, y, w: 14, h: 18 });
   };
   for (let y = 78; y < floorBottom - 20; y += 58) {
@@ -237,14 +227,7 @@ function paintMargins(g: CanvasRenderingContext2D, r: Range): void {
 
 const DOOR_WALL_H = 22;
 
-/** A coir doormat (x 160..192). */
-function doormat(g: CanvasRenderingContext2D, y: number): void {
-  rect(g, 158, y, 36, 8, '#4a3a22');
-  rect(g, 159, y + 1, 34, 6, '#8a6a3d');
-  for (let x = 161; x < 191; x += 4) rect(g, x, y + 1, 2, 6, '#6f542d');
-}
-
-/** The front wall along the bottom edge, with a glass door the runner leads to. */
+/** The front wall along the bottom edge, with a glass door in the middle. */
 function paintDoorWall(g: CanvasRenderingContext2D, r: Range): void {
   const top = r.y1 - DOOR_WALL_H;
   const width = r.x1 - r.x0;
