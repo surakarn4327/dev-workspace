@@ -128,7 +128,7 @@ test('the same message renders in the language that is current when it is displa
   setLang('en', false);
   assert.equal(tr(m), 'My tool just crashed!');
   setLang('th', false);
-  assert.equal(tr(m), 'เครื่องมือของฉันเพิ่งล่ม!');
+  assert.equal(tr(m), 'เครื่องมือเพิ่งล่ม!');
   setLang('en', false);
 });
 
