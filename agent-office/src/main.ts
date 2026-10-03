@@ -2,10 +2,13 @@ import './style.css';
 import { OfficeStore } from './core/state.ts';
 import { initLang, onLangChange, t } from './core/i18n.ts';
 import { ROSTER, roleOf } from './core/roster.ts';
+import { isDemoSource } from './core/types.ts';
+import type { OfficeSource } from './core/types.ts';
 import { OfficeView } from './render/view.ts';
 import { MockOffice } from './sim/simulator.ts';
 import { el } from './ui/dom.ts';
 import { mountCamera } from './ui/camera-controls.ts';
+import { showDemoControls } from './ui/demo-controls.ts';
 import { mountDialog } from './ui/dialog.ts';
 import { mountAiSettings } from './ui/ai-settings.ts';
 import { applyStatic, mountLanguageSwitch } from './ui/i18n-dom.ts';
@@ -17,7 +20,11 @@ applyStatic();
 mountLanguageSwitch();
 const aiSettings = mountAiSettings();
 
-const source = new MockOffice();
+// The page only knows the OfficeSource interface; swapping in the real orchestrator changes this one line.
+const source: OfficeSource = new MockOffice();
+// Rehearsal knobs exist only on the mock office; with any other source they are hidden.
+const demo = isDemoSource(source) ? source : null;
+showDemoControls(demo !== null);
 const store = new OfficeStore();
 const canvas = el<HTMLCanvasElement>('#office');
 const view = new OfficeView(canvas, store);
@@ -122,14 +129,14 @@ canvas.addEventListener('click', (ev) => {
   if (id === 'owner' && !source.isRunning) source.start();
 });
 
-// ---------- demo controls ----------
+// ---------- controls ----------
 
 const startBtn = el<HTMLButtonElement>('#btn-start');
 const rejectBtn = el<HTMLButtonElement>('#btn-reject');
 function syncControls(): void {
   startBtn.disabled = source.isRunning;
   startBtn.textContent = source.isRunning ? t('hud.running') : t('hud.start');
-  rejectBtn.classList.toggle('armed', source.rejectNextReview);
+  rejectBtn.classList.toggle('armed', demo?.rejectNextReview ?? false);
 }
 store.subscribe(syncControls);
 onLangChange(() => {
@@ -149,22 +156,27 @@ el<HTMLButtonElement>('#btn-reset').addEventListener('click', () => {
   source.reset();
   syncControls();
 });
-rejectBtn.addEventListener('click', () => {
-  source.rejectNextReview = !source.rejectNextReview;
-  syncControls();
-});
-el<HTMLButtonElement>('#btn-error').addEventListener('click', () => {
-  source.injectError();
-});
-el<HTMLButtonElement>('#btn-jam').addEventListener('click', () => {
-  source.jam(4);
-});
-el<HTMLInputElement>('#auto').addEventListener('change', (ev) => {
-  source.autoAnswer = (ev.target as HTMLInputElement).checked;
-});
-for (const b of document.querySelectorAll<HTMLButtonElement>('.speed')) {
-  b.addEventListener('click', () => {
-    source.setSpeed(Number(b.dataset.speed));
-    document.querySelectorAll('.speed').forEach((o) => o.classList.toggle('active', o === b));
+
+// ---------- rehearsal controls (mock office only) ----------
+
+if (demo) {
+  rejectBtn.addEventListener('click', () => {
+    demo.rejectNextReview = !demo.rejectNextReview;
+    syncControls();
   });
+  el<HTMLButtonElement>('#btn-error').addEventListener('click', () => {
+    demo.injectError();
+  });
+  el<HTMLButtonElement>('#btn-jam').addEventListener('click', () => {
+    demo.jam(4);
+  });
+  el<HTMLInputElement>('#auto').addEventListener('change', (ev) => {
+    demo.autoAnswer = (ev.target as HTMLInputElement).checked;
+  });
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.speed')) {
+    b.addEventListener('click', () => {
+      demo.setSpeed(Number(b.dataset.speed));
+      document.querySelectorAll('.speed').forEach((o) => o.classList.toggle('active', o === b));
+    });
+  }
 }

@@ -461,6 +461,11 @@ body {
   text-transform: uppercase;
 }
 
+/* Our display rules (.ctl-row, .check ...) would otherwise beat the browser's [hidden]. */
+[hidden] {
+  display: none !important;
+}
+
 .btn.close {
   padding: 0 9px;
   font-size: 18px;

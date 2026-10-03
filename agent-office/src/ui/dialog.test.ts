@@ -13,6 +13,9 @@ const answers: { id: string; reply: ChatReply }[] = [];
 const cancelled: string[] = [];
 const source: OfficeSource = {
   subscribe: () => () => {},
+  isRunning: false,
+  start: () => {},
+  reset: () => {},
   answer: (id, reply) => {
     answers.push({ id, reply });
   },

@@ -113,9 +113,19 @@ export type OfficeEvent =
 
 export type OfficeListener = (event: OfficeEvent) => void;
 
-/** Anything that drives the office: the mock script now, real agents later. */
+/**
+ * Anything that drives the office: the mock script now, real agents later.
+ * Everything here must make sense for a real source too; knobs that only exist to rehearse the story
+ * (speed, forced failures, canned answers) live in `DemoControls`.
+ */
 export interface OfficeSource {
   subscribe(listener: OfficeListener): () => void;
+  /** True from the moment the user sends the first answer until the job ends or is abandoned. */
+  readonly isRunning: boolean;
+  /** Open the owner's first question; the job itself starts once the user answers it. */
+  start(): void;
+  /** Abandon everything and return the office to idle. */
+  reset(): void;
   /** The user's reply to a `chat.ask` event. */
   answer(chatId: string, reply: ChatReply): void;
   /**
@@ -123,4 +133,29 @@ export interface OfficeSource {
    * started that just drops the question; mid-job it abandons the job.
    */
   cancel(chatId: string): void;
+}
+
+/** Rehearsal knobs that only the mock office has. The UI shows them only when the source offers them. */
+export interface DemoControls {
+  /** Playback speed multiplier (1 = normal). */
+  setSpeed(scale: number): void;
+  /** The next QA review sends the work back once. */
+  rejectNextReview: boolean;
+  /** Crash a working staff member. */
+  injectError(): void;
+  /** Drop `count` memos on the courier at once. */
+  jam(count: number): void;
+  /** Answer every question with a canned reply. */
+  autoAnswer: boolean;
+}
+
+export function isDemoSource(source: OfficeSource): source is OfficeSource & DemoControls {
+  const s = source as Partial<DemoControls>;
+  return (
+    typeof s.setSpeed === 'function' &&
+    typeof s.injectError === 'function' &&
+    typeof s.jam === 'function' &&
+    typeof s.rejectNextReview === 'boolean' &&
+    typeof s.autoAnswer === 'boolean'
+  );
 }

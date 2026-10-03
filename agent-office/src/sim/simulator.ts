@@ -11,6 +11,7 @@ import type {
   AgentId,
   ChatChoice,
   ChatReply,
+  DemoControls,
   Doc,
   OfficeEvent,
   OfficeListener,
@@ -69,7 +70,7 @@ function shorten(text: string, max = 44): string {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
 
-export class MockOffice implements OfficeSource {
+export class MockOffice implements OfficeSource, DemoControls {
   timeScale: number;
   autoAnswer: boolean;
   /** When set, the next QA review rejects the deliverable once. */
