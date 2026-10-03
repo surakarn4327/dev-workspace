@@ -25,13 +25,13 @@ export interface WallFlags {
 
 /**
  * How tall the partitions are:
- *  - half:  waist-high panels, everything stays visible (default)
+ *  - half:  waist-high panels, everything stays visible
  *  - mixed: walls running left-right stay waist-high, walls running up-down become full-height
  *           glass (they only hide a thin strip, so the rooms still read)
- *  - full:  full-height glass walls everywhere: a solid waist-high panel with clear glass above
+ *  - full:  full-height glass walls everywhere (default)
  */
 export type WallStyle = 'half' | 'mixed' | 'full';
-let wallStyle: WallStyle = 'half';
+let wallStyle: WallStyle = 'full';
 
 export function setWallStyle(style: WallStyle): void {
   wallStyle = style;
@@ -44,7 +44,11 @@ export function getWallStyle(): WallStyle {
 /** Height of a full-height wall in pixels (a person is about 25 tall). */
 const TALL = 30;
 const GLASS = '#bfe6f6';
-const FRAME = '#e3ebf7';
+const ALU = '#e6ecf5';
+const ALU_SH = '#b9c4d6';
+const KICK = '#7f8ea8';
+const KICK_HI = '#9aa8c2';
+const KICK_H = 5;
 
 export function drawWallCell(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
   const vertical = (f.n || f.s) && !(f.e || f.w);
@@ -58,55 +62,136 @@ export function drawWallCell(g: CanvasRenderingContext2D, col: number, row: numb
   }
 }
 
+/** A frosted-film band: translucent white with a fine checker, anchored to world pixels so it tiles. */
+function frost(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+  g.globalAlpha = 0.34;
+  rect(g, x, y, w, h, '#f4f8ff');
+  g.globalAlpha = 0.5;
+  for (let yy = 0; yy < h; yy++) {
+    for (let xx = 0; xx < w; xx++) {
+      if ((x + xx + y + yy) % 3 === 0) rect(g, x + xx, y + yy, 1, 1, '#ffffff');
+    }
+  }
+  g.globalAlpha = 1;
+}
+
 /**
- * A walls running up-down, full height: the waist-high panel stays on the floor and a thin
- * rail floats at head height with a post at each end. You see the room right through it.
+ * A wall running up-down, full height. Seen edge-on a glass wall is almost invisible, so it is
+ * just a kick plate on the floor, a slim aluminium rail at head height and a post at each end.
  */
 function drawGlassRail(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
   const x = col * 8;
   const y = row * 8;
   drawHalfWall(g, col, row, f);
-  const railTop = y + 8 - TALL - 6;
-  rect(g, x + 2, railTop, 4, f.s ? 8 : 6, WALL.top);
-  rect(g, x + 2, railTop, 4, 1, WALL.topHi);
-  g.globalAlpha = 0.18;
-  rect(g, x + 2, railTop + 6, 4, TALL - 12, GLASS);
+  const railTop = y + 8 - TALL - 5;
+  rect(g, x + 2, railTop, 4, f.s ? 8 : 5, ALU);
+  rect(g, x + 2, railTop, 4, 1, '#ffffff');
+  rect(g, x + 5, railTop, 1, f.s ? 8 : 5, ALU_SH);
+  g.globalAlpha = 0.14;
+  rect(g, x + 2, railTop + 5, 4, TALL - 10, GLASS);
   g.globalAlpha = 1;
-  if (!f.n) rect(g, x + 3, y - TALL + 2, 2, TALL - 6, FRAME); // post at the far end
-  if (!f.s) rect(g, x + 3, y + 8 - TALL, 2, TALL - 4, FRAME); // post at the near end
+  if (!f.n) rect(g, x + 3, y - TALL + 1, 2, TALL - 5, ALU); // post at the far end
+  if (!f.s) rect(g, x + 3, y + 8 - TALL, 2, TALL - 4, ALU); // post at the near end
 }
 
 /**
- * A wall running left-right, full height: a solid waist-high panel, clear glass above with a
- * frame line at every cell, and a rail on top. Things behind it show through the glass.
+ * A wall running left-right, full height: an aluminium-framed glass partition with a solid kick
+ * plate at the bottom, a frosted band at eye level and a slim rail on top. Mullions only every
+ * three cells and at the ends, so it reads as one pane rather than bars.
  */
 function drawGlassWall(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
   const x = col * 8;
   const base = row * 8 + 8;
-  const panel = 9;
-  // glass first (so the rail and panel sit in front of it)
-  g.globalAlpha = 0.3;
-  rect(g, x, base - TALL, 8, TALL - panel, GLASS);
-  g.globalAlpha = 0.5;
-  if ((col + row) % 2 === 0) rect(g, x + 2, base - TALL + 4, 1, 6, '#ffffff');
-  else rect(g, x + 4, base - TALL + 9, 1, 5, '#ffffff');
+  const glassTop = base - TALL + 2;
+  const glassH = TALL - 2 - KICK_H;
+  // clear glass with a soft tint
+  g.globalAlpha = 0.2;
+  rect(g, x, glassTop, 8, glassH, GLASS);
   g.globalAlpha = 1;
-  rect(g, x, base - TALL, 1, TALL - panel, FRAME);
-  if (!f.e) rect(g, x + 7, base - TALL, 1, TALL - panel, FRAME);
-  // rail
-  rect(g, x, base - TALL - 6, 8, 6, WALL.top);
-  rect(g, x, base - TALL - 6, 8, 1, WALL.topHi);
-  rect(g, x, base - TALL, 8, 2, WALL.topSh);
-  // solid panel
-  rect(g, x, base - panel, 8, panel, WALL.front);
-  rect(g, x, base - panel, 8, 1, WALL.frontHi);
-  rect(g, x, base - 1, 8, 1, WALL.base);
-  rect(g, x + 3, base - panel + 2, 1, panel - 4, WALL.frontHi);
-  rect(g, x + 6, base - panel + 2, 1, panel - 4, WALL.frontHi);
-  if (!f.w) rect(g, x, base - panel, 1, panel, WALL.frontHi);
-  if (!f.e) rect(g, x + 7, base - panel, 1, panel, WALL.base);
+  // a sparse diagonal reflection
+  if (col % 5 === 2) {
+    g.globalAlpha = 0.42;
+    for (let i = 0; i < 6; i++) rect(g, x + 1 + i, glassTop + 3 + i, 2, 1, '#ffffff');
+    g.globalAlpha = 1;
+  }
+  // frosted film at eye level
+  frost(g, x, base - KICK_H - 15, 8, 7);
+  rect(g, x, base - KICK_H - 15, 8, 1, '#dfeaf6');
+  rect(g, x, base - KICK_H - 9, 8, 1, '#dfeaf6');
+  // slim rail on top
+  rect(g, x, base - TALL - 5, 8, 5, ALU);
+  rect(g, x, base - TALL - 5, 8, 1, '#ffffff');
+  rect(g, x, base - TALL, 8, 2, ALU_SH);
+  // kick plate
+  rect(g, x, base - KICK_H, 8, KICK_H, KICK);
+  rect(g, x, base - KICK_H, 8, 1, KICK_HI);
+  rect(g, x, base - 1, 8, 1, '#566380');
+  // mullions: at the ends of a run and every third cell
+  const post = (px: number, w: number): void => {
+    rect(g, px, base - TALL - 5, w, TALL + 5 - KICK_H, ALU);
+    rect(g, px + w - 1, base - TALL - 5, 1, TALL + 5 - KICK_H, ALU_SH);
+  };
+  if (!f.w) post(x, 2);
+  else if (col % 3 === 0) post(x, 1);
+  if (!f.e) post(x + 6, 2);
 }
 
+// ---------- hinged glass doors ----------
+
+/** Height of a door leaf: it matches the walls around it (full-height glass only in "full"). */
+function doorHeight(): number {
+  return wallStyle === 'full' ? TALL : 9;
+}
+
+/**
+ * A pair of hinged double doors filling a doorway (24px wide, hinges at both ends).
+ * `open` goes from 0 (closed) to 1 (swung wide towards the viewer). Seen from the front, a
+ * swinging leaf is a panel whose free end moves down the screen as it opens.
+ */
+export function drawDoor(g: CanvasRenderingContext2D, cx: number, topY: number, open: number): void {
+  const fh = doorHeight();
+  const base = topY + 8;
+  const theta = open * Math.PI * 0.46;
+  drawLeaf(g, cx - 12, base, 1, theta, fh);
+  drawLeaf(g, cx + 12, base, -1, theta, fh);
+}
+
+function drawLeaf(g: CanvasRenderingContext2D, hingeX: number, base: number, dir: 1 | -1, theta: number, fh: number): void {
+  const w = 12;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  const steps = w * 2;
+  const tall = fh > 12;
+  const seen = new Set<string>();
+  for (let i = 0; i <= steps; i++) {
+    const s = (i / steps) * w;
+    const px = Math.round(hingeX + dir * s * cos) - (dir < 0 ? 1 : 0);
+    const py = Math.round(base + s * sin);
+    const k = `${px},${py}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const top = py - fh;
+    if (tall) {
+      g.globalAlpha = 0.22;
+      rect(g, px, top + 2, 1, fh - 2 - KICK_H, GLASS);
+      g.globalAlpha = 0.4;
+      rect(g, px, py - KICK_H - 15, 1, 7, '#f4f8ff');
+      if ((px + py) % 2 === 0) rect(g, px, py - KICK_H - 15, 1, 7, '#ffffff');
+      g.globalAlpha = 1;
+      rect(g, px, top, 1, 3, ALU);
+      rect(g, px, py - KICK_H, 1, KICK_H, KICK);
+    } else {
+      rect(g, px, top, 1, fh, WALL.front);
+      rect(g, px, top, 1, 2, ALU);
+    }
+    // aluminium frame at the hinge and at the free edge
+    if (i <= 1 || i >= steps - 1) rect(g, px, top, 1, fh - (tall ? 0 : 0), ALU);
+  }
+  // handle near the free edge
+  const hx = Math.round(hingeX + dir * w * cos) - (dir < 0 ? 1 : 0);
+  const hy = Math.round(base + w * sin);
+  rect(g, hx + (dir < 0 ? 1 : -1), hy - Math.floor(fh / 2), 2, 3, '#e8c97e');
+}
 /**
  * One 8x8 cell of a waist-high partition: a lit top surface and, where nothing continues to
  * the south, a front face. Neighbour flags join runs together seamlessly.

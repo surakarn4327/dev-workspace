@@ -31,6 +31,7 @@ import { drawChair, drawCooler, drawDesk, drawPlant, drawPrinter, drawTable } fr
 import {
   drawCoffeeTable,
   drawCounter,
+  drawDoor,
   drawFridge,
   drawPantryTable,
   drawRack,
@@ -100,6 +101,8 @@ export class OfficeView {
   private bg: HTMLCanvasElement;
   private agents = {} as Record<AgentId, AgentView>;
   private wallItems: DrawItem[] = [];
+  /** How far each door is open (0 closed - 1 wide open), same order as DOORS. */
+  private doorOpen: number[] = DOORS.map(() => 0);
   private particles = new Particles();
   private time = 0;
   private last = 0;
@@ -304,12 +307,26 @@ export class OfficeView {
   private update(dt: number): void {
     this.time += dt;
     for (const id of AGENT_IDS) this.updateAgent(this.agents[id], dt);
+    this.updateDoors(dt);
     if (this.confetti > 0) {
       this.confetti -= dt;
       // across the whole window, not just the fixed office
       this.particles.confetti(rand(-this.ox + 20, W + this.ox - 20), -this.oy + 30, 2);
     }
     this.particles.update(dt);
+  }
+
+  /** Doors swing open when somebody is at the doorway and close again a moment after. */
+  private updateDoors(dt: number): void {
+    DOORS.forEach((d, i) => {
+      const someone = AGENT_IDS.some((id) => {
+        const a = this.agents[id];
+        return !a.seated && Math.abs(a.x - d.cx) <= 16 && a.y >= d.y - 16 && a.y <= d.y + 28;
+      });
+      const cur = this.doorOpen[i];
+      const speed = someone ? 6 : 2.2;
+      this.doorOpen[i] = someone ? Math.min(1, cur + speed * dt) : Math.max(0, cur - speed * dt);
+    });
   }
 
   private updateAgent(a: AgentView, dt: number): void {
@@ -519,6 +536,7 @@ export class OfficeView {
 
     // half-height partitions are sorted with everything else, so people pass in front of / behind them
     items.push(...this.wallItems);
+    DOORS.forEach((d, i) => items.push({ y: d.y + 14, draw: () => drawDoor(g, d.cx, d.y, this.doorOpen[i]) }));
     items.sort((a, b) => a.y - b.y);
     for (const it of items) it.draw();
 

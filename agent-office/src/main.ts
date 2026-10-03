@@ -139,7 +139,7 @@ function applyWalls(style: WallStyle): void {
   view.rebuild();
   document.querySelectorAll<HTMLButtonElement>('.wall').forEach((o) => o.classList.toggle('active', o.dataset.walls === style));
   try {
-    localStorage.setItem('agent-office.walls', style);
+    localStorage.setItem('agent-office.walls.v2', style);
   } catch {
     // storage may be unavailable (private window); the choice just won't be remembered
   }
@@ -148,8 +148,8 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('.wall')) {
   b.addEventListener('click', () => applyWalls(b.dataset.walls as WallStyle));
 }
 try {
-  const saved = localStorage.getItem('agent-office.walls');
-  if (saved === 'mixed' || saved === 'full') applyWalls(saved);
+  const saved = localStorage.getItem('agent-office.walls.v2');
+  if (saved === 'half' || saved === 'mixed' || saved === 'full') applyWalls(saved);
 } catch {
   // ignore
 }
