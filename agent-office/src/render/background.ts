@@ -81,7 +81,9 @@ function paintBackWall(g: Ctx, r: Range): void {
   const x0 = r.x0;
   const width = r.x1 - r.x0;
   rect(g, x0, r.y0, width, WALL_H - r.y0, '#5d6c94');
-  for (let x = Math.ceil(x0 / 24) * 24; x < r.x1; x += 24) rect(g, x, r.y0, 1, WALL_H - 14 - r.y0, '#55638a');
+  // panel seams only on the real wall; the tall part above and beside it is plain wall
+  const seamTop = Math.max(r.y0, 0);
+  for (let x = Math.ceil(x0 / 24) * 24; x < r.x1; x += 24) rect(g, x, seamTop, 1, WALL_H - 14 - seamTop, '#55638a');
   // wainscot + trims
   rect(g, x0, WALL_H - 14, width, 14, '#46537a');
   rect(g, x0, WALL_H - 15, width, 1, '#8e9cc4');
@@ -89,17 +91,7 @@ function paintBackWall(g: Ctx, r: Range): void {
   rect(g, x0, WALL_H - 4, width, 1, '#3b4468');
   for (let x = Math.ceil(x0 / 24) * 24; x < r.x1; x += 24) rect(g, x, WALL_H - 14, 1, 11, '#3d4970');
   rect(g, x0, r.y0, width, 2, '#6f7fa8');
-  if (r.y0 < -8) rect(g, x0, 2, width, 1, '#4d5b83');
 
-  // the wall carries on past the office with the same rhythm of windows, and on tall screens
-  // gets rows of windows stacked above (the office keeps its own decorations)
-  const lattice = 14 + Math.floor((x0 - 14) / 44) * 44;
-  for (let x = lattice; x < r.x1; x += 44) {
-    if (x + 38 <= 0 || x >= W) windowAt(g, x, 8);
-  }
-  for (let y = -36; y >= r.y0 + 6; y -= 36) {
-    for (let x = lattice; x < r.x1; x += 44) windowAt(g, x, y);
-  }
   // executive suite and QA lab windows
   windowAt(g, 84, 8);
   windowAt(g, 356, 8);
