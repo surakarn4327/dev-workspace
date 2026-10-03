@@ -43,12 +43,14 @@ export function getWallStyle(): WallStyle {
 
 /** Height of a full-height wall in pixels (a person is about 25 tall). */
 const TALL = 30;
-const GLASS = '#bfe6f6';
-const ALU = '#e6ecf5';
-const ALU_SH = '#b9c4d6';
-const KICK = '#7f8ea8';
-const KICK_HI = '#9aa8c2';
-const KICK_H = 5;
+
+// The glass look: clear glass drawn the classic pixel-art way, with a dark navy outline.
+const NAVY = '#1f2d4d';
+const NAVY_HI = '#8fb3e8';
+const NAVY_SH = '#141d36';
+const GLASS = '#d4f0ff';
+const GLASS_ALPHA = 0.1;
+const RAIL_H = 4;
 
 export function drawWallCell(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
   const vertical = (f.n || f.s) && !(f.e || f.w);
@@ -62,78 +64,58 @@ export function drawWallCell(g: CanvasRenderingContext2D, col: number, row: numb
   }
 }
 
-/** A frosted-film band: translucent white with a fine checker, anchored to world pixels so it tiles. */
-function frost(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
-  g.globalAlpha = 0.34;
-  rect(g, x, y, w, h, '#f4f8ff');
-  g.globalAlpha = 0.5;
-  for (let yy = 0; yy < h; yy++) {
-    for (let xx = 0; xx < w; xx++) {
-      if ((x + xx + y + yy) % 3 === 0) rect(g, x + xx, y + yy, 1, 1, '#ffffff');
-    }
-  }
-  g.globalAlpha = 1;
+/** A post: a slim navy column from the rail down to the floor, lit on one side and shaded on the other. */
+function post(g: CanvasRenderingContext2D, px: number, top: number, w: number, h: number): void {
+  rect(g, px, top, w, h, NAVY);
+  rect(g, px, top, 1, h, NAVY_HI);
+  rect(g, px + w - 1, top, 1, h, NAVY_SH);
 }
 
 /**
  * A wall running up-down, full height. Seen edge-on a glass wall is almost invisible, so it is
- * just a kick plate on the floor, a slim aluminium rail at head height and a post at each end.
+ * a thin track on the floor, a slim rail at head height and a post at each end (the room edge).
  */
 function drawGlassRail(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
   const x = col * 8;
   const y = row * 8;
-  drawHalfWall(g, col, row, f);
-  const railTop = y + 8 - TALL - 5;
-  rect(g, x + 2, railTop, 4, f.s ? 8 : 5, ALU);
-  rect(g, x + 2, railTop, 4, 1, '#ffffff');
-  rect(g, x + 5, railTop, 1, f.s ? 8 : 5, ALU_SH);
-  g.globalAlpha = 0.14;
-  rect(g, x + 2, railTop + 5, 4, TALL - 10, GLASS);
+  rect(g, x + 2, y + 1, 4, f.s ? 8 : 7, NAVY);
+  rect(g, x + 2, y + 1, 1, f.s ? 8 : 7, NAVY_HI);
+  const railTop = y + 8 - TALL - RAIL_H;
+  rect(g, x + 2, railTop, 4, f.s ? 8 : RAIL_H, NAVY);
+  rect(g, x + 2, railTop, 4, 1, NAVY_HI);
+  g.globalAlpha = GLASS_ALPHA;
+  rect(g, x + 2, railTop + RAIL_H, 4, TALL - RAIL_H, GLASS);
   g.globalAlpha = 1;
-  if (!f.n) rect(g, x + 3, y - TALL + 1, 2, TALL - 5, ALU); // post at the far end
-  if (!f.s) rect(g, x + 3, y + 8 - TALL, 2, TALL - 4, ALU); // post at the near end
+  if (!f.n) post(g, x + 3, y - TALL + 1, 2, TALL - 1); // post at the far end
+  if (!f.s) post(g, x + 3, y + 8 - TALL - RAIL_H, 2, TALL + RAIL_H - 1); // post at the near end
 }
 
 /**
- * A wall running left-right, full height: an aluminium-framed glass partition with a solid kick
- * plate at the bottom, a frosted band at eye level and a slim rail on top. Mullions only every
- * three cells and at the ends, so it reads as one pane rather than bars.
+ * A wall running left-right, full height: one clear pane with a navy outline top and bottom,
+ * a slim rail, a few tiny glints, and a post only where the wall ends (at a room edge or
+ * beside a door). No posts along the middle.
  */
 function drawGlassWall(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
   const x = col * 8;
   const base = row * 8 + 8;
-  const glassTop = base - TALL + 2;
-  const glassH = TALL - 2 - KICK_H;
-  // clear glass with a soft tint
-  g.globalAlpha = 0.2;
-  rect(g, x, glassTop, 8, glassH, GLASS);
+  const top = base - TALL;
+  g.globalAlpha = GLASS_ALPHA;
+  rect(g, x, top, 8, TALL, GLASS);
   g.globalAlpha = 1;
-  // a sparse diagonal reflection
-  if (col % 5 === 2) {
-    g.globalAlpha = 0.42;
-    for (let i = 0; i < 6; i++) rect(g, x + 1 + i, glassTop + 3 + i, 2, 1, '#ffffff');
+  if (col % 4 === 1) {
+    g.globalAlpha = 0.5;
+    for (let i = 0; i < 6; i++) rect(g, x + 1 + i, top + 4 + i, 2, 1, '#ffffff');
     g.globalAlpha = 1;
   }
-  // frosted film at eye level
-  frost(g, x, base - KICK_H - 15, 8, 7);
-  rect(g, x, base - KICK_H - 15, 8, 1, '#dfeaf6');
-  rect(g, x, base - KICK_H - 9, 8, 1, '#dfeaf6');
-  // slim rail on top
-  rect(g, x, base - TALL - 5, 8, 5, ALU);
-  rect(g, x, base - TALL - 5, 8, 1, '#ffffff');
-  rect(g, x, base - TALL, 8, 2, ALU_SH);
-  // kick plate
-  rect(g, x, base - KICK_H, 8, KICK_H, KICK);
-  rect(g, x, base - KICK_H, 8, 1, KICK_HI);
-  rect(g, x, base - 1, 8, 1, '#566380');
-  // mullions: at the ends of a run and every third cell
-  const post = (px: number, w: number): void => {
-    rect(g, px, base - TALL - 5, w, TALL + 5 - KICK_H, ALU);
-    rect(g, px + w - 1, base - TALL - 5, 1, TALL + 5 - KICK_H, ALU_SH);
-  };
-  if (!f.w) post(x, 2);
-  else if (col % 3 === 0) post(x, 1);
-  if (!f.e) post(x + 6, 2);
+  rect(g, x, top, 8, 1, NAVY);
+  rect(g, x, base - 1, 8, 1, NAVY);
+  // rail
+  rect(g, x, top - RAIL_H, 8, RAIL_H, NAVY);
+  rect(g, x, top - RAIL_H, 8, 1, NAVY_HI);
+  rect(g, x, top - 1, 8, 1, NAVY_SH);
+  // posts only at the ends of the run
+  if (!f.w) post(g, x, top - RAIL_H, 2, TALL + RAIL_H);
+  if (!f.e) post(g, x + 6, top - RAIL_H, 2, TALL + RAIL_H);
 }
 
 // ---------- hinged glass doors ----------
@@ -172,20 +154,19 @@ function drawLeaf(g: CanvasRenderingContext2D, hingeX: number, base: number, dir
     seen.add(k);
     const top = py - fh;
     if (tall) {
-      g.globalAlpha = 0.22;
-      rect(g, px, top + 2, 1, fh - 2 - KICK_H, GLASS);
-      g.globalAlpha = 0.4;
-      rect(g, px, py - KICK_H - 15, 1, 7, '#f4f8ff');
-      if ((px + py) % 2 === 0) rect(g, px, py - KICK_H - 15, 1, 7, '#ffffff');
+      g.globalAlpha = GLASS_ALPHA;
+      rect(g, px, top, 1, fh, GLASS);
       g.globalAlpha = 1;
-      rect(g, px, top, 1, 3, ALU);
-      rect(g, px, py - KICK_H, 1, KICK_H, KICK);
+      rect(g, px, top, 1, 1, NAVY);
+      rect(g, px, py - 1, 1, 1, NAVY);
+      rect(g, px, top - RAIL_H, 1, RAIL_H, NAVY);
+      // frame only at the hinge and at the free edge
+      if (i <= 1) rect(g, px, top - RAIL_H, 1, fh + RAIL_H, NAVY_HI);
+      if (i >= steps - 1) rect(g, px, top - RAIL_H, 1, fh + RAIL_H, NAVY);
     } else {
       rect(g, px, top, 1, fh, WALL.front);
-      rect(g, px, top, 1, 2, ALU);
+      rect(g, px, top, 1, 2, WALL.topHi);
     }
-    // aluminium frame at the hinge and at the free edge
-    if (i <= 1 || i >= steps - 1) rect(g, px, top, 1, fh - (tall ? 0 : 0), ALU);
   }
   // handle near the free edge
   const hx = Math.round(hingeX + dir * w * cos) - (dir < 0 ? 1 : 0);
