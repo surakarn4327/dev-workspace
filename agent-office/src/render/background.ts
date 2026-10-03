@@ -1,13 +1,12 @@
 // The static part of the scene is painted once into an offscreen canvas that covers the
 // whole window. It is always the inside of the company: the real building (rooms, floors,
-// back wall, doorway signs) in the middle, and more of the same building - more rooms,
+// back wall) in the middle, and more of the same building - more rooms,
 // partitions and corridor - around it, fading into shadow towards the edges.
 // Everything is in office coordinates (the canvas is translated by the office offset).
 // Partition walls, furniture and people of the real building are dynamic and drawn by
 // the view on top.
 
 import { DOORS, H, ROOMS, W, WALL_H, type Rect, type RoomId } from '../core/world.ts';
-import { drawIcon, type IconName } from './icons.ts';
 import { paintInterior, type Range } from './decor.ts';
 import { carpet, parquet, serverFloor, tiles } from './floors.ts';
 import { rect } from './furniture.ts';
@@ -35,7 +34,6 @@ export function buildBackground(cw: number, ch: number, ox: number, oy: number):
   paintBuildingFloors(g);
   paintBackWall(g, r);
   paintRugs(g);
-  paintDoorDecals(g);
   paintLight(g);
   paintShadowEdges(g, r);
   g.restore();
@@ -165,31 +163,6 @@ function windowAt(g: Ctx, x: number, y: number): void {
   rect(g, x + 17, y, 2, 22, '#2a2f4d');
   rect(g, x, y + 10, 36, 2, '#2a2f4d');
   rect(g, x - 3, y + 22, 42, 3, '#8e9cc4');
-}
-
-// ---------- doorway signs ----------
-
-const DOOR_ICON: Record<RoomId, IconName> = {
-  restroom: 'toilet',
-  exec: 'crown',
-  meeting: 'people',
-  mail: 'mail',
-  qa: 'mag',
-  server: 'server',
-  archive: 'box',
-  research: 'flask',
-  production: 'gear',
-  pantry: 'coffee',
-  lobby: 'people',
-};
-
-function paintDoorDecals(g: Ctx): void {
-  for (const d of DOORS) {
-    rect(g, d.cx - 12, d.y, 24, 8, '#aeb9cc');
-    rect(g, d.cx - 12, d.y, 24, 1, '#c9d2e2');
-    rect(g, d.cx - 12, d.y + 7, 24, 1, '#8794ad');
-    drawIcon(g, DOOR_ICON[d.room], Math.round(d.cx) - 3, d.y);
-  }
 }
 
 // ---------- light and shadow ----------

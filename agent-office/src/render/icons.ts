@@ -12,14 +12,7 @@ export type IconName =
   | 'star'
   | 'zzz'
   | 'lines'
-  | 'coffee'
-  | 'toilet'
-  | 'server'
-  | 'box'
-  | 'mail'
-  | 'flask'
-  | 'crown'
-  | 'people';
+  | 'coffee';
 
 const COLORS: Record<string, string> = {
   K: '#1d1b2e',
@@ -47,13 +40,6 @@ const ICONS: Record<IconName, string[]> = {
   zzz: ['.ZZZ...', '...Z...', '..Z..ZZ', '.ZZZ..Z', '.....Z.', '....ZZZ', '.......'],
   lines: ['.......', 'KKKKKK.', '.......', 'KKKKKKK', '.......', 'KKKK...', '.......'],
   coffee: ['..T.T..', '...T.T.', '.WWWWW.', '.WNNNWK', '.WNNNWK', '..WWW.K', '.WWWWW.'],
-  toilet: ['BBBBBBB', 'BBBWBBB', 'BBWWWBB', 'BBBWBBB', 'BBWBWBB', 'BBWBWBB', 'BBBBBBB'],
-  server: ['.KKKKK.', '.KGKGK.', '.KKKKK.', '.KGKRK.', '.KKKKK.', '.KGKGK.', '.KKKKK.'],
-  box: ['.KKKKK.', '.KYYYK.', 'KKKKKKK', 'KYYYYYK', 'KYKYKYK', 'KYYYYYK', 'KKKKKKK'],
-  mail: ['KKKKKKK', 'KWKKKWK', 'KWWKWWK', 'KWKWKWK', 'KWWWWWK', 'KWWWWWK', 'KKKKKKK'],
-  flask: ['..KKK..', '...K...', '...K...', '..KKK..', '.KGGGK.', 'KGGGGGK', 'KKKKKKK'],
-  crown: ['Y.Y.Y.Y', 'YYYYYYY', 'YRYRYRY', 'YYYYYYY', 'KKKKKKK', '.......', '.......'],
-  people: ['..K.K..', '.KKKKK.', '.......', 'KKKKKKK', 'K.....K', 'K.....K', 'K.....K'],
 };
 
 export function drawIcon(g: CanvasRenderingContext2D, name: IconName, x: number, y: number): void {
