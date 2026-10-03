@@ -2,6 +2,8 @@
 // same events a real orchestrator would, so the UI never knows the difference.
 // The courier is a real FIFO queue (plain code); everything else is scripted.
 
+import { choice } from '../core/brain.ts';
+import type { Exchange, IntakeBrain } from '../core/brain.ts';
 import { isAffirmative, isBareRevise } from '../core/intent.ts';
 import { msg, raw, tr } from '../core/i18n.ts';
 import type { Msg } from '../core/i18n.ts';
@@ -21,6 +23,7 @@ import type {
   Stage,
 } from '../core/types.ts';
 import { AGENT_IDS } from '../core/types.ts';
+import { ScriptedBrain } from './scripted-brain.ts';
 
 class Cancelled extends Error {}
 
@@ -29,6 +32,8 @@ export interface MockOptions {
   autoAnswer?: boolean;
   /** Idle office life: people wander off for coffee or the restroom between jobs (default on). */
   ambient?: boolean;
+  /** Makes the brain (the owner's questions and the secretary's brief) for each job. Default: the canned script. */
+  brain?: () => IntakeBrain;
 }
 
 /** Everyone who may wander off between jobs (the owner stays reachable, the courier works the queue). */
@@ -63,8 +68,6 @@ interface Answer {
   text: string;
 }
 
-const choice = (id: string, key: string): ChatChoice => ({ id, label: msg(key) });
-
 function shorten(text: string, max = 44): string {
   const t = text.trim().replace(/\s+/g, ' ');
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
@@ -97,6 +100,7 @@ export class MockOffice implements OfficeSource, DemoControls {
   private desired = {} as Record<AgentId, { activity: Activity; note?: Msg }>;
   private blocked = new Set<AgentId>();
   private ambient: boolean;
+  private makeBrain: () => IntakeBrain;
   private away = new Set<AgentId>();
   private trips = new Set<Promise<void>>();
   private occupied = new Set<PlaceId>();
@@ -106,6 +110,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.timeScale = opts.timeScale ?? 1;
     this.autoAnswer = opts.autoAnswer ?? false;
     this.ambient = opts.ambient ?? true;
+    this.makeBrain = opts.brain ?? (() => new ScriptedBrain());
     this.initAgents();
     void this.courierLoop(this.runId);
     if (this.ambient) void this.ambientLoop(this.runId);
@@ -502,40 +507,39 @@ export class MockOffice implements OfficeSource, DemoControls {
   private async runJob(run: number): Promise<void> {
     const jobId = `job-${++this.jobSeq}`;
 
-    // 1. Brief: the user tells the owner what to produce. Nothing has started until they send this answer.
-    const idea = await this.ask('owner', msg('ask.idea'), {
-      placeholder: msg('ask.idea.ph'),
-      auto: msg('auto.idea'),
-    });
-    this.intake = false;
-    this.running = true;
-    this.wakeRecall(); // anyone on a coffee break heads back to their desk
-    this.stage(jobId, 'brief');
-    const title = shorten(idea.text);
-    this.emit({ type: 'job.created', jobId, title });
-    const audience = await this.ask('owner', msg('ask.audience', { title }), {
-      placeholder: msg('ask.audience.ph'),
-      auto: msg('auto.audience'),
-    });
-    const limits = await this.ask('owner', msg('ask.limits'), {
-      choices: [choice('none', 'choice.none'), choice('one-page', 'choice.onePage'), choice('detailed', 'choice.detailed')],
-      placeholder: msg('ask.limits.ph'),
-    });
+    // 1. Brief: the owner questions the user until the brain says there is enough. Nothing has started
+    // until the user sends the first answer.
+    const brain = this.makeBrain();
+    const history: Exchange[] = [];
+    let title = '';
+    for (;;) {
+      const turn = await brain.ownerTurn(history, title);
+      if (turn.kind === 'ready') break;
+      const q = turn.question;
+      const answer = await this.ask('owner', q.text, { choices: q.choices, placeholder: q.placeholder, auto: q.auto });
+      history.push({ question: q.text, answer: answer.msg, text: answer.text, choice: answer.choice });
+      if (history.length === 1) {
+        this.intake = false;
+        this.running = true;
+        this.wakeRecall(); // anyone on a coffee break heads back to their desk
+        this.stage(jobId, 'brief');
+        title = shorten(answer.text);
+        this.emit({ type: 'job.created', jobId, title });
+      }
+    }
 
     this.setAct('secretary', 'typing', msg('note.writeBrief'));
     this.emit({ type: 'agent.say', agent: 'owner', text: msg('say.writeBrief'), to: 'secretary' });
-    await this.sleep(2800);
+    let [, brief] = await Promise.all([this.sleep(2800), brain.writeBrief(history, title)]);
     this.setAct('secretary', 'idle');
     await this.handoff('secretary', 'owner', msg('doc.briefDraft'));
     this.emit({ type: 'doc.consumed', agent: 'owner' });
 
     // 2. Approval: the owner confirms the brief with the user.
     this.stage(jobId, 'approval');
-    let changes: Msg = raw('');
     let approved = false;
     while (!approved) {
-      const details = msg('brief.body', { goal: title, audience: audience.msg, limits: limits.msg, changes });
-      const reply = await this.ask('owner', msg('ask.approve', { details }), {
+      const reply = await this.ask('owner', msg('ask.approve', { details: brief }), {
         choices: [choice('approve', 'choice.approve'), choice('revise', 'choice.revise')],
         placeholder: msg('ask.approve.ph'),
       });
@@ -546,9 +550,8 @@ export class MockOffice implements OfficeSource, DemoControls {
         const change = asksWhat
           ? (await this.ask('owner', msg('ask.reviseWhat'), { placeholder: msg('ask.reviseWhat.ph') })).msg
           : reply.msg;
-        changes = msg('brief.change', { prev: changes, text: change });
         this.setAct('secretary', 'typing', msg('note.updateBrief'));
-        await this.sleep(1800);
+        [, brief] = await Promise.all([this.sleep(1800), brain.reviseBrief(history, title, change)]);
         this.setAct('secretary', 'idle');
       }
     }
