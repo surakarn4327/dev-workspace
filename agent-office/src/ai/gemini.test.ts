@@ -192,3 +192,71 @@ test('a reply cut off at the token limit comes back with finishReason MAX_TOKENS
   const none = client(async () => new Response(JSON.stringify({ candidates: [{ finishReason: 'MAX_TOKENS' }] }), { status: 200 }));
   assert.deepEqual(await none.generate({ history }).then((r) => [r.text, r.finishReason]), ['', 'MAX_TOKENS']);
 });
+
+// ---------- tools (function calling) ----------
+
+const reply = (parts: unknown[]): Response => new Response(JSON.stringify({ candidates: [{ content: { role: 'model', parts }, finishReason: 'STOP' }] }), { status: 200 });
+const SEARCH_TOOL = { name: 'web_search', description: 'Search', parameters: { type: 'object' as const, properties: { query: { type: 'string' as const } }, required: ['query'] } };
+
+async function sentBody(req: Parameters<ReturnType<typeof client>['generate']>[0], answer: Response = ok('x')): Promise<Record<string, unknown>> {
+  let body: Record<string, unknown> = {};
+  await client(async (_u, init) => {
+    body = JSON.parse(String(init?.body));
+    return answer;
+  }).generate(req);
+  return body;
+}
+
+test('tools are declared with automatic or disabled calling; without tools the request has neither field', async () => {
+  const auto = await sentBody({ history, tools: [SEARCH_TOOL] });
+  assert.deepEqual(auto.tools, [{ functionDeclarations: [SEARCH_TOOL] }]);
+  assert.deepEqual(auto.toolConfig, { functionCallingConfig: { mode: 'AUTO' } });
+  const none = await sentBody({ history, tools: [SEARCH_TOOL], toolMode: 'none' });
+  assert.deepEqual(none.toolConfig, { functionCallingConfig: { mode: 'NONE' } });
+  const plain = await sentBody({ history });
+  assert.equal(plain.tools, undefined);
+  assert.equal(plain.toolConfig, undefined);
+});
+
+test('a turn holding the provider\'s own parts goes back untouched, signature included', async () => {
+  const modelParts = [{ functionCall: { id: 'call-1', name: 'web_search', args: { query: 'gold' } }, thoughtSignature: 'SIG-abc' }];
+  const body = (await sentBody({
+    history: [
+      { role: 'user', text: 'What is the gold price?' },
+      { role: 'model', text: '', parts: modelParts },
+      { role: 'user', text: '', toolAnswers: [{ id: 'call-1', name: 'web_search', response: { ok: true, results: [] } }] },
+    ],
+    tools: [SEARCH_TOOL],
+  })) as { contents: { role: string; parts: unknown[] }[] };
+  assert.deepEqual(body.contents[0], { role: 'user', parts: [{ text: 'What is the gold price?' }] });
+  assert.deepEqual(body.contents[1], { role: 'model', parts: modelParts }, 'echoed exactly, with its signature');
+  assert.deepEqual(body.contents[2], {
+    role: 'user',
+    parts: [{ functionResponse: { name: 'web_search', id: 'call-1', response: { result: { ok: true, results: [] } } } }],
+  });
+});
+
+test('a reply that asks for tools is returned as tool calls plus the model\'s own parts, and is not an "empty" reply', async () => {
+  const parts = [
+    { functionCall: { id: 'a', name: 'web_search', args: { query: 'ราคาทอง' } }, thoughtSignature: 'SIG' },
+    { functionCall: { name: 'read_page', args: { url: 'https://x.example/' } } },
+  ];
+  const r = await client(async () => reply(parts)).generate({ history, tools: [SEARCH_TOOL] });
+  assert.equal(r.text, '');
+  assert.deepEqual(r.toolCalls, [
+    { id: 'a', name: 'web_search', args: { query: 'ราคาทอง' } },
+    { name: 'read_page', args: { url: 'https://x.example/' } },
+  ]);
+  assert.deepEqual(r.parts, parts);
+});
+
+test('text next to a tool call is kept; thinking parts never count as text; a plain reply has no tool fields', async () => {
+  const mixed = await client(async () => reply([{ text: 'Let me check. ' }, { functionCall: { name: 'web_search', args: {} } }])).generate({ history });
+  assert.equal(mixed.text, 'Let me check. ');
+  assert.equal(mixed.toolCalls?.length, 1);
+  const thought = await client(async () => reply([{ text: 'secret reasoning', thought: true }, { text: 'Visible answer' }])).generate({ history });
+  assert.equal(thought.text, 'Visible answer');
+  const plain = await client(async () => ok('hello')).generate({ history });
+  assert.equal('toolCalls' in plain, false);
+  assert.equal('parts' in plain, false);
+});

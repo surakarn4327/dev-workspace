@@ -3,7 +3,7 @@
 // scrubbed from every error message, so it cannot leak into the feed, console or an event.
 
 import { ModelError } from './model-client.ts';
-import type { GenerateRequest, GenerateResult, ModelClient } from './model-client.ts';
+import type { ChatTurn, GenerateRequest, GenerateResult, ModelClient } from './model-client.ts';
 
 export const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 /**
@@ -24,8 +24,16 @@ export interface GeminiOptions {
   fetchFn?: typeof fetch;
 }
 
+interface GeminiPart {
+  text?: string;
+  /** Present when the model's thinking part was returned (not asked for); never shown to the user. */
+  thought?: boolean;
+  functionCall?: { id?: string; name?: string; args?: Record<string, unknown> };
+  thoughtSignature?: string;
+}
+
 interface GeminiBody {
-  candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+  candidates?: { content?: { parts?: GeminiPart[] }; finishReason?: string }[];
   promptFeedback?: { blockReason?: string };
   usageMetadata?: {
     promptTokenCount?: number;
@@ -54,12 +62,24 @@ function retryAfter(res: Response, body: GeminiBody | null): number | undefined 
   return Number.isFinite(header) && header > 0 ? Math.round(header * 1000) : undefined;
 }
 
+function partsOf(turn: ChatTurn): unknown[] {
+  if (turn.toolAnswers?.length) {
+    return turn.toolAnswers.map((a) => ({ functionResponse: { name: a.name, ...(a.id ? { id: a.id } : {}), response: { result: a.response } } }));
+  }
+  return [{ text: turn.text }];
+}
+
 function toBody(req: GenerateRequest): Record<string, unknown> {
   const body: Record<string, unknown> = {
-    contents: req.history.map((turn) => ({ role: turn.role, parts: [{ text: turn.text }] })),
+    // A turn carrying the provider's own parts (tool calls with their signatures, tool answers) goes back untouched.
+    contents: req.history.map((turn) => ({ role: turn.role, parts: turn.parts ?? partsOf(turn) })),
   };
   if (req.system) body.systemInstruction = { parts: [{ text: req.system }] };
   if (req.maxOutputTokens) body.generationConfig = { maxOutputTokens: req.maxOutputTokens };
+  if (req.tools?.length) {
+    body.tools = [{ functionDeclarations: req.tools }];
+    body.toolConfig = { functionCallingConfig: { mode: req.toolMode === 'none' ? 'NONE' : 'AUTO' } };
+  }
   return body;
 }
 
@@ -115,8 +135,12 @@ export function createGeminiClient(opts: GeminiOptions): ModelClient {
           throw new ModelError('blocked', `The request was blocked (${body.promptFeedback.blockReason}).`);
         }
         const candidate = body?.candidates?.[0];
-        const text = (candidate?.content?.parts ?? []).map((p) => p.text ?? '').join('');
-        if (!text.trim()) {
+        const parts = candidate?.content?.parts ?? [];
+        const text = parts.filter((p) => !p.thought).map((p) => p.text ?? '').join('');
+        const toolCalls = parts
+          .filter((p) => p.functionCall?.name)
+          .map((p) => ({ ...(p.functionCall?.id ? { id: p.functionCall.id } : {}), name: String(p.functionCall?.name), args: p.functionCall?.args ?? {} }));
+        if (!text.trim() && toolCalls.length === 0) {
           if (candidate?.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
             throw new ModelError('blocked', `The reply was stopped (${candidate.finishReason}).`);
           }
@@ -136,6 +160,7 @@ export function createGeminiClient(opts: GeminiOptions): ModelClient {
               }
             : undefined,
           finishReason: candidate?.finishReason,
+          ...(toolCalls.length ? { toolCalls, parts } : {}),
         };
       } finally {
         clearTimeout(timer);

@@ -4,6 +4,40 @@
 export interface ChatTurn {
   role: 'user' | 'model';
   text: string;
+  /**
+   * The provider's own content parts for this turn, used instead of `text` when present. A model turn that asked
+   * for tools must be sent back exactly as it arrived (providers attach signatures to it), and the tool answers
+   * go back as a user turn made of such parts. Opaque to everything except the adapter.
+   */
+  parts?: unknown[];
+  /** Answers to the tools the previous model turn asked for, sent as this user turn (the adapter formats them). */
+  toolAnswers?: ToolAnswer[];
+}
+
+/** A tool the model may ask for: a name, what it does, and the arguments it takes. */
+export interface ToolDeclaration {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, { type: 'string' | 'integer' | 'number' | 'boolean'; description?: string; enum?: string[] }>;
+    required?: string[];
+  };
+}
+
+/** One request from the model to use a tool. */
+export interface ToolCall {
+  id?: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+/** What a tool answered, ready to go back to the model. `id` repeats the call's id when it had one. */
+export interface ToolAnswer {
+  id?: string;
+  name: string;
+  /** Any JSON-serialisable data, including an `{ error: ... }` object so the model can adapt. */
+  response: unknown;
 }
 
 export interface GenerateRequest {
@@ -14,6 +48,10 @@ export interface GenerateRequest {
   maxOutputTokens?: number;
   /** Lets the caller abandon the call (the user cancelled the job). */
   signal?: AbortSignal;
+  /** Tools the model may use in this call. */
+  tools?: ToolDeclaration[];
+  /** 'auto' (default): the model decides; 'none': it must answer in words, no tools. */
+  toolMode?: 'auto' | 'none';
 }
 
 export interface Usage {
@@ -29,6 +67,10 @@ export interface GenerateResult {
   usage?: Usage;
   /** Why the model stopped. 'MAX_TOKENS' means the reply was cut off at maxOutputTokens. */
   finishReason?: string;
+  /** Tools the model wants used before it answers (then `text` may be empty). */
+  toolCalls?: ToolCall[];
+  /** The model's turn exactly as sent, to be put back into the history as `ChatTurn.parts` after answering the tools. */
+  parts?: unknown[];
 }
 
 export interface ModelClient {
