@@ -24,23 +24,36 @@ view.start();
 // Handy for poking at the live office from the browser console in dev.
 if (import.meta.env.DEV) Object.assign(window, { office: { source, store, view } });
 
-// ---------- canvas sizing: integer pixel scale where possible ----------
+// ---------- canvas sizing: the office fills all space left by the header and controls ----------
 
 const stage = el<HTMLDivElement>('#stage');
+const area = el<HTMLElement>('#stage-area');
+// Border + shadow around the canvas, plus a little breathing room.
+const FRAME = 24;
 function fit(): void {
-  const col = stage.parentElement;
-  if (!col) return;
-  const availW = col.clientWidth;
-  const availH = Math.max(200, window.innerHeight - stage.getBoundingClientRect().top - 96);
-  const raw = Math.min(availW / W, availH / H);
-  const scale = raw >= 1 ? Math.floor(raw) : raw;
-  canvas.style.width = `${Math.round(W * scale)}px`;
-  canvas.style.height = `${Math.round(H * scale)}px`;
-  stage.style.width = `${Math.round(W * scale)}px`;
+  const availW = Math.max(120, area.clientWidth - FRAME);
+  const availH = Math.max(80, area.clientHeight - FRAME);
+  const scale = Math.min(availW / W, availH / H);
+  canvas.style.width = `${Math.floor(W * scale)}px`;
+  canvas.style.height = `${Math.floor(H * scale)}px`;
+  document.documentElement.style.setProperty('--scale', scale.toFixed(3));
 }
-new ResizeObserver(fit).observe(document.body);
+new ResizeObserver(fit).observe(area);
 window.addEventListener('resize', fit);
 fit();
+
+// ---------- details drawer ----------
+
+const drawer = el<HTMLElement>('#drawer');
+const panelsBtn = el<HTMLButtonElement>('#btn-panels');
+function setDrawer(open: boolean): void {
+  drawer.classList.toggle('open', open);
+  panelsBtn.setAttribute('aria-expanded', String(open));
+}
+panelsBtn.addEventListener('click', () => setDrawer(!drawer.classList.contains('open')));
+window.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && drawer.classList.contains('open')) setDrawer(false);
+});
 
 // ---------- pointer: hover tooltip + click to select ----------
 
@@ -75,6 +88,7 @@ canvas.addEventListener('click', (ev) => {
   const id = view.pick(p.x, p.y);
   view.selected = id;
   panels.refresh();
+  if (id) setDrawer(true); // show the inspector for whoever you clicked
   // Clicking the owner when nothing is running starts a job, like talking to an NPC.
   if (id === 'owner' && !source.isRunning) source.start();
 });

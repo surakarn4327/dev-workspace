@@ -11,6 +11,8 @@
   --red: #ef5a5f;
   --blue: #5aa0ea;
   --font: 'Cascadia Mono', 'Consolas', 'Menlo', 'Courier New', monospace;
+  /* Set from JS: how many screen pixels one office pixel takes up. */
+  --scale: 2;
   color-scheme: dark;
 }
 
@@ -20,20 +22,20 @@
 
 html,
 body {
+  height: 100%;
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font: 13px/1.45 var(--font);
+  overflow: hidden;
 }
 
-body {
-  min-height: 100vh;
-}
-
+/* The whole window is the office: header on top, controls below, stage fills the rest. */
 #app {
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 12px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .hidden {
@@ -43,11 +45,14 @@ body {
 /* ---------- header ---------- */
 
 .top {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 24px;
-  margin-bottom: 12px;
+  gap: 6px 16px;
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--line);
+  background: var(--panel);
 }
 
 .brand {
@@ -58,7 +63,7 @@ body {
 
 .brand h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   letter-spacing: 3px;
   color: var(--accent);
 }
@@ -80,7 +85,7 @@ body {
 .steps {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -90,8 +95,8 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px 3px 4px;
-  background: var(--panel);
+  padding: 2px 8px 2px 3px;
+  background: var(--bg);
   border: 2px solid var(--line);
   color: var(--muted);
   font-size: 11px;
@@ -133,27 +138,13 @@ body {
   }
 }
 
-/* ---------- layout ---------- */
-
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 14px;
-  align-items: start;
-}
-
-.stage-col {
-  min-width: 0;
-}
-
 .job-bar {
+  flex: 1;
+  min-width: 160px;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: baseline;
-  margin-bottom: 8px;
-  padding: 6px 10px;
-  background: var(--panel);
-  border: 2px solid var(--line);
+  overflow: hidden;
 }
 
 .label {
@@ -169,6 +160,19 @@ body {
   white-space: nowrap;
 }
 
+/* ---------- stage: fills all remaining space ---------- */
+
+.stage-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at center, #1b1736 0%, var(--bg) 75%);
+}
+
 .stage {
   position: relative;
   border: 4px solid #0a0814;
@@ -176,13 +180,10 @@ body {
     0 0 0 2px var(--line),
     0 6px 0 2px var(--edge);
   background: #000;
-  max-width: 100%;
 }
 
 #office {
   display: block;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
   image-rendering: pixelated;
 }
 
@@ -198,17 +199,18 @@ body {
   white-space: nowrap;
 }
 
-/* ---------- RPG dialog ---------- */
+/* ---------- RPG dialog (sized from the office scale) ---------- */
 
 .dialog {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
-  z-index: 6;
+  left: calc(var(--scale) * 3px);
+  right: calc(var(--scale) * 3px);
+  bottom: calc(var(--scale) * 3px);
+  z-index: 9; /* above the drawer so answering never gets blocked */
   display: flex;
-  gap: 12px;
-  padding: 10px;
+  gap: calc(var(--scale) * 3px);
+  padding: calc(var(--scale) * 2.5px);
+  font-size: clamp(13px, calc(var(--scale) * 4.2px), 28px);
   background: #15112b;
   border: 3px solid #f4f1e8;
   box-shadow:
@@ -217,14 +219,14 @@ body {
 }
 
 .dialog.top {
-  top: 10px;
+  top: calc(var(--scale) * 3px);
   bottom: auto;
 }
 
 .portrait {
   flex: none;
-  width: 64px;
-  height: 104px;
+  width: max(48px, calc(var(--scale) * 16px));
+  height: max(78px, calc(var(--scale) * 26px));
   image-rendering: pixelated;
   background: #2a2552;
   border: 2px solid var(--line);
@@ -291,14 +293,22 @@ body {
   border-color: var(--accent);
 }
 
-/* ---------- controls ---------- */
+.dialog .btn {
+  font-size: inherit;
+}
+
+/* ---------- controls bar ---------- */
 
 .controls {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 18px;
-  margin-top: 16px;
+  justify-content: center;
+  gap: 8px 18px;
+  padding: 8px 12px 10px;
+  border-top: 2px solid var(--line);
+  background: var(--panel);
 }
 
 .group {
@@ -355,7 +365,8 @@ body {
   border-color: #6b62b5;
 }
 
-.btn.speed.active {
+.btn.speed.active,
+#btn-panels[aria-expanded='true'] {
   background: var(--accent);
   border-color: var(--accent);
   color: #2a2000;
@@ -367,13 +378,32 @@ body {
   color: #fff;
 }
 
-/* ---------- side panels ---------- */
+/* ---------- details drawer (slides over the right edge of the stage) ---------- */
 
-.side {
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  width: min(380px, 92vw);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-width: 0;
+  gap: 10px;
+  padding: 10px;
+  overflow-y: auto;
+  background: rgba(18, 15, 31, 0.94);
+  border-left: 2px solid var(--line);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition:
+    transform 0.18s steps(6),
+    visibility 0.18s;
+}
+
+.drawer.open {
+  transform: none;
+  visibility: visible;
 }
 
 .panel {
@@ -509,11 +539,15 @@ body {
 }
 
 .feed-panel {
-  min-height: 0;
+  flex: 1;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
 }
 
 .feed {
-  max-height: 300px;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   font-size: 12px;
 }
@@ -541,14 +575,11 @@ body {
   color: #ffb1b4;
 }
 
-@media (max-width: 1100px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .step.current {
     animation: none;
+  }
+  .drawer {
+    transition: none;
   }
 }
