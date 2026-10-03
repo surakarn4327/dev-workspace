@@ -446,6 +446,31 @@ body {
   visibility: visible;
 }
 
+/* The character panel is just its card: no frame around it, as tall as its content, close button inside. */
+.drawer.card-only {
+  bottom: auto;
+  max-height: calc(100% - 66px); /* main.ts keeps this in step when the HUD pushes the panel down */
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.char-card {
+  position: relative;
+}
+
+.char-card .btn.close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+}
+
+.char-card #inspector {
+  padding-right: 34px; /* keep the name clear of the close button */
+}
+
 .drawer-head {
   display: flex;
   align-items: center;

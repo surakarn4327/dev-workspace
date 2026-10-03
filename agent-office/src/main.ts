@@ -62,7 +62,10 @@ function placeDrawer(): void {
   const h = hudLeft.getBoundingClientRect();
   const area = el<HTMLElement>('#stage-area').getBoundingClientRect();
   const drawerLeft = area.right - 8 - Math.min(380, area.width - 16);
-  for (const p of sidePanels) p.style.top = h.right > drawerLeft ? `${Math.ceil(h.bottom - area.top + 8)}px` : '';
+  const pushed = h.right > drawerLeft;
+  const top = pushed ? Math.ceil(h.bottom - area.top + 8) : 58;
+  for (const p of sidePanels) p.style.top = pushed ? `${top}px` : '';
+  charPanel.style.maxHeight = `calc(100% - ${top + 8}px)`; // the card is as tall as its content, up to the window
 }
 new ResizeObserver(placeDrawer).observe(hudLeft);
 window.addEventListener('resize', placeDrawer);

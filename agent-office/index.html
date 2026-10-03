@@ -110,12 +110,11 @@
         </aside>
 
         <!-- Shown only when a character is clicked; the menu and this panel never open together -->
-        <aside class="drawer" id="char-panel" data-i18n-aria="inspector.title">
-          <div class="drawer-head">
-            <h2 data-i18n="inspector.title"></h2>
+        <aside class="drawer card-only" id="char-panel" data-i18n-aria="inspector.title">
+          <section class="panel char-card">
             <button class="btn close" type="button" data-close data-i18n-aria="ui.close">&times;</button>
-          </div>
-          <section class="panel" id="inspector"></section>
+            <div id="inspector"></div>
+          </section>
         </aside>
       </main>
     </div>
