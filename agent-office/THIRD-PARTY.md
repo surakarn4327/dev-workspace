@@ -4,7 +4,7 @@
 
 | อะไร | แหล่ง | ใบอนุญาต | ใช้ทำอะไร |
 |---|---|---|---|
-| **Silver** (`public/fonts/Silver.ttf`, 3.5 MB) | [Poppy Works บน itch.io](https://poppyworks.itch.io/silver) ([ประกาศรองรับไทย](https://poppyworks.itch.io/silver/devlog/514990/thai-update-)) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) ใช้เชิงพาณิชย์ได้ ต้องให้เครดิต | ฟอนต์พิกเซลของโหมดภาษาไทย (ใช้ 24px = 1.5 เท่าของกริด 16px เพราะ 16px เล็กกว่าอังกฤษ 13px ชัดเจน) |
+| **Silver** (`public/fonts/Silver.ttf`, 3.5 MB) | [Poppy Works บน itch.io](https://poppyworks.itch.io/silver) ([ประกาศรองรับไทย](https://poppyworks.itch.io/silver/devlog/514990/thai-update-)) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) ใช้เชิงพาณิชย์ได้ ต้องให้เครดิต | ฟอนต์พิกเซลของโหมดภาษาไทย (ขยายกลิฟด้วย font-size-adjust ให้สูงเท่าตัวอังกฤษ) |
 
 - ได้ไฟล์เมื่อ 2026-10-03 จากหน้า "No thanks, just take me to the downloads" (ฟรี ไม่ผูกบัตร) **ไม่ได้ดัดแปลงไฟล์**
 - เครดิตแสดงในแอป: เมนู (บรรทัดล่างสุด) ผ่านคีย์ `credit.font`
