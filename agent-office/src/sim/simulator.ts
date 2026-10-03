@@ -4,6 +4,7 @@
 
 import { choice } from '../core/brain.ts';
 import type { BrainWait, Exchange, IntakeBrain } from '../core/brain.ts';
+import type { JobFile } from '../core/job-file.ts';
 import { isAffirmative, isBareRevise } from '../core/intent.ts';
 import { msg, raw, tr } from '../core/i18n.ts';
 import type { Msg } from '../core/i18n.ts';
@@ -89,6 +90,7 @@ export class MockOffice implements OfficeSource, DemoControls {
   private intake = false;
   private startSeq = 0;
   private jobSeq = 0;
+  private file: JobFile | null = null;
   private chatSeq = 0;
   private docSeq = 0;
   private pending = new Map<
@@ -179,6 +181,14 @@ export class MockOffice implements OfficeSource, DemoControls {
     return this.running;
   }
 
+  /**
+   * What the company knows about the current job: the conversation, the brief and its changes. The departments
+   * work from this. It lives only in memory; it is cleared by a reset and replaced when the next job starts.
+   */
+  get jobFile(): Readonly<JobFile> | null {
+    return this.file;
+  }
+
   setSpeed(scale: number): void {
     this.timeScale = Math.max(0.1, scale);
   }
@@ -209,6 +219,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.running = false;
     this.intake = false;
     this.abortCalls();
+    this.file = null;
     this.rejectNextReview = false;
     for (const p of this.pending.values()) p.reject(new Cancelled());
     this.pending.clear();
@@ -233,6 +244,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.running = false;
     this.intake = false;
     this.abortCalls();
+    this.file = null;
     for (const p of this.pending.values()) p.reject(new Cancelled());
     this.pending.clear();
     for (const q of this.queue) q.reject(new Cancelled());
@@ -589,6 +601,7 @@ export class MockOffice implements OfficeSource, DemoControls {
 
   private async runJob(run: number): Promise<void> {
     const jobId = `job-${++this.jobSeq}`;
+    this.file = null;
 
     // 1. Brief: the owner questions the user until the brain says there is enough. Nothing has started
     // until the user sends the first answer.
@@ -607,6 +620,7 @@ export class MockOffice implements OfficeSource, DemoControls {
         this.wakeRecall(); // anyone on a coffee break heads back to their desk
         this.stage(jobId, 'brief');
         title = shorten(answer.text);
+        this.file = { id: jobId, title, history, brief: null, approvedBrief: null, changes: [] };
         this.emit({ type: 'job.created', jobId, title });
       }
     }
@@ -618,6 +632,7 @@ export class MockOffice implements OfficeSource, DemoControls {
       this.think('secretary', brain, (signal) => brain.writeBrief(history, title, signal)),
     ]);
     this.setAct('secretary', 'idle');
+    if (this.file) this.file.brief = brief;
     await this.handoff('secretary', 'owner', msg('doc.briefDraft'));
     this.emit({ type: 'doc.consumed', agent: 'owner' });
 
@@ -631,6 +646,7 @@ export class MockOffice implements OfficeSource, DemoControls {
       });
       if (reply.choice === 'approve' || (reply.choice === null && isAffirmative(reply.text))) {
         approved = true;
+        if (this.file) this.file.approvedBrief = tr(brief);
       } else {
         const asksWhat = reply.choice === 'revise' || (reply.choice === null && isBareRevise(reply.text));
         const change = asksWhat
@@ -642,6 +658,10 @@ export class MockOffice implements OfficeSource, DemoControls {
           this.think('secretary', brain, (signal) => brain.reviseBrief(history, title, change, signal)),
         ]);
         this.setAct('secretary', 'idle');
+        if (this.file) {
+          this.file.changes.push(tr(change));
+          this.file.brief = brief;
+        }
       }
     }
 

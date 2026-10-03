@@ -4,7 +4,12 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { ModelError } from '../ai/model-client.ts';
+import type { ModelErrorKind } from '../ai/model-client.ts';
+import type { KeyStore } from '../core/ai-settings.ts';
+import type { BrainWait, Exchange, OwnerTurn } from '../core/brain.ts';
 import { setLang } from '../core/i18n.ts';
+import type { Msg } from '../core/i18n.ts';
 import type { Lang } from '../core/i18n.ts';
 import { ROSTER } from '../core/roster.ts';
 import { OfficeStore } from '../core/state.ts';
@@ -12,6 +17,8 @@ import type { AgentId, OfficeEvent } from '../core/types.ts';
 import { AGENT_IDS } from '../core/types.ts';
 import type { OfficeView } from '../render/view.ts';
 import { MockOffice } from '../sim/simulator.ts';
+import { ScriptedBrain } from '../sim/scripted-brain.ts';
+import { mountAiSettings } from './ai-settings.ts';
 import { mountDialog } from './dialog.ts';
 import { applyStatic } from './i18n-dom.ts';
 import { mountPanels } from './panels.ts';
@@ -69,6 +76,7 @@ function problems(texts: string[], lang: Lang): string[] {
 async function runEveryPath(lang: Lang): Promise<string[]> {
   setLang(lang, false);
   applyStatic();
+  aiSettings.refresh(); // main.ts does this on every language change: the status line is not static text
   store.apply({ type: 'sim.reset' });
   const found = new Set<string>();
   const sweep = (): void => {
@@ -116,6 +124,7 @@ async function runEveryPath(lang: Lang): Promise<string[]> {
   setLang(lang === 'th' ? 'en' : 'th', false);
   setLang(lang, false);
   applyStatic();
+  aiSettings.refresh();
   await sleep(50);
   sweep();
   clearInterval(timer);
@@ -131,6 +140,133 @@ test('Thai mode: no English leaks, no unfilled placeholders, across every user p
 test('English mode: no Thai leaks, no unfilled placeholders, across every user path', async () => {
   const bad = await runEveryPath('en');
   assert.deepEqual(bad, []);
+});
+
+// ---------- the AI states: settings panel, thinking, quota wait, every kind of model failure ----------
+
+const aiData = new Map<string, string>();
+let aiFailing = false;
+const aiStore: KeyStore = {
+  getItem: (k) => aiData.get(k) ?? null,
+  setItem: (k, v) => {
+    if (aiFailing) throw new Error('blocked');
+    aiData.set(k, v);
+  },
+  removeItem: (k) => void aiData.delete(k),
+};
+const aiSettings = mountAiSettings(aiStore);
+
+const MODEL_ERRORS: ModelErrorKind[] = ['no-key', 'bad-key', 'rate-limit', 'network', 'timeout', 'server', 'empty', 'blocked', 'bad-request'];
+
+/** Fails once with every kind of error, waits for quota once, then writes the brief slowly. */
+class SweepBrain extends ScriptedBrain {
+  private kinds = [...MODEL_ERRORS];
+  private quotaShown = false;
+  private listeners = new Set<(w: BrainWait) => void>();
+
+  watchWait(fn: (w: BrainWait) => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  private wait(w: BrainWait): void {
+    for (const fn of this.listeners) fn(w);
+  }
+
+  override async ownerTurn(history: readonly Exchange[], title: string): Promise<OwnerTurn> {
+    if (history.length === 1) {
+      const kind = this.kinds.shift();
+      if (kind) throw new ModelError(kind, 'diagnostic text that must never be shown');
+      if (!this.quotaShown) {
+        this.quotaShown = true;
+        await sleep(40);
+        this.wait('quota');
+        await sleep(60);
+        this.wait(null);
+        await sleep(40);
+      }
+    }
+    return super.ownerTurn(history, title);
+  }
+
+  override async writeBrief(history: readonly Exchange[], title: string): Promise<Msg> {
+    await sleep(60);
+    return super.writeBrief(history, title);
+  }
+}
+
+async function runAiStates(lang: Lang): Promise<string[]> {
+  setLang(lang, false);
+  applyStatic();
+  store.apply({ type: 'sim.reset' });
+  const found = new Set<string>();
+  const sweep = (): void => {
+    for (const p of problems(rendered(), lang)) found.add(p);
+  };
+
+  // the settings panel in each of its states
+  const key = doc.getElementById('ai-key') as HTMLInputElement;
+  const press = (id: string): void => (doc.getElementById(id) as HTMLButtonElement).click();
+  aiSettings.refresh();
+  sweep(); // no key yet
+  key.value = '';
+  press('ai-save');
+  sweep(); // paste a key first
+  aiFailing = true;
+  key.value = 'some-key';
+  press('ai-save');
+  sweep(); // the browser would not save it
+  aiFailing = false;
+  key.value = 'some-key';
+  press('ai-save');
+  sweep(); // saved
+  press('ai-remove');
+  sweep();
+
+  // thinking, quota wait, secretary writing, and each model failure, through the real dialog
+  const timer = setInterval(sweep, 4);
+  const office = new MockOffice({ timeScale: 4000, ambient: false, thinkDelayMs: 5, brain: () => new SweepBrain() });
+  mountDialog(store, office);
+  let reachedApproval = false;
+  office.subscribe((e: OfficeEvent) => {
+    store.apply(e);
+    panels.onEvent(e);
+    sweep();
+    if (e.type !== 'chat.ask') return;
+    const k = e.text.key;
+    if (k === 'ask.approve') {
+      reachedApproval = true;
+      return;
+    }
+    setTimeout(() => {
+      if (k.startsWith('ask.modelError.')) office.answer(e.id, { choice: 'retry' });
+      else if (k === 'ask.limits') office.answer(e.id, { choice: 'none' });
+      else office.answer(e.id, { text: TYPED });
+    }, 15);
+  });
+  office.start();
+  const t0 = Date.now();
+  while (!reachedApproval && Date.now() - t0 < 30000) await sleep(20);
+  assert.ok(reachedApproval, `the AI states run did not reach the approval question in ${lang}`);
+  await sleep(100);
+  // flip the language on the finished state: everything left on screen must re-render cleanly
+  setLang(lang === 'th' ? 'en' : 'th', false);
+  setLang(lang, false);
+  applyStatic();
+  aiSettings.refresh();
+  await sleep(50);
+  sweep();
+  clearInterval(timer);
+  office.dispose();
+  return [...found];
+}
+
+test('Thai mode: the AI settings, thinking box, quota wait and every model failure have no English leaks', async () => {
+  assert.deepEqual(await runAiStates('th'), []);
+});
+
+test('English mode: the AI settings, thinking box, quota wait and every model failure have no Thai leaks', async () => {
+  assert.deepEqual(await runAiStates('en'), []);
 });
 
 test.after(() => {
