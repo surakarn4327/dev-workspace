@@ -56,6 +56,14 @@ test('links side by side become separate lines and table cells are separated, wi
   assert.equal(table, 'ทองคำแท่ง | 65,700 | 65,900\nรูปพรรณ | 64,384');
 });
 
+test('share bars, print links and ad markers are dropped, real sentences that mention them are kept', () => {
+  const { text } = extractText(
+    '<body><p>ราคาทองวันนี้ลดลง 500 บาท</p><p>03 ต.ค. 69 (09:10 น.) พิมพ์</p><p>แชร์เรื่องนี้แชร์เรื่องนี้Line</p><div>Twitter</div><div>Facebook</div><p>ADVERTISEMENT</p>' +
+      '<p>Share your thoughts on the price with us today.</p><p>ติดตามข่าวทองคำได้ทุกวัน</p></body>',
+  );
+  assert.equal(text, 'ราคาทองวันนี้ลดลง 500 บาท\n03 ต.ค. 69 (09:10 น.) พิมพ์\nShare your thoughts on the price with us today.\nติดตามข่าวทองคำได้ทุกวัน');
+});
+
 test('inline tags inside a Thai word do not split it', () => {
   assert.equal(extractText('<body><p><b>ราคา</b>ทอง<span>วันนี้</span></p></body>').text, 'ราคาทองวันนี้');
 });

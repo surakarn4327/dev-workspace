@@ -28,6 +28,17 @@
                                                    "5171"
                                                ],
                                "port":  5171
+                           },
+                           {
+                               "name":  "agent-office-helper",
+                               "runtimeExecutable":  "npm",
+                               "runtimeArgs":  [
+                                                   "--prefix",
+                                                   "agent-office",
+                                                   "run",
+                                                   "helper"
+                                               ],
+                               "port":  8071
                            }
                        ]
 }

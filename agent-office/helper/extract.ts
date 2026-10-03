@@ -132,10 +132,15 @@ function htmlToLines(html: string): string {
   );
 }
 
+/** Button and label words that make up share bars, print links and ad markers. A line made only of these is dropped. */
+const UI_WORDS = /(?:แชร์เรื่องนี้|แชร์|share|facebook|twitter|line|email|e-mail|print|พิมพ์|copy link|คัดลอกลิงก์|advertisement|ADVERTISEMENT|โฆษณา|sponsored|follow us|subscribe|สมัครสมาชิก|ติดตาม|read more|อ่านต่อ|อ่านเพิ่มเติม|back to top|ขึ้นบน|\bx\b)/gi;
+const isUiLine = (line: string): boolean => line.length > 0 && line.length < 80 && line.replace(UI_WORDS, '').replace(/[\s|·•\-–:]+/g, '') === '';
+
 function tidy(text: string): string {
   const lines = text
     .split('\n')
     .map((l) => l.replace(/[\t  ]+/g, ' ').replace(/(\s*\|)+\s*$/, '').trim())
+    .filter((l) => !isUiLine(l))
     .filter((l, i, all) => l !== '' || (all[i - 1] ?? '') !== ''); // collapse blank runs
   const out: string[] = [];
   for (const l of lines) if (l === '' || l !== out[out.length - 1]) out.push(l); // drop immediate repeats
