@@ -163,16 +163,16 @@ export class MockOffice implements OfficeSource {
     this.listeners.clear();
   }
 
-  /** Crash a working staff member; their head walks over and fixes it. */
+  /** Crash a working staff member; their head walks to the server room, restarts it and comes back. */
   injectError(): boolean {
     const run = this.runId;
-    const atDesk = STAFF.filter((a) => this.loc[a] === `desk:${a}` && !this.blocked.has(a));
+    const atDesk = STAFF.filter((a) => this.loc[a] === `desk:${a}` && !this.blocked.has(a) && !this.away.has(a));
     const typing = atDesk.filter((a) => this.desired[a].activity === 'typing');
     const pool = typing.length ? typing : atDesk;
     if (!pool.length) return false;
     const who = pool[Math.floor(Math.random() * pool.length)];
     const head = (who.startsWith('research') ? PODS.research : PODS.production).head;
-    if (this.blocked.has(head)) return false;
+    if (this.blocked.has(head) || this.away.has(head)) return false;
     this.errorFlow(run, who, head).catch((err: unknown) => {
       if (!(err instanceof Cancelled)) console.error('[MockOffice] error flow failed', err);
     });
@@ -386,17 +386,24 @@ export class MockOffice implements OfficeSource {
     await Promise.all([...this.trips]);
   }
 
+  /**
+   * A tool crashes: the staff member shows the error, their head walks to the server room,
+   * restarts the tool server (the racks flash), the staff member recovers and the head goes back.
+   */
   private async errorFlow(run: number, who: AgentId, head: AgentId): Promise<void> {
     this.blocked.add(who);
     this.blocked.add(head);
     this.emit({ type: 'agent.activity', agent: who, activity: 'error', note: 'Tool crashed' });
     this.emit({ type: 'agent.say', agent: who, text: 'My tool just crashed!', to: head });
     await this.sleep(1600);
-    this.emit({ type: 'agent.activity', agent: head, activity: 'talking' });
-    await this.walk(head, `visit:${who}`);
-    this.emit({ type: 'agent.say', agent: head, text: 'Let me take a look... restart it and retry.', to: who });
-    await this.sleep(2400);
+    this.emit({ type: 'agent.activity', agent: head, activity: 'talking', note: 'Heading to the server room' });
+    this.emit({ type: 'agent.say', agent: head, text: 'I will restart it from the server room.', to: who });
+    await this.walk(head, 'server:0');
+    this.emit({ type: 'agent.activity', agent: head, activity: 'typing', note: 'Restarting the tool server' });
+    this.emit({ type: 'agent.say', agent: head, text: 'Restarting the tool server...' });
+    await this.sleep(2800);
     if (run !== this.runId) return;
+    this.emit({ type: 'agent.say', agent: head, text: 'Restarted. Please retry.', to: who });
     this.emit({ type: 'agent.say', agent: who, text: 'Working again, thanks!', to: head });
     this.blocked.delete(who);
     this.blocked.delete(head);
@@ -404,7 +411,6 @@ export class MockOffice implements OfficeSource {
     this.emit({ type: 'agent.activity', agent: head, ...this.desired[head] });
     await this.walk(head, `desk:${head}`);
   }
-
   // ---------- the scripted workflow ----------
 
   private async runJob(run: number): Promise<void> {

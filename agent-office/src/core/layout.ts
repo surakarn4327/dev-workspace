@@ -23,3 +23,9 @@ export function computeLayout(availW: number, availH: number, officeW: number, o
   const ch = Math.max(officeH, Math.ceil(ah / scale));
   return { scale, cw, ch, ox: Math.floor((cw - officeW) / 2), oy: Math.floor((ch - officeH) / 2) };
 }
+
+/** Canvas size for an explicit (zoomed-in) scale: the canvas just covers the window. */
+export function layoutForScale(availW: number, availH: number, scale: number): { scale: number; cw: number; ch: number } {
+  const s = Math.max(0.1, scale);
+  return { scale: s, cw: Math.ceil(Math.max(1, availW) / s), ch: Math.ceil(Math.max(1, availH) / s) };
+}

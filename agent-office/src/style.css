@@ -64,6 +64,7 @@ body {
 #office {
   display: block;
   image-rendering: pixelated;
+  touch-action: none; /* dragging pans the camera on touch screens */
 }
 
 .tooltip {
@@ -370,6 +371,11 @@ body {
   align-items: center;
   gap: 6px;
   margin-bottom: 10px;
+}
+
+.drawer .hint {
+  margin: 0 0 10px;
+  font-size: 11px;
 }
 
 .ctl-row:last-child {

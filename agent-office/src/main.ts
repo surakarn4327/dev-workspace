@@ -1,11 +1,10 @@
 import './style.css';
 import { OfficeStore } from './core/state.ts';
 import { ROSTER } from './core/roster.ts';
-import { computeLayout } from './core/layout.ts';
-import { W, H } from './core/world.ts';
 import { OfficeView } from './render/view.ts';
 import { MockOffice } from './sim/simulator.ts';
 import { el } from './ui/dom.ts';
+import { mountCamera } from './ui/camera-controls.ts';
 import { mountDialog } from './ui/dialog.ts';
 import { mountPanels } from './ui/panels.ts';
 
@@ -25,26 +24,13 @@ view.start();
 // Handy for poking at the live office from the browser console in dev.
 if (import.meta.env.DEV) Object.assign(window, { office: { source, store, view } });
 
-// ---------- canvas sizing: the scenery fills the whole window, the office sits in the middle ----------
+// ---------- window sizing, zoom and camera ----------
 
 const stage = el<HTMLDivElement>('#stage');
 const area = el<HTMLElement>('#stage-area');
-let lastSize = '';
-function fit(): void {
-  const l = computeLayout(area.clientWidth, area.clientHeight, W, H);
-  const key = `${l.cw}x${l.ch}`;
-  if (key !== lastSize) {
-    lastSize = key;
-    view.resize(l.cw, l.ch);
-  }
-  canvas.style.width = `${Math.round(l.cw * l.scale)}px`;
-  canvas.style.height = `${Math.round(l.ch * l.scale)}px`;
-  document.documentElement.style.setProperty('--scale', l.scale.toFixed(3));
-}
-new ResizeObserver(fit).observe(area);
-window.addEventListener('resize', fit);
-fit();
-
+const camera = mountCamera(view, canvas, area);
+new ResizeObserver(camera.fit).observe(area);
+window.addEventListener('resize', camera.fit);
 // ---------- details drawer ----------
 
 const drawer = el<HTMLElement>('#drawer');
@@ -88,6 +74,7 @@ canvas.addEventListener('mouseleave', () => {
   tooltip.classList.add('hidden');
 });
 canvas.addEventListener('click', (ev) => {
+  if (camera.consumeDrag()) return; // that click was the end of a drag
   const p = logical(ev);
   const id = view.pick(p.x, p.y);
   view.selected = id;

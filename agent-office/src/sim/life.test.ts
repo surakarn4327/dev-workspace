@@ -92,3 +92,27 @@ test('starting a job while people are on a break still completes the job', async
   assert.equal(done, true, 'the job never finished');
   office.dispose();
 });
+
+test('when an agent crashes, the head goes to the server room, restarts it and comes back; the agent recovers', async () => {
+  const office = new MockOffice({ timeScale: 6000, ambient: false });
+  const events: OfficeEvent[] = [];
+  office.subscribe((e) => events.push(e));
+  assert.equal(office.injectError(), true);
+  await new Promise((r) => setTimeout(r, 400));
+  const crashed = events.find((e) => e.type === 'agent.activity' && e.activity === 'error');
+  assert.ok(crashed && crashed.type === 'agent.activity', 'nobody crashed');
+  const who = crashed.agent;
+  const head = who.startsWith('research') ? 'research-head' : 'prod-head';
+  const headWalks = walksOf(events, head);
+  assert.deepEqual(headWalks, ['server:0', `desk:${head}`], 'the head should go to the server room, then back to the desk');
+  const staffActs = events
+    .filter((e) => e.type === 'agent.activity' && e.agent === who)
+    .map((e) => (e as { activity: string }).activity);
+  assert.equal(staffActs[0], 'error');
+  assert.notEqual(staffActs[staffActs.length - 1], 'error', 'the agent never recovered');
+  assert.ok(
+    events.some((e) => e.type === 'agent.activity' && e.agent === head && e.activity === 'typing' && e.note === 'Restarting the tool server'),
+    'the head never restarted the server',
+  );
+  office.dispose();
+});

@@ -24,6 +24,7 @@ import {
   seatPoint,
   standPoint,
 } from '../core/world.ts';
+import { clampAxis } from '../core/camera.ts';
 import { BOARD, CLOCK, HOLES, buildBackground } from './background.ts';
 import type { Dir, Pose } from './characters.ts';
 import { getSprite } from './characters.ts';
@@ -93,11 +94,19 @@ export class OfficeView {
   /** Where the fixed office rectangle sits inside the (window-sized) canvas. */
   ox = 0;
   oy = 0;
+  /** Camera centre in office coordinates; it can only move over the real building. */
+  camX = W / 2;
+  camY = H / 2;
 
   private canvas: HTMLCanvasElement;
   private g: CanvasRenderingContext2D;
   private store: OfficeStore;
   private bg: HTMLCanvasElement;
+  /** Where the office sits inside the static background texture. */
+  private texOx = 0;
+  private texOy = 0;
+  private cw = W;
+  private ch = H;
   private agents = {} as Record<AgentId, AgentView>;
   private wallItems: DrawItem[] = [];
   private particles = new Particles();
@@ -136,16 +145,36 @@ export class OfficeView {
     this.canvas.width = cw;
     this.canvas.height = ch;
     this.g.imageSmoothingEnabled = false; // resizing resets context state
-    this.ox = Math.floor((cw - W) / 2);
-    this.oy = Math.floor((ch - H) / 2);
-    this.bg = buildBackground(cw, ch, this.ox, this.oy);
+    this.cw = cw;
+    this.ch = ch;
+    // The scenery texture covers the whole building, plus whatever shows beside it when the
+    // window is bigger than the building. It never changes while panning.
+    const tw = Math.max(cw, W);
+    const th = Math.max(ch, H);
+    this.texOx = Math.floor((tw - W) / 2);
+    this.texOy = Math.floor((th - H) / 2);
+    this.bg = buildBackground(tw, th, this.texOx, this.texOy);
+    this.applyCamera();
   }
 
-  /** Repaint the static scenery (needed when something it contains changes, like the wall style). */
-  rebuild(): void {
-    this.bg = buildBackground(this.canvas.width, this.canvas.height, this.ox, this.oy);
+  /** Keep the camera over the real building and work out where the office is drawn. */
+  private applyCamera(): void {
+    this.camX = clampAxis(this.camX, this.cw, W);
+    this.camY = clampAxis(this.camY, this.ch, H);
+    this.ox = Math.floor(this.cw / 2 - this.camX);
+    this.oy = Math.floor(this.ch / 2 - this.camY);
   }
 
+  setCamera(x: number, y: number): void {
+    this.camX = x;
+    this.camY = y;
+    this.applyCamera();
+  }
+
+  /** Move the camera by a number of office pixels. */
+  panBy(dx: number, dy: number): void {
+    this.setCamera(this.camX + dx, this.camY + dy);
+  }
   /** Canvas pixels -> office coordinates. */
   toOffice(x: number, y: number): { x: number; y: number } {
     return { x: x - this.ox, y: y - this.oy };
@@ -307,7 +336,7 @@ export class OfficeView {
     if (this.confetti > 0) {
       this.confetti -= dt;
       // across the whole window, not just the fixed office
-      this.particles.confetti(rand(-this.ox + 20, W + this.ox - 20), -this.oy + 30, 2);
+      this.particles.confetti(rand(-this.ox + 20, this.cw - this.ox - 20), -this.oy + 30, 2);
     }
     this.particles.update(dt);
   }
@@ -451,7 +480,7 @@ export class OfficeView {
 
   private draw(): void {
     const g = this.g;
-    g.drawImage(this.bg, 0, 0);
+    g.drawImage(this.bg, this.ox - this.texOx, this.oy - this.texOy);
     g.save();
     g.translate(this.ox, this.oy);
     this.drawWall();
