@@ -172,8 +172,16 @@ export function drawPantryTable(g: CanvasRenderingContext2D, r: Rect): void {
 
 // ---------- server room ----------
 
-/** A server rack whose LEDs blink faster the busier the office is. */
-export function drawRack(g: CanvasRenderingContext2D, r: Rect, t: number, load: number, error: boolean, seed: number): void {
+/** What the real machinery is doing, as a rack shows it. */
+export interface RackNet {
+  /** 0..1: a model call is (or just was) running. */
+  traffic: number;
+  /** The free AI quota is used up: the racks overheat. */
+  hot: boolean;
+}
+
+/** A server rack whose LEDs blink faster the busier the office is, and flicker with every real model call. */
+export function drawRack(g: CanvasRenderingContext2D, r: Rect, t: number, load: number, error: boolean, seed: number, net: RackNet = { traffic: 0, hot: false }): void {
   const { x, y, w, h } = r;
   shadow(g, x + 1, y + h, w, 3);
   rect(g, x, y, w, h, '#1f2430');
@@ -185,10 +193,11 @@ export function drawRack(g: CanvasRenderingContext2D, r: Rect, t: number, load: 
     rect(g, x + 1, uy, w - 2, 1, '#3c455c');
     rect(g, x + 10, uy + 2, 4, 1, '#151a24');
     for (let k = 0; k < 3; k++) {
-      const phase = Math.floor(t * (1.5 + load * 3.5) + i * 3 + k * 5 + seed * 7);
-      const on = load > 0 ? phase % 3 !== 0 : phase % 11 === 0 || k === 0;
+      const phase = Math.floor(t * (1.5 + load * 3.5 + net.traffic * 6) + i * 3 + k * 5 + seed * 7);
+      const on = load > 0 || net.traffic > 0 ? phase % 3 !== 0 : phase % 11 === 0 || k === 0;
       let color = on ? '#2fb36a' : '#17402a';
-      if (k === 1 && on && load > 1) color = '#f2c14e';
+      if (k === 1 && on && (load > 1 || net.traffic > 0.4)) color = '#f2c14e';
+      if (net.hot) color = (Math.floor(t * 3) + i + k + seed) % 2 ? '#f2c14e' : '#7a4a12'; // overheating: amber flicker
       if (error && ((i + seed) % 3 === 0 || k === 2)) color = Math.floor(t * 4) % 2 ? '#e5484d' : '#6b1d21';
       rect(g, x + 2 + k * 3, uy + 1, 2, 2, color);
     }

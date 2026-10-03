@@ -5,6 +5,7 @@
 import { choice } from '../core/brain.ts';
 import type { BrainWait, Exchange, IntakeBrain } from '../core/brain.ts';
 import type { JobFile } from '../core/job-file.ts';
+import type { InfraFeed } from '../ai/infra.ts';
 import { isAffirmative, isBareRevise } from '../core/intent.ts';
 import { msg, raw, tr } from '../core/i18n.ts';
 import type { Msg } from '../core/i18n.ts';
@@ -38,6 +39,8 @@ export interface MockOptions {
   brain?: () => IntakeBrain;
   /** How long a brain call may take before the chat box shows "thinking" (default 250 ms; scripted brains never reach it). */
   thinkDelayMs?: number;
+  /** The real machinery behind the agents (model and tool calls, quota, helper). Re-emitted as infra events. */
+  infra?: InfraFeed;
 }
 
 /** Everyone who may wander off between jobs (the owner stays reachable, the courier works the queue). */
@@ -107,6 +110,8 @@ export class MockOffice implements OfficeSource, DemoControls {
   private ambient: boolean;
   private makeBrain: () => IntakeBrain;
   private thinkDelayMs: number;
+  private infraFeed?: InfraFeed;
+  private stopInfra: (() => void) | null = null;
   /** Aborted on reset/cancel so a model call in flight stops instead of finishing for nobody. */
   private abort = new AbortController();
   /** Ids of chat boxes currently showing 'thinking' (the close button cancels through these). */
@@ -122,6 +127,8 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.ambient = opts.ambient ?? true;
     this.makeBrain = opts.brain ?? (() => new ScriptedBrain());
     this.thinkDelayMs = opts.thinkDelayMs ?? 250;
+    this.infraFeed = opts.infra;
+    this.stopInfra = opts.infra?.subscribe((infra) => this.emit({ type: 'infra', infra })) ?? null;
     this.initAgents();
     void this.courierLoop(this.runId);
     if (this.ambient) void this.ambientLoop(this.runId);
@@ -131,6 +138,8 @@ export class MockOffice implements OfficeSource, DemoControls {
 
   subscribe(listener: OfficeListener): () => void {
     this.listeners.add(listener);
+    // A newcomer starts with the machinery's state as it is now (a job's events only ever change it).
+    if (this.infraFeed) listener({ type: 'infra', infra: this.infraFeed.snapshot() });
     return () => this.listeners.delete(listener);
   }
 
@@ -234,6 +243,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.occupied.clear();
     this.initAgents();
     this.emit({ type: 'sim.reset' });
+    if (this.infraFeed) this.emit({ type: 'infra', infra: this.infraFeed.snapshot() }); // a reset clears the picture, not the machinery
     void this.courierLoop(this.runId);
     if (this.ambient) void this.ambientLoop(this.runId);
   }
@@ -252,6 +262,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.kick();
     this.wakeRecall();
     this.lanes.clear();
+    this.stopInfra?.();
     this.listeners.clear();
   }
 

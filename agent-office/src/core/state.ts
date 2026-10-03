@@ -1,8 +1,8 @@
 import { msg, t, tr } from './i18n.ts';
 import type { Msg } from './i18n.ts';
 import { ROSTER, nameOf } from './roster.ts';
-import type { Activity, AgentId, ChatChoice, Doc, OfficeEvent, PlaceId, Stage } from './types.ts';
-import { AGENT_IDS } from './types.ts';
+import type { Activity, AgentId, ChatChoice, Doc, Infra, OfficeEvent, PlaceId, Stage } from './types.ts';
+import { AGENT_IDS, IDLE_INFRA } from './types.ts';
 
 export interface AgentState {
   activity: Activity;
@@ -41,6 +41,8 @@ export interface OfficeState {
   chat: ChatPrompt | null;
   /** Finished jobs filed on the archive shelves. */
   archived: number;
+  /** The machinery behind the agents: drawn by the server room. */
+  infra: Infra;
 }
 
 function freshAgents(): Record<AgentId, AgentState> {
@@ -61,6 +63,7 @@ export function freshState(): OfficeState {
     log: [],
     chat: null,
     archived: 0,
+    infra: { ...IDLE_INFRA },
   };
 }
 
@@ -145,6 +148,9 @@ export class OfficeStore {
       }
       case 'chat.closed':
         if (s.chat?.id === e.id) s.chat = null;
+        break;
+      case 'infra':
+        s.infra = { ...e.infra };
         break;
     }
     for (const fn of this.listeners) fn();

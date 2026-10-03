@@ -42,6 +42,7 @@ import {
 } from './rooms.ts';
 import type { BubbleSpec, IconName } from './icons.ts';
 import { drawBubble } from './icons.ts';
+import { drawServerWall, fanSpeed } from './infra.ts';
 import { Particles } from './particles.ts';
 
 const STEP = 1 / 60;
@@ -111,6 +112,13 @@ export class OfficeView {
   private wallItems: DrawItem[] = [];
   private particles = new Particles();
   private time = 0;
+  // The real machinery, as the server room shows it. The glows fade out over a moment after a call ends, so a
+  // short call is still seen; the fan speed eases and its angle is integrated so a change of speed is smooth.
+  private modelGlow = 0;
+  private toolGlow = 0;
+  private fanTurnsPerSecond = 0.5;
+  private fanAngle = 0;
+  private smokeIn = 0;
   private last = 0;
   private acc = 0;
   private confetti = 0;
@@ -333,6 +341,7 @@ export class OfficeView {
 
   private update(dt: number): void {
     this.time += dt;
+    this.updateInfra(dt);
     for (const id of AGENT_IDS) this.updateAgent(this.agents[id], dt);
     if (this.confetti > 0) {
       this.confetti -= dt;
@@ -340,6 +349,21 @@ export class OfficeView {
       this.particles.confetti(rand(-this.ox + 20, this.cw - this.ox - 20), -this.oy + 30, 2);
     }
     this.particles.update(dt);
+  }
+
+  private updateInfra(dt: number): void {
+    const { infra } = this.store.state;
+    this.modelGlow = infra.model > 0 ? 1 : Math.max(0, this.modelGlow - dt / 0.9);
+    this.toolGlow = infra.tools > 0 ? 1 : Math.max(0, this.toolGlow - dt / 0.9);
+    this.fanTurnsPerSecond += (fanSpeed(this.modelGlow, infra.quota) - this.fanTurnsPerSecond) * Math.min(1, dt * 3);
+    this.fanAngle += this.fanTurnsPerSecond * Math.PI * 2 * dt;
+    if (infra.quota) {
+      this.smokeIn -= dt;
+      if (this.smokeIn <= 0) {
+        this.smokeIn = 0.28;
+        for (const p of PROPS) if (p.kind === 'rack') this.particles.smoke(p.rect.x + 4 + Math.random() * 8, p.rect.y - 1); // the racks smoke
+      }
+    }
   }
 
   private updateAgent(a: AgentView, dt: number): void {
@@ -534,7 +558,7 @@ export class OfficeView {
             case 'stall':
               return drawStall(g, rc, inRestroom(stall === 0 ? 'restroom:0' : 'restroom:1'));
             case 'rack':
-              return drawRack(g, rc, this.time, load, error, rack);
+              return drawRack(g, rc, this.time, load, error, rack, { traffic: this.modelGlow, hot: s.infra.quota });
             case 'shelf':
               // the right-hand unit fills first as jobs get filed; the left one overflows later
               return drawShelf(g, rc, shelf === 0 ? Math.min(16, 8 + Math.max(0, archived - 12)) : Math.min(16, 4 + Math.min(archived, 12)));
@@ -678,6 +702,16 @@ export class OfficeView {
     hand(now.getMinutes() * (Math.PI / 30), 3, '#1d1b2e');
     hand(now.getSeconds() * (Math.PI / 30), 3, '#e5484d');
 
+    // the server room wall shows the real machinery: fan, warning beacon and the link to the search helper
+    drawServerWall(g, {
+      t: this.time,
+      fanAngle: this.fanAngle,
+      modelGlow: this.modelGlow,
+      toolGlow: this.toolGlow,
+      hot: s.infra.quota,
+      helper: s.infra.helper,
+    });
+
     // door lights: the restroom shows when it is occupied, the server room shows the office's health
     for (const d of DOORS) {
       if (d.room === 'restroom') {
@@ -693,7 +727,8 @@ export class OfficeView {
         const bad = AGENT_IDS.some((id) => s.agents[id].activity === 'error');
         g.fillStyle = '#1d1b2e';
         g.fillRect(d.cx + 8, d.y + 1, 4, 4);
-        g.fillStyle = bad ? (Math.floor(this.time * 4) % 2 ? '#e5484d' : '#6b1d21') : '#2fb36a';
+        const hot = s.infra.quota;
+        g.fillStyle = bad ? (Math.floor(this.time * 4) % 2 ? '#e5484d' : '#6b1d21') : hot ? (Math.floor(this.time * 2) % 2 ? '#f2c14e' : '#5a4410') : '#2fb36a';
         g.fillRect(d.cx + 9, d.y + 2, 2, 2);
       }
     }

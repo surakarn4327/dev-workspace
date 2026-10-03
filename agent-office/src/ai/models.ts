@@ -31,7 +31,7 @@ export interface Models {
 export function createModels(
   config: Record<AgentId, string | null> = MODEL_FOR,
   getKey: () => string | null = () => loadKey(),
-  opts: { fetchFn?: typeof fetch; limiter?: RateLimiter } = {},
+  opts: { fetchFn?: typeof fetch; limiter?: RateLimiter; meter?: (client: ModelClient) => ModelClient } = {},
 ): Models {
   const limiter = opts.limiter ?? new RateLimiter();
   const cache = new Map<string, ModelClient>();
@@ -42,7 +42,9 @@ export function createModels(
       if (!model) throw new Error(`${agent} does not use a model`);
       let client = cache.get(model);
       if (!client) {
-        client = limitClient(createGeminiClient({ model, getKey, fetchFn: opts.fetchFn }), limiter);
+        // The meter sits inside the limiter, so only calls that are really on the wire are counted as running.
+        const raw = createGeminiClient({ model, getKey, fetchFn: opts.fetchFn });
+        client = limitClient(opts.meter ? opts.meter(raw) : raw, limiter);
         cache.set(model, client);
       }
       return client;

@@ -82,6 +82,24 @@ export interface ChatChoice {
 /** The user's reply: a pressed choice button, or free text they typed (in any language). */
 export type ChatReply = { choice: string } | { text: string };
 
+/**
+ * The real machinery behind the agents, as the server room shows it: calls to the AI model and to the search
+ * helper that are in flight right now, whether the free quota is used up for the moment, and the helper's health.
+ */
+export interface Infra {
+  /** Model calls running right now. */
+  model: number;
+  /** Tool calls (web search, news, page reading) running right now. */
+  tools: number;
+  /** The free AI quota is used up: calls wait. */
+  quota: boolean;
+  helper: HelperKind;
+}
+
+export type HelperKind = 'unknown' | 'up' | 'degraded' | 'down';
+
+export const IDLE_INFRA: Infra = { model: 0, tools: 0, quota: false, helper: 'unknown' };
+
 // All words travel as `Msg` (dictionary key + params), never as ready-made sentences, so the UI
 // picks the language at display time. User-typed text is the one exception (`raw`, or `title`).
 export type OfficeEvent =
@@ -113,7 +131,9 @@ export type OfficeEvent =
   // The user has answered and the agent is working out the reply (a real model can take seconds). The chat
   // box stays open showing that, without an answer box, and its close button cancels. `wait: 'quota'` means
   // the free AI quota is used up for the moment. The next chat.ask (or a chat.closed) replaces it.
-  | { type: 'chat.thinking'; id: string; from: AgentId; wait?: 'quota' };
+  | { type: 'chat.thinking'; id: string; from: AgentId; wait?: 'quota' }
+  // A snapshot of the machinery behind the agents (see Infra). Sent whenever any part of it changes.
+  | { type: 'infra'; infra: Infra };
 
 export type OfficeListener = (event: OfficeEvent) => void;
 
