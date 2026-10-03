@@ -10,6 +10,7 @@ import { el, h } from './dom.ts';
 
 const TYPE_MS = 16;
 
+/** The ✕ cancels: the source drops the question (or abandons the job), nobody keeps waiting. */
 export function mountDialog(store: OfficeStore, source: OfficeSource): void {
   const root = el<HTMLDivElement>('#dialog');
   const portrait = el<HTMLCanvasElement>('#dlg-portrait');
@@ -105,6 +106,10 @@ export function mountDialog(store: OfficeStore, source: OfficeSource): void {
     const chat = store.state.chat;
     if (chat && chat.id !== currentId) open();
     else if (!chat && currentId) close();
+  });
+
+  el<HTMLButtonElement>('#dlg-close').addEventListener('click', () => {
+    if (currentId) source.cancel(currentId);
   });
 
   textEl.addEventListener('click', () => {

@@ -250,7 +250,16 @@ body {
   min-width: 0;
 }
 
+.dialog .dlg-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 1;
+  font-size: 18px;
+}
+
 .dlg-name {
+  padding-right: 36px; /* keep the name clear of the close button */
   color: var(--accent);
   font-weight: 700;
   letter-spacing: 1px;
@@ -294,6 +303,25 @@ body {
   border: 2px solid var(--line);
   color: var(--text);
   font: inherit;
+}
+
+.key-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  background: #0a0814;
+  border: 2px solid var(--line);
+  color: var(--text);
+  font: inherit;
+}
+
+.key-row input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.hint.warn {
+  color: var(--red);
 }
 
 .dlg-form input:focus-visible {
@@ -416,6 +444,27 @@ body {
 .drawer.open {
   transform: none;
   visibility: visible;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drawer-head h2 {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.btn.close {
+  padding: 0 9px;
+  font-size: 18px;
+  line-height: 1.3;
 }
 
 .panel {

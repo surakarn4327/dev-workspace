@@ -78,6 +78,9 @@ export class MockOffice implements OfficeSource {
   private listeners = new Set<OfficeListener>();
   private runId = 0;
   private running = false;
+  /** The owner's first question is open but the user has not answered yet (so no job has started). */
+  private intake = false;
+  private startSeq = 0;
   private jobSeq = 0;
   private chatSeq = 0;
   private docSeq = 0;
@@ -128,6 +131,20 @@ export class MockOffice implements OfficeSource {
     this.resolveAnswer(chatId, answer);
   }
 
+  cancel(chatId: string): void {
+    const p = this.pending.get(chatId);
+    if (!p) return;
+    if (this.running) {
+      this.reset(); // a job is under way: abandon it, the office goes back to idle
+      return;
+    }
+    // The owner's first question, before any job started: just drop it so a new one can be opened.
+    this.pending.delete(chatId);
+    this.intake = false;
+    this.emit({ type: 'chat.closed', id: chatId });
+    p.reject(new Cancelled());
+  }
+
   private resolveAnswer(chatId: string, answer: Answer): void {
     const p = this.pending.get(chatId);
     if (!p) return;
@@ -147,23 +164,31 @@ export class MockOffice implements OfficeSource {
     this.timeScale = Math.max(0.1, scale);
   }
 
+  /**
+   * Opens the owner's first question. The job only counts as started (running, steps, coffee-break
+   * recall) once the user sends their first answer; until then this can be called again harmlessly.
+   */
   start(): void {
-    if (this.running) return;
-    this.running = true;
-    this.wakeRecall(); // anyone on a coffee break heads back to their desk
+    if (this.running || this.intake) return;
+    this.intake = true;
     const run = this.runId;
+    const mine = ++this.startSeq; // a cancelled first question must not clear the flags of the next start
     this.runJob(run)
       .catch((err: unknown) => {
         if (!(err instanceof Cancelled)) console.error('[MockOffice] job failed', err);
       })
       .finally(() => {
-        if (run === this.runId) this.running = false;
+        if (run === this.runId && mine === this.startSeq) {
+          this.running = false;
+          this.intake = false;
+        }
       });
   }
 
   reset(): void {
     this.runId++;
     this.running = false;
+    this.intake = false;
     this.rejectNextReview = false;
     for (const p of this.pending.values()) p.reject(new Cancelled());
     this.pending.clear();
@@ -186,6 +211,7 @@ export class MockOffice implements OfficeSource {
   dispose(): void {
     this.runId++;
     this.running = false;
+    this.intake = false;
     for (const p of this.pending.values()) p.reject(new Cancelled());
     this.pending.clear();
     for (const q of this.queue) q.reject(new Cancelled());
@@ -475,12 +501,15 @@ export class MockOffice implements OfficeSource {
   private async runJob(run: number): Promise<void> {
     const jobId = `job-${++this.jobSeq}`;
 
-    // 1. Brief: the user tells the owner what to produce.
-    this.stage(jobId, 'brief');
+    // 1. Brief: the user tells the owner what to produce. Nothing has started until they send this answer.
     const idea = await this.ask('owner', msg('ask.idea'), {
       placeholder: msg('ask.idea.ph'),
       auto: msg('auto.idea'),
     });
+    this.intake = false;
+    this.running = true;
+    this.wakeRecall(); // anyone on a coffee break heads back to their desk
+    this.stage(jobId, 'brief');
     const title = shorten(idea.text);
     this.emit({ type: 'job.created', jobId, title });
     const audience = await this.ask('owner', msg('ask.audience', { title }), {

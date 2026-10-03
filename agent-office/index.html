@@ -16,6 +16,7 @@
           <div id="tooltip" class="tooltip hidden"></div>
 
           <div id="dialog" class="dialog hidden" role="dialog" aria-live="polite">
+            <button id="dlg-close" class="btn close dlg-close" type="button" data-i18n-aria="ui.close">&times;</button>
             <canvas id="dlg-portrait" class="portrait"></canvas>
             <div class="dlg-main">
               <div class="dlg-name" id="dlg-name"></div>
@@ -42,6 +43,10 @@
         </div>
 
         <aside class="drawer" id="drawer" data-i18n-aria="drawer.aria">
+          <div class="drawer-head">
+            <h2 data-i18n="hud.menu"></h2>
+            <button class="btn close" type="button" data-close data-i18n-aria="ui.close">&times;</button>
+          </div>
           <section class="panel" data-i18n-aria="controls.title">
             <h2 data-i18n="controls.title"></h2>
             <div class="ctl-row" role="group" data-i18n-aria="lang.aria">
@@ -74,7 +79,25 @@
               <button id="btn-jam" class="btn" type="button" data-i18n-title="try.jam.title" data-i18n="try.jam"></button>
             </div>
           </section>
-          <section class="panel" id="inspector"></section>
+          <section class="panel" data-i18n-aria="ai.title">
+            <h2 data-i18n="ai.title"></h2>
+            <div class="ctl-row key-row">
+              <input
+                id="ai-key"
+                type="password"
+                autocomplete="off"
+                spellcheck="false"
+                data-i18n-placeholder="ai.keyPlaceholder"
+                data-i18n-aria="ai.keyLabel"
+              />
+            </div>
+            <div class="ctl-row">
+              <button id="ai-save" class="btn primary" type="button" data-i18n="ai.save"></button>
+              <button id="ai-remove" class="btn" type="button" data-i18n="ai.remove"></button>
+            </div>
+            <p id="ai-status" class="hint" aria-live="polite"></p>
+            <p class="hint" data-i18n="ai.hint"></p>
+          </section>
           <section class="panel">
             <h2 data-i18n="queue.title"></h2>
             <ul id="queue" class="queue"></ul>
@@ -84,6 +107,15 @@
             <ul id="feed" class="feed"></ul>
           </section>
           <p class="hint credit" data-i18n="credit.font"></p>
+        </aside>
+
+        <!-- Shown only when a character is clicked; the menu and this panel never open together -->
+        <aside class="drawer" id="char-panel" data-i18n-aria="inspector.title">
+          <div class="drawer-head">
+            <h2 data-i18n="inspector.title"></h2>
+            <button class="btn close" type="button" data-close data-i18n-aria="ui.close">&times;</button>
+          </div>
+          <section class="panel" id="inspector"></section>
         </aside>
       </main>
     </div>

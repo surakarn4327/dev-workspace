@@ -10,10 +10,14 @@ const t = setupDom();
 const doc = t.window.document;
 
 const answers: { id: string; reply: ChatReply }[] = [];
+const cancelled: string[] = [];
 const source: OfficeSource = {
   subscribe: () => () => {},
   answer: (id, reply) => {
     answers.push({ id, reply });
+  },
+  cancel: (id) => {
+    cancelled.push(id);
   },
 };
 const store = new OfficeStore();
@@ -55,6 +59,18 @@ test('typing an answer and pressing send answers the question and ignores empty 
 test('the dialog closes when the question is closed', () => {
   store.apply({ type: 'chat.closed', id: 'c1' });
   assert.equal(dialog.classList.contains('hidden'), true);
+});
+
+test('the X cancels the question instead of answering it', () => {
+  const before = answers.length;
+  store.apply({ type: 'chat.ask', id: 'c9', from: 'owner', text: raw('Still there?') });
+  (doc.getElementById('dlg-close') as HTMLButtonElement).click();
+  assert.deepEqual(cancelled, ['c9'], 'the source is told to cancel');
+  assert.equal(answers.length, before, 'closing is not an answer');
+  store.apply({ type: 'chat.closed', id: 'c9' }); // what the source sends back
+  assert.equal(dialog.classList.contains('hidden'), true);
+  (doc.getElementById('dlg-close') as HTMLButtonElement).click();
+  assert.deepEqual(cancelled, ['c9'], 'with no question open the X does nothing');
 });
 
 test('choice buttons are shown, locked while typing, and answer when clicked', async () => {

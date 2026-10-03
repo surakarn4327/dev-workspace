@@ -7,6 +7,7 @@ import { MockOffice } from './sim/simulator.ts';
 import { el } from './ui/dom.ts';
 import { mountCamera } from './ui/camera-controls.ts';
 import { mountDialog } from './ui/dialog.ts';
+import { mountAiSettings } from './ui/ai-settings.ts';
 import { applyStatic, mountLanguageSwitch } from './ui/i18n-dom.ts';
 import { mountPanels } from './ui/panels.ts';
 
@@ -14,6 +15,7 @@ import { mountPanels } from './ui/panels.ts';
 initLang();
 applyStatic();
 mountLanguageSwitch();
+const aiSettings = mountAiSettings();
 
 const source = new MockOffice();
 const store = new OfficeStore();
@@ -40,7 +42,11 @@ new ResizeObserver(camera.fit).observe(area);
 window.addEventListener('resize', camera.fit);
 // ---------- details drawer ----------
 
+// Two side panels share the right edge and never open together: the Menu (controls, AI settings, queue,
+// feed) and the character panel (only for the character you clicked). Each has a close button.
 const drawer = el<HTMLElement>('#drawer');
+const charPanel = el<HTMLElement>('#char-panel');
+const sidePanels = [drawer, charPanel];
 const panelsBtn = el<HTMLButtonElement>('#btn-panels');
 // The HUD grows taller when its step row wraps (long names, e.g. Thai at 24px). Keep the drawer below it
 // whenever the two overlap sideways, instead of letting the HUD cover the drawer's top.
@@ -49,17 +55,28 @@ function placeDrawer(): void {
   const h = hudLeft.getBoundingClientRect();
   const area = el<HTMLElement>('#stage-area').getBoundingClientRect();
   const drawerLeft = area.right - 8 - Math.min(380, area.width - 16);
-  drawer.style.top = h.right > drawerLeft ? `${Math.ceil(h.bottom - area.top + 8)}px` : '';
+  for (const p of sidePanels) p.style.top = h.right > drawerLeft ? `${Math.ceil(h.bottom - area.top + 8)}px` : '';
 }
 new ResizeObserver(placeDrawer).observe(hudLeft);
 window.addEventListener('resize', placeDrawer);
-function setDrawer(open: boolean): void {
-  drawer.classList.toggle('open', open);
-  panelsBtn.setAttribute('aria-expanded', String(open));
+/** Show one side panel (or none). Closing the character panel also deselects the character. */
+function showPanel(which: 'menu' | 'char' | null): void {
+  drawer.classList.toggle('open', which === 'menu');
+  charPanel.classList.toggle('open', which === 'char');
+  panelsBtn.setAttribute('aria-expanded', String(which === 'menu'));
+  if (which !== 'char' && view.selected) {
+    view.selected = null;
+    panels.refresh();
+  }
 }
-panelsBtn.addEventListener('click', () => setDrawer(!drawer.classList.contains('open')));
+const openPanel = (): 'menu' | 'char' | null =>
+  drawer.classList.contains('open') ? 'menu' : charPanel.classList.contains('open') ? 'char' : null;
+panelsBtn.addEventListener('click', () => showPanel(openPanel() === 'menu' ? null : 'menu'));
+for (const p of sidePanels) {
+  p.querySelector<HTMLButtonElement>('[data-close]')?.addEventListener('click', () => showPanel(null));
+}
 window.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape' && drawer.classList.contains('open')) setDrawer(false);
+  if (ev.key === 'Escape' && openPanel()) showPanel(null);
 });
 
 // ---------- pointer: hover tooltip + click to select ----------
@@ -97,8 +114,11 @@ canvas.addEventListener('click', (ev) => {
   const id = view.pick(p.x, p.y);
   view.selected = id;
   panels.refresh();
-  if (id) setDrawer(true); // show the inspector for whoever you clicked
-  // Clicking the owner when nothing is running starts a job, like talking to an NPC.
+  // Show only the character panel for whoever you clicked; clicking empty floor closes it (the menu stays).
+  if (id) showPanel('char');
+  else if (openPanel() === 'char') showPanel(null);
+  // Clicking the owner when nothing is running opens his first question, like talking to an NPC. The job
+  // itself starts only once you send an answer; closing the box (✕) cancels it.
   if (id === 'owner' && !source.isRunning) source.start();
 });
 
@@ -114,6 +134,7 @@ function syncControls(): void {
 store.subscribe(syncControls);
 onLangChange(() => {
   applyStatic();
+  aiSettings.refresh();
   syncControls();
 });
 // The job's "running" flag flips without a store event when it finishes.

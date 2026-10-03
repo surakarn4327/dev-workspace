@@ -118,4 +118,9 @@ export interface OfficeSource {
   subscribe(listener: OfficeListener): () => void;
   /** The user's reply to a `chat.ask` event. */
   answer(chatId: string, reply: ChatReply): void;
+  /**
+   * The user closed the chat box (✕) instead of answering: cancel, nothing keeps waiting. Before a job has
+   * started that just drops the question; mid-job it abandons the job.
+   */
+  cancel(chatId: string): void;
 }

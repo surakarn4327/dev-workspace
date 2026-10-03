@@ -75,6 +75,78 @@ test('the user is asked for the brief, approval and acceptance', async () => {
   assert.equal(answered, asks.length);
 });
 
+test('opening the owner\'s question does not start a job until the user sends an answer', async () => {
+  const office = new MockOffice({ timeScale: 4000, ambient: false });
+  const events: OfficeEvent[] = [];
+  office.subscribe((e) => events.push(e));
+  office.start();
+  await new Promise((r) => setTimeout(r, 100));
+  const ask = events.find((e) => e.type === 'chat.ask');
+  assert.equal(ask?.type === 'chat.ask' && ask.from, 'owner');
+  assert.equal(office.isRunning, false, 'still waiting for the user');
+  assert.equal(events.some((e) => e.type === 'job.stage' || e.type === 'job.created'), false, 'no job yet');
+  office.start(); // pressing Start again must not open a second question
+  assert.equal(events.filter((e) => e.type === 'chat.ask').length, 1);
+
+  office.answer(ask?.type === 'chat.ask' ? ask.id : '', { text: 'A weekly newsletter' });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(office.isRunning, true);
+  const first = events.find((e) => e.type === 'job.stage');
+  assert.equal(first?.type === 'job.stage' && first.stage, 'brief');
+  assert.equal(events.some((e) => e.type === 'job.created'), true);
+  office.reset();
+  office.dispose();
+});
+
+test('cancelling the first question drops it without starting anything, and a new one can be opened', async () => {
+  const office = new MockOffice({ timeScale: 4000, ambient: false });
+  const events: OfficeEvent[] = [];
+  office.subscribe((e) => events.push(e));
+  office.start();
+  await new Promise((r) => setTimeout(r, 50));
+  const ask = events.find((e) => e.type === 'chat.ask');
+  office.cancel(ask?.type === 'chat.ask' ? ask.id : '');
+  assert.equal(events.some((e) => e.type === 'chat.closed'), true);
+  assert.equal(events.some((e) => e.type === 'job.stage' || e.type === 'user.say'), false, 'nothing started, nothing answered');
+  assert.equal(office.isRunning, false);
+  office.start(); // opens straight away, no waiting for the old promise to settle
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(events.filter((e) => e.type === 'chat.ask').length, 2);
+  office.start(); // the cancelled run settling later must not have cleared the new question's flag
+  assert.equal(events.filter((e) => e.type === 'chat.ask').length, 2, 'no duplicate question');
+  office.dispose();
+});
+
+test('cancelling a question in the middle of a job abandons the job', async () => {
+  const office = new MockOffice({ timeScale: 4000, ambient: false });
+  const events: OfficeEvent[] = [];
+  office.subscribe((e) => events.push(e));
+  office.start();
+  await new Promise((r) => setTimeout(r, 50));
+  const first = events.find((e) => e.type === 'chat.ask');
+  office.answer(first?.type === 'chat.ask' ? first.id : '', { text: 'A newsletter' });
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(office.isRunning, true);
+  const second = events.filter((e) => e.type === 'chat.ask').at(-1);
+  office.cancel(second?.type === 'chat.ask' ? second.id : '');
+  assert.equal(office.isRunning, false);
+  assert.equal(events.some((e) => e.type === 'sim.reset'), true);
+  office.dispose();
+});
+
+test('resetting while the first question is open lets a new one be opened', async () => {
+  const office = new MockOffice({ timeScale: 4000, ambient: false });
+  const events: OfficeEvent[] = [];
+  office.subscribe((e) => events.push(e));
+  office.start();
+  await new Promise((r) => setTimeout(r, 50));
+  office.reset();
+  office.start();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(events.filter((e) => e.type === 'chat.ask').length, 2, 'a fresh question after the reset');
+  office.dispose();
+});
+
 test('forcing a QA reject sends the work back once, then it passes', async () => {
   const events = await runJob((o) => {
     o.rejectNextReview = true;

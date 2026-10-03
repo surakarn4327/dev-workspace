@@ -8,6 +8,7 @@ const en: Record<string, string> = {
   'hud.start': 'Start job',
   'hud.running': 'Job running...',
   'hud.menu': 'Menu',
+  'ui.close': 'Close',
   'hud.noJob': 'No active job — press Start or click Rex',
   'hud.briefing': 'Talking to Rex about the order...',
   'steps.aria': 'Workflow progress',
@@ -43,6 +44,19 @@ const en: Record<string, string> = {
   'credit.font': 'Thai font: Silver by Poppy Works (CC BY 4.0)',
   'dlg.send': 'Send',
   'dlg.placeholder': 'Type your answer...',
+
+  // ----- AI settings -----
+  'ai.title': 'AI settings',
+  'ai.keyLabel': 'Gemini API key',
+  'ai.keyPlaceholder': 'Paste your Gemini API key',
+  'ai.save': 'Save',
+  'ai.remove': 'Remove key',
+  'ai.status.none': 'No key yet, so the office runs the demo.',
+  'ai.status.saved': 'Key saved. Real agents are not connected yet, so the office still runs the demo.',
+  'ai.status.empty': 'Paste a key first.',
+  'ai.status.failed': 'This browser would not save the key.',
+  'ai.hint':
+    'Get a free key from Google AI Studio (no card needed). The key stays in this browser and is sent only to Google. On the free tier Google may use your data to improve its products, so keep secrets out of jobs.',
 
   // ----- inspector -----
   'inspector.title': 'Inspector',
@@ -215,6 +229,7 @@ const th: Record<string, string> = {
   'hud.start': 'เริ่มงาน',
   'hud.running': 'กำลังทำงาน...',
   'hud.menu': 'เมนู',
+  'ui.close': 'ปิด',
   'hud.noJob': 'ยังไม่มีงาน — กด "เริ่มงาน" หรือคลิกที่ Rex',
   'hud.briefing': 'กำลังคุยกับ Rex เรื่องคำสั่งงาน...',
   'steps.aria': 'ความคืบหน้าของงาน',
@@ -250,6 +265,18 @@ const th: Record<string, string> = {
   'credit.font': 'ฟอนต์ไทย: Silver โดย Poppy Works (CC BY 4.0)',
   'dlg.send': 'ส่ง',
   'dlg.placeholder': 'พิมพ์คำตอบ...',
+
+  'ai.title': 'ตั้งค่า AI',
+  'ai.keyLabel': 'คีย์ API ของ Gemini',
+  'ai.keyPlaceholder': 'วางคีย์ API ของ Gemini ที่นี่',
+  'ai.save': 'บันทึก',
+  'ai.remove': 'ลบคีย์',
+  'ai.status.none': 'ยังไม่มีคีย์ ออฟฟิศจึงเล่นโหมดเดโม',
+  'ai.status.saved': 'บันทึกคีย์แล้ว แต่ยังไม่ได้ต่อเอเจนต์จริง ออฟฟิศจึงยังเล่นโหมดเดโมอยู่',
+  'ai.status.empty': 'วางคีย์ก่อน',
+  'ai.status.failed': 'เบราว์เซอร์นี้บันทึกคีย์ไม่ได้',
+  'ai.hint':
+    'ขอคีย์ฟรีได้ที่ Google AI Studio (ไม่ต้องผูกบัตร) คีย์เก็บในเบราว์เซอร์นี้และส่งให้ Google เท่านั้น ชั้นฟรีของ Google อาจนำข้อมูลไปปรับปรุงผลิตภัณฑ์ จึงไม่ควรใส่ความลับลงในงาน',
 
   'inspector.title': 'ข้อมูลตัวละคร',
   'inspector.hint': 'คลิกตัวละคร เพื่อดูว่ากำลังทำอะไร และบทสนทนาของเขา',
