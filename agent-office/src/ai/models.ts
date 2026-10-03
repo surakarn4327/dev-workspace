@@ -1,9 +1,11 @@
 // Which model each position uses: one line per position, so changing a model never touches the UI.
 // `null` means the position never calls a model (the courier is plain code).
+// All positions share one rate limiter, because the free quota belongs to the user's key, not to a position.
 
 import { loadKey } from '../core/ai-settings.ts';
 import type { AgentId } from '../core/types.ts';
 import { DEFAULT_GEMINI_MODEL, createGeminiClient } from './gemini.ts';
+import { RateLimiter, limitClient } from './limiter.ts';
 import type { ModelClient } from './model-client.ts';
 
 export const MODEL_FOR: Record<AgentId, string | null> = {
@@ -19,21 +21,31 @@ export const MODEL_FOR: Record<AgentId, string | null> = {
   courier: null,
 };
 
-/** A client per position; positions that share a model name share one client. */
+export interface Models {
+  /** The client for a position (paced by the shared limiter). Throws for positions without a model. */
+  clientFor(agent: AgentId): ModelClient;
+  /** Watch this to show "thinking" / "waiting for quota" in the office. */
+  limiter: RateLimiter;
+}
+
 export function createModels(
   config: Record<AgentId, string | null> = MODEL_FOR,
   getKey: () => string | null = () => loadKey(),
-  fetchFn?: typeof fetch,
-): (agent: AgentId) => ModelClient {
+  opts: { fetchFn?: typeof fetch; limiter?: RateLimiter } = {},
+): Models {
+  const limiter = opts.limiter ?? new RateLimiter();
   const cache = new Map<string, ModelClient>();
-  return (agent) => {
-    const model = config[agent];
-    if (!model) throw new Error(`${agent} does not use a model`);
-    let client = cache.get(model);
-    if (!client) {
-      client = createGeminiClient({ model, getKey, fetchFn });
-      cache.set(model, client);
-    }
-    return client;
+  return {
+    limiter,
+    clientFor(agent) {
+      const model = config[agent];
+      if (!model) throw new Error(`${agent} does not use a model`);
+      let client = cache.get(model);
+      if (!client) {
+        client = limitClient(createGeminiClient({ model, getKey, fetchFn: opts.fetchFn }), limiter);
+        cache.set(model, client);
+      }
+      return client;
+    },
   };
 }

@@ -63,6 +63,6 @@ test('every position except the courier has a model, and the courier has none', 
 
 test('positions on the same model share one client, and the courier is refused', () => {
   const models = createModels(MODEL_FOR, () => 'k');
-  assert.equal(models('owner'), models('qa'));
-  assert.throws(() => models('courier'), /does not use a model/);
+  assert.equal(models.clientFor('owner'), models.clientFor('qa'));
+  assert.throws(() => models.clientFor('courier'), /does not use a model/);
 });
