@@ -6,7 +6,8 @@ import type { BrainWait, Exchange, IntakeBrain, OwnerTurn } from '../core/brain.
 import { getLang, msg, raw, tr } from '../core/i18n.ts';
 import type { Lang, Msg } from '../core/i18n.ts';
 import type { RateLimiter } from './limiter.ts';
-import type { ChatTurn, ModelClient } from './model-client.ts';
+import { ModelError } from './model-client.ts';
+import type { ChatTurn, GenerateRequest, GenerateResult, ModelClient } from './model-client.ts';
 import { OPENER, SHORTEN_NUDGE, briefRequest, ownerPrompt, reviseRequest, secretaryPrompt } from './prompts.ts';
 
 export const MAX_QUESTIONS = 6;
@@ -22,6 +23,24 @@ export interface GeminiBrainDeps {
   lang?: () => Lang;
   /** The shared rate limiter, so the office can show "waiting for quota". */
   limiter?: RateLimiter;
+}
+
+// Generous on purpose: Thai takes many tokens, and a model that thinks first spends part of the budget on that.
+const QUESTION_TOKENS = 800;
+const BRIEF_TOKENS = 1500;
+/** How much more room a reply gets when it was cut off at the limit. */
+const RETRY_FACTOR = 3;
+
+/**
+ * One call; if the reply was cut off at the token limit (or ran out before any text), once more with much
+ * more room. A reply that is cut off mid-sentence must never reach the user as if it were complete.
+ */
+export async function complete(client: ModelClient, req: GenerateRequest): Promise<GenerateResult> {
+  const first = await client.generate(req);
+  if (first.finishReason !== 'MAX_TOKENS') return first;
+  const second = await client.generate({ ...req, maxOutputTokens: (req.maxOutputTokens ?? QUESTION_TOKENS) * RETRY_FACTOR });
+  if (!second.text.trim()) throw new ModelError('empty', 'The model used all its tokens without answering.');
+  return second;
 }
 
 /** "READY:" (or bare "READY") at the start. A question that merely begins with the word "Ready ..." does not count. */
@@ -69,13 +88,13 @@ export class GeminiBrain implements IntakeBrain {
     }
     const system = ownerPrompt({ remaining: this.maxQuestions - history.length, fallbackLang: this.lang() });
 
-    let reply = (await this.owner.generate({ system, history: turns, maxOutputTokens: 300, signal })).text.trim();
+    let reply = (await complete(this.owner, { system, history: turns, maxOutputTokens: QUESTION_TOKENS, signal })).text.trim();
     if (!isReady(reply) && reply.length > MAX_QUESTION_CHARS) {
       // One repair attempt; if the model still rambles, keep the start of it rather than fail the job.
-      const retry = await this.owner.generate({
+      const retry = await complete(this.owner, {
         system,
         history: [...turns, { role: 'model', text: reply }, { role: 'user', text: SHORTEN_NUDGE }],
-        maxOutputTokens: 300,
+        maxOutputTokens: QUESTION_TOKENS,
         signal,
       });
       reply = retry.text.trim();
@@ -87,10 +106,10 @@ export class GeminiBrain implements IntakeBrain {
 
   async writeBrief(history: readonly Exchange[], _title: string, signal?: AbortSignal): Promise<Msg> {
     const transcript = history.map((h) => `Owner (Rex): ${tr(h.question)}\nClient: ${h.text}`).join('\n');
-    const result = await this.secretary.generate({
+    const result = await complete(this.secretary, {
       system: secretaryPrompt({ fallbackLang: this.lang() }),
       history: [{ role: 'user', text: briefRequest(transcript) }],
-      maxOutputTokens: 500,
+      maxOutputTokens: BRIEF_TOKENS,
       signal,
     });
     this.currentBrief = plain(result.text);
@@ -98,10 +117,10 @@ export class GeminiBrain implements IntakeBrain {
   }
 
   async reviseBrief(_history: readonly Exchange[], _title: string, change: Msg, signal?: AbortSignal): Promise<Msg> {
-    const result = await this.secretary.generate({
+    const result = await complete(this.secretary, {
       system: secretaryPrompt({ fallbackLang: this.lang() }),
       history: [{ role: 'user', text: reviseRequest(this.currentBrief, tr(change)) }],
-      maxOutputTokens: 500,
+      maxOutputTokens: BRIEF_TOKENS,
       signal,
     });
     this.currentBrief = plain(result.text);

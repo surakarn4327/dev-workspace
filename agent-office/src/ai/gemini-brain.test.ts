@@ -5,12 +5,14 @@ import { test } from 'node:test';
 import type { Exchange } from '../core/brain.ts';
 import { msg, raw, setLang, tr } from '../core/i18n.ts';
 import { MockOffice } from '../sim/simulator.ts';
-import { GeminiBrain, MAX_QUESTIONS, plain } from './gemini-brain.ts';
+import { GeminiBrain, MAX_QUESTIONS, complete, plain } from './gemini-brain.ts';
 import { ModelError } from './model-client.ts';
 import type { GenerateRequest, ModelClient } from './model-client.ts';
 import { OPENER } from './prompts.ts';
 
-function fakeModel(replies: (string | Error)[]): ModelClient & { requests: GenerateRequest[] } {
+type Reply = string | Error | { text: string; finishReason: string };
+
+function fakeModel(replies: Reply[]): ModelClient & { requests: GenerateRequest[] } {
   const requests: GenerateRequest[] = [];
   return {
     requests,
@@ -19,14 +21,14 @@ function fakeModel(replies: (string | Error)[]): ModelClient & { requests: Gener
       const next = replies.shift();
       if (next === undefined) throw new Error('the fake model ran out of replies');
       if (next instanceof Error) throw next;
-      return { text: next };
+      return typeof next === 'string' ? { text: next } : next;
     },
   };
 }
 
 const ex = (q: string, a: string): Exchange => ({ question: raw(q), answer: raw(a), text: a, choice: null });
 
-function brainWith(owner: (string | Error)[], secretary: (string | Error)[] = []) {
+function brainWith(owner: Reply[], secretary: Reply[] = []) {
   const o = fakeModel(owner);
   const s = fakeModel(secretary);
   return { brain: new GeminiBrain({ owner: o, secretary: s, lang: () => 'en' }), o, s };
@@ -172,4 +174,40 @@ test('user text that looks like instructions stays inside the conversation, neve
   await brain.ownerTurn([ex('q', evil)], 't');
   assert.ok(!(o.requests[0].system ?? '').includes(evil));
   assert.equal(o.requests[0].history.at(-1)?.text, evil);
+});
+
+test('a question cut off at the token limit is asked again with more room, and only the whole one is used', async () => {
+  const { brain, o } = brainWith([{ text: 'Who is it for? The group is', finishReason: 'MAX_TOKENS' }, 'Who is it for?']);
+  const turn = await brain.ownerTurn([ex('q', 'a')], 't');
+  assert.ok(turn.kind === 'ask');
+  assert.equal(tr(turn.question.text), 'Who is it for?', 'the cut-off text never reaches the user');
+  assert.equal(o.requests.length, 2);
+  assert.ok((o.requests[1].maxOutputTokens ?? 0) > (o.requests[0].maxOutputTokens ?? 0), 'the second try has more room');
+});
+
+test('a reply that used all its tokens before any text (thinking) is also retried with more room', async () => {
+  const { brain, o } = brainWith([{ text: '', finishReason: 'MAX_TOKENS' }, 'Which tone?']);
+  const turn = await brain.ownerTurn([ex('q', 'a')], 't');
+  assert.ok(turn.kind === 'ask' && tr(turn.question.text) === 'Which tone?');
+  assert.equal(o.requests.length, 2);
+});
+
+test('still nothing after the retry is reported as an empty reply', async () => {
+  const model = fakeModel([{ text: '', finishReason: 'MAX_TOKENS' }, { text: '  ', finishReason: 'MAX_TOKENS' }]);
+  await assert.rejects(complete(model, { history: [{ role: 'user', text: 'hi' }] }), (e: unknown) => e instanceof ModelError && e.kind === 'empty');
+});
+
+test('a brief cut off at the limit is written again with more room', async () => {
+  const { brain, s } = brainWith([], [{ text: 'Goal: a weekly newsl', finishReason: 'MAX_TOKENS' }, 'Goal: a weekly newsletter']);
+  const brief = await brain.writeBrief([ex('q', 'a')], 't');
+  assert.equal(tr(brief), 'Goal: a weekly newsletter');
+  assert.ok((s.requests[1].maxOutputTokens ?? 0) > (s.requests[0].maxOutputTokens ?? 0));
+});
+
+test('replies are not cut off at the old, too-small budget', async () => {
+  const { brain, o, s } = brainWith(['q?'], ['brief']);
+  await brain.ownerTurn([ex('q', 'a')], 't');
+  await brain.writeBrief([ex('q', 'a')], 't');
+  assert.ok((o.requests[0].maxOutputTokens ?? 0) >= 800, 'questions get room for Thai text and for any thinking');
+  assert.ok((s.requests[0].maxOutputTokens ?? 0) >= 1500, 'the brief gets more');
 });

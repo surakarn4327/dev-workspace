@@ -6,8 +6,12 @@ import { ModelError } from './model-client.ts';
 import type { GenerateRequest, GenerateResult, ModelClient } from './model-client.ts';
 
 export const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-/** Google's rolling "latest Flash" alias, so the default does not go stale. Override per position in config. */
-export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
+/**
+ * Google's rolling "latest Flash-Lite" alias. Flash-Lite answers fast and does not spend a long thinking phase
+ * first; plain "gemini-flash-latest" thinks at length by default, which made short replies slow (10 s+) and cut
+ * them off (thinking tokens count against maxOutputTokens). Override per position in models.ts.
+ */
+export const DEFAULT_GEMINI_MODEL = 'gemini-flash-lite-latest';
 export const DEFAULT_TIMEOUT_MS = 60_000;
 
 export interface GeminiOptions {
@@ -23,7 +27,12 @@ export interface GeminiOptions {
 interface GeminiBody {
   candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
   promptFeedback?: { blockReason?: string };
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+    thoughtsTokenCount?: number;
+  };
   error?: { code?: number; message?: string; status?: string; details?: Record<string, unknown>[] };
 }
 
@@ -111,7 +120,8 @@ export function createGeminiClient(opts: GeminiOptions): ModelClient {
           if (candidate?.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
             throw new ModelError('blocked', `The reply was stopped (${candidate.finishReason}).`);
           }
-          throw new ModelError('empty', 'The model returned no text.');
+          // Out of tokens before any text came out (thinking used them all): let the caller retry with more room.
+          if (candidate?.finishReason !== 'MAX_TOKENS') throw new ModelError('empty', 'The model returned no text.');
         }
 
         const u = body?.usageMetadata;
@@ -122,8 +132,10 @@ export function createGeminiClient(opts: GeminiOptions): ModelClient {
                 promptTokens: u.promptTokenCount ?? 0,
                 outputTokens: u.candidatesTokenCount ?? 0,
                 totalTokens: u.totalTokenCount ?? (u.promptTokenCount ?? 0) + (u.candidatesTokenCount ?? 0),
+                ...(u.thoughtsTokenCount !== undefined ? { thoughtTokens: u.thoughtsTokenCount } : {}),
               }
             : undefined,
+          finishReason: candidate?.finishReason,
         };
       } finally {
         clearTimeout(timer);

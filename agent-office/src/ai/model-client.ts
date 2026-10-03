@@ -20,11 +20,15 @@ export interface Usage {
   promptTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Tokens the model spent thinking before answering (they count against maxOutputTokens). */
+  thoughtTokens?: number;
 }
 
 export interface GenerateResult {
   text: string;
   usage?: Usage;
+  /** Why the model stopped. 'MAX_TOKENS' means the reply was cut off at maxOutputTokens. */
+  finishReason?: string;
 }
 
 export interface ModelClient {

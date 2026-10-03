@@ -175,3 +175,20 @@ test('the key never appears in an error message, even if the provider echoes it 
 test('the default model is a rolling alias so it does not go stale', () => {
   assert.match(DEFAULT_GEMINI_MODEL, /latest$/);
 });
+
+test('the reply reports why it stopped and how many tokens went on thinking', async () => {
+  const c = client(async () =>
+    ok('Hello', { usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4, totalTokenCount: 214, thoughtsTokenCount: 200 } }),
+  );
+  const r = await c.generate({ history });
+  assert.equal(r.finishReason, 'STOP');
+  assert.equal(r.usage?.thoughtTokens, 200);
+});
+
+test('a reply cut off at the token limit comes back with finishReason MAX_TOKENS instead of failing', async () => {
+  const cut = client(async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'half a sen' }] }, finishReason: 'MAX_TOKENS' }] }), { status: 200 }));
+  assert.deepEqual(await cut.generate({ history }).then((r) => [r.text, r.finishReason]), ['half a sen', 'MAX_TOKENS']);
+  // Thinking used every token: no text at all, but the caller can retry with more room.
+  const none = client(async () => new Response(JSON.stringify({ candidates: [{ finishReason: 'MAX_TOKENS' }] }), { status: 200 }));
+  assert.deepEqual(await none.generate({ history }).then((r) => [r.text, r.finishReason]), ['', 'MAX_TOKENS']);
+});
