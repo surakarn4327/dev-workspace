@@ -597,26 +597,26 @@ body {
   }
 }
 
-/* Thai: Cascadia Mono / Consolas have no Thai glyphs. Silver (Poppy Works, CC BY 4.0, see THIRD-PARTY.md)
-   is a pixel font with Thai; the browser only downloads it once Thai text is shown. System Thai fonts are
-   the fallback if the file is missing. */
+/* Thai: Cascadia Mono / Consolas have no Thai glyphs. Silver (Poppy Works, CC BY 4.0, see THIRD-PARTY.md) is a
+   pixel font with Thai; the browser only downloads it once Thai text is shown.
+   - The English font stays FIRST in the stack, so digits, "1x", names, "QA" ... keep the normal English look and
+     the browser falls back to Silver only for characters the English font lacks (Thai).
+   - Silver's glyphs are small for their em (x-height 0.32 vs Cascadia's 0.52), so size-adjust enlarges only
+     Silver (0.52 / 0.32 = 162%); box sizes, line heights and the size hierarchy stay exactly as in English.
+   System Thai fonts are the fallback if the file is missing. */
 @font-face {
   font-family: 'Silver';
   src: url('/fonts/Silver.ttf') format('truetype');
   font-display: swap;
+  size-adjust: 162%;
 }
 :root {
-  --font-th: 'Silver', 'Leelawadee UI', 'Tahoma', 'Noto Sans Thai', 'Noto Sans Thai UI', sans-serif;
+  --font-th: 'Cascadia Mono', 'Consolas', 'Menlo', 'Courier New', 'Silver', 'Leelawadee UI', 'Tahoma', 'Noto Sans Thai',
+    monospace;
 }
 html[lang='th'] {
   --font: var(--font-th);
 }
-/* Silver's glyphs are small for their em (x-height 0.32 vs Cascadia's 0.52), so at the same font-size Thai looks
-   tiny. font-size-adjust enlarges only the glyphs to the same x-height as the English font while every box,
-   line height and size hierarchy stays exactly as in English (no per-element Thai sizes needed). */
-html[lang='th'],
-html[lang='th'] * {
-  font-size-adjust: 0.52; /* on every element: the `font:` shorthand used elsewhere resets this property */
-}html[lang='th'] .step .l {
+html[lang='th'] .step .l {
   padding-top: 3px; /* room for Thai tone marks above the line */
 }
