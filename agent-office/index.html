@@ -8,10 +8,11 @@
     <title>Agent Office</title>
   </head>
   <body>
+    <!-- All words come from src/core/strings.ts via data-i18n* attributes (applied by ui/i18n-dom.ts). -->
     <div id="app">
       <main class="stage-area" id="stage-area">
         <div class="stage" id="stage">
-          <canvas id="office" aria-label="Pixel office"></canvas>
+          <canvas id="office" data-i18n-aria="canvas.aria"></canvas>
           <div id="tooltip" class="tooltip hidden"></div>
 
           <div id="dialog" class="dialog hidden" role="dialog" aria-live="polite">
@@ -22,7 +23,7 @@
               <div class="dlg-choices" id="dlg-choices"></div>
               <form class="dlg-form" id="dlg-form" autocomplete="off">
                 <input id="dlg-input" type="text" maxlength="400" />
-                <button type="submit" class="btn primary">Send</button>
+                <button type="submit" class="btn primary" data-i18n="dlg.send"></button>
               </form>
             </div>
           </div>
@@ -32,49 +33,54 @@
         <div class="hud hud-left">
           <span class="logo" aria-hidden="true"></span>
           <h1>AGENT OFFICE</h1>
-          <span id="job-title" class="job-title">No active job &mdash; press Start or click Rex</span>
-          <ol id="steps" class="steps" aria-label="Workflow progress"></ol>
+          <span id="job-title" class="job-title"></span>
+          <ol id="steps" class="steps" data-i18n-aria="steps.aria"></ol>
         </div>
         <div class="hud hud-right">
-          <button id="btn-start" class="btn primary" type="button">Start job</button>
-          <button id="btn-panels" class="btn" type="button" aria-expanded="false" aria-controls="drawer">Menu</button>
+          <button id="btn-start" class="btn primary" type="button"></button>
+          <button id="btn-panels" class="btn" type="button" aria-expanded="false" aria-controls="drawer" data-i18n="hud.menu"></button>
         </div>
 
-        <aside class="drawer" id="drawer" aria-label="Controls and details">
-          <section class="panel" aria-label="Controls">
-            <h2>Controls</h2>
-            <div class="ctl-row">
-              <button id="btn-reset" class="btn" type="button">Reset</button>
-              <label class="check"><input id="auto" type="checkbox" /> Auto-answer</label>
+        <aside class="drawer" id="drawer" data-i18n-aria="drawer.aria">
+          <section class="panel" data-i18n-aria="controls.title">
+            <h2 data-i18n="controls.title"></h2>
+            <div class="ctl-row" role="group" data-i18n-aria="lang.aria">
+              <span class="label" data-i18n="lang.label"></span>
+              <button class="btn lang" data-lang="en" type="button" aria-pressed="false" data-i18n="lang.en"></button>
+              <button class="btn lang" data-lang="th" type="button" aria-pressed="false" data-i18n="lang.th"></button>
             </div>
-            <div class="ctl-row" role="group" aria-label="Simulation speed">
-              <span class="label">SPEED</span>
+            <div class="ctl-row">
+              <button id="btn-reset" class="btn" type="button" data-i18n="btn.reset"></button>
+              <label class="check"><input id="auto" type="checkbox" /> <span data-i18n="auto.answer"></span></label>
+            </div>
+            <div class="ctl-row" role="group" data-i18n-aria="speed.aria">
+              <span class="label" data-i18n="speed.label"></span>
               <button class="btn speed active" data-speed="1" type="button">1x</button>
               <button class="btn speed" data-speed="2" type="button">2x</button>
               <button class="btn speed" data-speed="4" type="button">4x</button>
               <button class="btn speed" data-speed="8" type="button">8x</button>
             </div>
-            <div class="ctl-row" role="group" aria-label="Camera">
-              <span class="label">VIEW</span>
-              <button id="btn-zoom-out" class="btn" type="button" title="Zoom out (-)">&minus;</button>
-              <button id="btn-zoom-in" class="btn" type="button" title="Zoom in (+ or mouse wheel)">+</button>
-              <button id="btn-zoom-fit" class="btn" type="button" title="See the whole building (0)">Fit</button>
+            <div class="ctl-row" role="group" data-i18n-aria="view.aria">
+              <span class="label" data-i18n="view.label"></span>
+              <button id="btn-zoom-out" class="btn" type="button" data-i18n-title="view.zoomOut.title">&minus;</button>
+              <button id="btn-zoom-in" class="btn" type="button" data-i18n-title="view.zoomIn.title">+</button>
+              <button id="btn-zoom-fit" class="btn" type="button" data-i18n-title="view.fit.title" data-i18n="view.fit"></button>
             </div>
-            <p class="hint">Zoom in, then look around: mouse to the screen edge, WASD / arrow keys, or drag.</p>
+            <p class="hint" data-i18n="view.hint"></p>
             <div class="ctl-row">
-              <span class="label">TRY</span>
-              <button id="btn-reject" class="btn" type="button" title="The next QA review sends the work back once">QA reject</button>
-              <button id="btn-error" class="btn" type="button" title="Crash a working staff member">Agent error</button>
-              <button id="btn-jam" class="btn" type="button" title="Drop several memos on the courier">Courier jam</button>
+              <span class="label" data-i18n="try.label"></span>
+              <button id="btn-reject" class="btn" type="button" data-i18n-title="try.reject.title" data-i18n="try.reject"></button>
+              <button id="btn-error" class="btn" type="button" data-i18n-title="try.error.title" data-i18n="try.error"></button>
+              <button id="btn-jam" class="btn" type="button" data-i18n-title="try.jam.title" data-i18n="try.jam"></button>
             </div>
           </section>
-          <section class="panel" id="inspector" aria-label="Selected character"></section>
+          <section class="panel" id="inspector"></section>
           <section class="panel">
-            <h2>Courier queue</h2>
+            <h2 data-i18n="queue.title"></h2>
             <ul id="queue" class="queue"></ul>
           </section>
           <section class="panel feed-panel">
-            <h2>Event feed</h2>
+            <h2 data-i18n="feed.title"></h2>
             <ul id="feed" class="feed"></ul>
           </section>
         </aside>

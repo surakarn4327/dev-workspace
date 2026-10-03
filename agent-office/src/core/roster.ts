@@ -1,3 +1,4 @@
+import { t } from './i18n.ts';
 import type { AgentId } from './types.ts';
 
 export type Dept = 'exec' | 'research' | 'production' | 'qa' | 'ops';
@@ -19,12 +20,10 @@ export interface Look {
 export interface AgentDef {
   id: AgentId;
   name: string;
-  role: string;
   dept: Dept;
   look: Look;
   /** Which brain drives this position. A per-position config line later. */
   model: string;
-  blurb: string;
 }
 
 export const DEPT_COLOR: Record<Dept, string> = {
@@ -41,10 +40,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   owner: {
     id: 'owner',
     name: 'Rex',
-    role: 'Owner',
     dept: 'exec',
     model: MOCK,
-    blurb: 'Takes your order, gathers requirements and decides which departments to involve.',
     look: {
       skin: '#e0a878',
       hair: '#9aa0ad',
@@ -59,10 +56,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   secretary: {
     id: 'secretary',
     name: 'Sam',
-    role: 'Secretary',
     dept: 'exec',
     model: MOCK,
-    blurb: 'Writes the brief and delivers the final result to the client.',
     look: {
       skin: '#f2c9a0',
       hair: '#6b3f1d',
@@ -76,10 +71,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   'research-head': {
     id: 'research-head',
     name: 'Dr. Iris',
-    role: 'Head of Research',
     dept: 'research',
     model: MOCK,
-    blurb: 'Splits the research work, reviews findings and reports to Production.',
     look: {
       skin: '#c48a5a',
       hair: '#1b1b2b',
@@ -93,10 +86,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   'research-1': {
     id: 'research-1',
     name: 'Leo',
-    role: 'Researcher',
     dept: 'research',
     model: MOCK,
-    blurb: 'Gathers facts and sources.',
     look: {
       skin: '#f2c9a0',
       hair: '#d9a441',
@@ -110,10 +101,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   'research-2': {
     id: 'research-2',
     name: 'Mina',
-    role: 'Researcher',
     dept: 'research',
     model: MOCK,
-    blurb: 'Gathers facts and sources.',
     look: {
       skin: '#8d5a3a',
       hair: '#2b2118',
@@ -127,10 +116,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   'prod-head': {
     id: 'prod-head',
     name: 'Hana',
-    role: 'Head of Production',
     dept: 'production',
     model: MOCK,
-    blurb: 'Plans the build, merges research into the deliverable and fixes QA findings.',
     look: {
       skin: '#f2c9a0',
       hair: '#b8442b',
@@ -144,10 +131,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   'prod-1': {
     id: 'prod-1',
     name: 'Kai',
-    role: 'Producer',
     dept: 'production',
     model: MOCK,
-    blurb: 'Drafts and builds parts of the deliverable.',
     look: {
       skin: '#e0a878',
       hair: '#2b2118',
@@ -161,10 +146,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   'prod-2': {
     id: 'prod-2',
     name: 'Zoe',
-    role: 'Producer',
     dept: 'production',
     model: MOCK,
-    blurb: 'Drafts and builds parts of the deliverable.',
     look: {
       skin: '#c48a5a',
       hair: '#6b3f1d',
@@ -178,10 +161,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   qa: {
     id: 'qa',
     name: 'Quinn',
-    role: 'QA Reviewer',
     dept: 'qa',
     model: MOCK,
-    blurb: 'Checks the deliverable against the approved brief and can send it back.',
     look: {
       skin: '#f2c9a0',
       hair: '#8a8f9c',
@@ -195,10 +176,8 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   courier: {
     id: 'courier',
     name: 'Zip',
-    role: 'Courier',
     dept: 'ops',
-    model: 'queue (plain code, no AI)',
-    blurb: 'A real first-in-first-out queue: carries documents between desks. Not an AI.',
+    model: 'queue',
     look: {
       skin: '#e0a878',
       hair: '#a8472b',
@@ -211,6 +190,11 @@ export const ROSTER: Record<AgentId, AgentDef> = {
   },
 };
 
+/** Names are the same in every language; only "You" is translated. */
 export function nameOf(id: AgentId | 'user'): string {
-  return id === 'user' ? 'You' : ROSTER[id].name;
+  return id === 'user' ? t('you') : ROSTER[id].name;
 }
+
+export const roleOf = (id: AgentId): string => t(`role.${id}`);
+export const blurbOf = (id: AgentId): string => t(`blurb.${id}`);
+export const modelOf = (id: AgentId): string => (id === 'courier' ? t('model.queue') : ROSTER[id].model);

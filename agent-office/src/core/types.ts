@@ -1,6 +1,8 @@
 // The shared "event vocabulary" of the office. The UI only ever reacts to these
 // events, so the mock simulator and a future real orchestrator are interchangeable.
 
+import type { Msg } from './i18n.ts';
+
 export const AGENT_IDS = [
   'owner',
   'secretary',
@@ -66,34 +68,45 @@ export const WORK_STAGES: readonly Stage[] = [
 
 export interface Doc {
   id: string;
-  label: string;
+  label: Msg;
   from: AgentId;
   to: AgentId;
 }
 
+/** A button under a chat question. `id` is language-independent; `label` is what the user sees. */
+export interface ChatChoice {
+  id: string;
+  label: Msg;
+}
+
+/** The user's reply: a pressed choice button, or free text they typed (in any language). */
+export type ChatReply = { choice: string } | { text: string };
+
+// All words travel as `Msg` (dictionary key + params), never as ready-made sentences, so the UI
+// picks the language at display time. User-typed text is the one exception (`raw`, or `title`).
 export type OfficeEvent =
   | { type: 'sim.reset' }
   | { type: 'job.created'; jobId: string; title: string }
   | { type: 'job.stage'; jobId: string; stage: Stage }
   | { type: 'job.done'; jobId: string }
-  | { type: 'agent.activity'; agent: AgentId; activity: Activity; note?: string }
+  | { type: 'agent.activity'; agent: AgentId; activity: Activity; note?: Msg }
   | { type: 'agent.walk'; agent: AgentId; to: PlaceId; speed: number }
-  | { type: 'agent.carry'; agent: AgentId; label: string | null }
-  | { type: 'agent.say'; agent: AgentId; text: string; to?: AgentId }
-  | { type: 'user.say'; text: string; to: AgentId }
+  | { type: 'agent.carry'; agent: AgentId; label: Msg | null }
+  | { type: 'agent.say'; agent: AgentId; text: Msg; to?: AgentId }
+  | { type: 'user.say'; text: Msg; to: AgentId }
   | { type: 'doc.queued'; doc: Doc }
   | { type: 'doc.pickup'; doc: Doc }
   | { type: 'doc.delivered'; doc: Doc }
   | { type: 'doc.consumed'; agent: AgentId }
   | { type: 'archive.filed'; jobId: string }
-  | { type: 'review.verdict'; verdict: 'pass' | 'reject'; reason: string; round: number }
+  | { type: 'review.verdict'; verdict: 'pass' | 'reject'; reason: Msg; round: number }
   | {
       type: 'chat.ask';
       id: string;
       from: AgentId;
-      text: string;
-      choices?: string[];
-      placeholder?: string;
+      text: Msg;
+      choices?: ChatChoice[];
+      placeholder?: Msg;
     }
   | { type: 'chat.closed'; id: string };
 
@@ -103,5 +116,5 @@ export type OfficeListener = (event: OfficeEvent) => void;
 export interface OfficeSource {
   subscribe(listener: OfficeListener): () => void;
   /** The user's reply to a `chat.ask` event. */
-  answer(chatId: string, text: string): void;
+  answer(chatId: string, reply: ChatReply): void;
 }

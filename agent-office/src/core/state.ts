@@ -1,13 +1,15 @@
+import { t, tr } from './i18n.ts';
+import type { Msg } from './i18n.ts';
 import { nameOf } from './roster.ts';
-import type { Activity, AgentId, Doc, OfficeEvent, PlaceId, Stage } from './types.ts';
+import type { Activity, AgentId, ChatChoice, Doc, OfficeEvent, PlaceId, Stage } from './types.ts';
 import { AGENT_IDS } from './types.ts';
 
 export interface AgentState {
   activity: Activity;
-  note: string;
+  note: Msg | null;
   place: PlaceId;
   /** Label of the document this agent is currently carrying (courier, secretary). */
-  carrying: string | null;
+  carrying: Msg | null;
   /** Documents waiting on this agent's desk. */
   inbox: number;
 }
@@ -16,22 +18,22 @@ export interface LogLine {
   t: number;
   from: AgentId | 'user';
   to?: AgentId;
-  text: string;
+  text: Msg;
 }
 
 export interface ChatPrompt {
   id: string;
   from: AgentId;
-  text: string;
-  choices?: string[];
-  placeholder?: string;
+  text: Msg;
+  choices?: ChatChoice[];
+  placeholder?: Msg;
 }
 
 export interface OfficeState {
   agents: Record<AgentId, AgentState>;
   job: { id: string; title: string } | null;
   stage: Stage;
-  lastVerdict: { verdict: 'pass' | 'reject'; reason: string; round: number } | null;
+  lastVerdict: { verdict: 'pass' | 'reject'; reason: Msg; round: number } | null;
   queue: Doc[];
   log: LogLine[];
   chat: ChatPrompt | null;
@@ -42,7 +44,7 @@ export interface OfficeState {
 function freshAgents(): Record<AgentId, AgentState> {
   const out = {} as Record<AgentId, AgentState>;
   for (const id of AGENT_IDS) {
-    out[id] = { activity: 'idle', note: '', place: `desk:${id}`, carrying: null, inbox: 0 };
+    out[id] = { activity: 'idle', note: null, place: `desk:${id}`, carrying: null, inbox: 0 };
   }
   return out;
 }
@@ -71,7 +73,7 @@ export class OfficeStore {
     return () => this.listeners.delete(fn);
   }
 
-  apply(e: OfficeEvent, t: number = Date.now()): void {
+  apply(e: OfficeEvent, at: number = Date.now()): void {
     const s = this.state;
     switch (e.type) {
       case 'sim.reset':
@@ -88,7 +90,7 @@ export class OfficeStore {
         break;
       case 'agent.activity':
         s.agents[e.agent].activity = e.activity;
-        s.agents[e.agent].note = e.note ?? '';
+        s.agents[e.agent].note = e.note ?? null;
         break;
       case 'agent.walk':
         s.agents[e.agent].place = e.to;
@@ -97,10 +99,10 @@ export class OfficeStore {
         s.agents[e.agent].carrying = e.label;
         break;
       case 'agent.say':
-        this.pushLog({ t, from: e.agent, to: e.to, text: e.text });
+        this.pushLog({ t: at, from: e.agent, to: e.to, text: e.text });
         break;
       case 'user.say':
-        this.pushLog({ t, from: 'user', to: e.to, text: e.text });
+        this.pushLog({ t: at, from: 'user', to: e.to, text: e.text });
         break;
       case 'doc.queued':
         s.queue.push(e.doc);
@@ -144,33 +146,33 @@ export class OfficeStore {
   }
 }
 
-/** One-line human description of an event for the feed, or null to skip it. */
+/** One-line human description of an event for the feed (in the current language), or null to skip it. */
 export function describeEvent(e: OfficeEvent): string | null {
   switch (e.type) {
     case 'sim.reset':
-      return 'Office reset';
+      return t('feed.reset');
     case 'job.created':
-      return `New job: ${e.title}`;
+      return t('feed.job', { title: e.title });
     case 'job.stage':
-      return `Stage: ${e.stage}`;
+      return t('feed.stage', { stage: t(`step.${e.stage}`) });
     case 'job.done':
-      return 'Job complete';
+      return t('feed.jobDone');
     case 'agent.say':
-      return `${nameOf(e.agent)}${e.to ? ` > ${nameOf(e.to)}` : ''}: ${e.text}`;
+      return `${nameOf(e.agent)}${e.to ? ` > ${nameOf(e.to)}` : ''}: ${tr(e.text)}`;
     case 'user.say':
-      return `You > ${nameOf(e.to)}: ${e.text}`;
+      return `${nameOf('user')} > ${nameOf(e.to)}: ${tr(e.text)}`;
     case 'doc.queued':
-      return `Queued "${e.doc.label}" ${nameOf(e.doc.from)} > ${nameOf(e.doc.to)}`;
+      return t('feed.queued', { label: e.doc.label, from: nameOf(e.doc.from), to: nameOf(e.doc.to) });
     case 'doc.delivered':
-      return `Delivered "${e.doc.label}" to ${nameOf(e.doc.to)}`;
+      return t('feed.delivered', { label: e.doc.label, to: nameOf(e.doc.to) });
     case 'archive.filed':
-      return 'Deliverable filed in the archive';
+      return t('feed.filed');
     case 'review.verdict':
       return e.verdict === 'pass'
-        ? `QA passed (round ${e.round})`
-        : `QA rejected (round ${e.round}): ${e.reason}`;
+        ? t('feed.pass', { round: e.round })
+        : t('feed.reject', { round: e.round, reason: e.reason });
     case 'agent.activity':
-      return e.activity === 'error' ? `${nameOf(e.agent)} hit an error` : null;
+      return e.activity === 'error' ? t('feed.error', { name: nameOf(e.agent) }) : null;
     default:
       return null;
   }

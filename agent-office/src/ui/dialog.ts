@@ -1,9 +1,10 @@
 // RPG-style conversation box. It shows whichever chat the store says is open,
 // types the text out, and sends the user's reply back to the event source.
 
-import { ROSTER } from '../core/roster.ts';
+import { onLangChange, t, tr } from '../core/i18n.ts';
+import { ROSTER, roleOf } from '../core/roster.ts';
 import type { OfficeStore } from '../core/state.ts';
-import type { OfficeSource } from '../core/types.ts';
+import type { ChatReply, OfficeSource } from '../core/types.ts';
 import { drawPortrait } from '../render/view.ts';
 import { el, h } from './dom.ts';
 
@@ -38,33 +39,48 @@ export function mountDialog(store: OfficeStore, source: OfficeSource): void {
     choicesEl.classList.remove('pending');
   };
 
-  const send = (text: string): void => {
+  const send = (reply: ChatReply): void => {
     const id = currentId;
-    const value = text.trim();
-    if (!id || !value) return;
-    source.answer(id, value);
+    if (!id) return;
+    if ('text' in reply) {
+      const value = reply.text.trim();
+      if (!value) return;
+      source.answer(id, { text: value });
+    } else {
+      source.answer(id, reply);
+    }
+  };
+
+  /** The language-dependent bits, rebuilt on a language switch without retyping or losing the typed answer. */
+  const renderLabels = (): void => {
+    const chat = store.state.chat;
+    if (!chat) return;
+    nameEl.textContent = `${ROSTER[chat.from].name} · ${roleOf(chat.from)}`;
+    input.placeholder = chat.placeholder ? tr(chat.placeholder) : t('dlg.placeholder');
+    const buttons = choicesEl.querySelectorAll<HTMLButtonElement>('button');
+    (chat.choices ?? []).forEach((c, i) => {
+      if (buttons[i]) buttons[i].textContent = tr(c.label);
+    });
   };
 
   const open = (): void => {
     const chat = store.state.chat;
     if (!chat) return;
     currentId = chat.id;
-    const def = ROSTER[chat.from];
-    nameEl.textContent = `${def.name} · ${def.role}`;
     drawPortrait(portrait, chat.from, true);
     input.value = '';
-    input.placeholder = chat.placeholder ?? 'Type your answer...';
-    fullText = chat.text;
+    fullText = tr(chat.text);
     shown = 0;
     renderText();
     choicesEl.replaceChildren();
     choicesEl.classList.add('pending');
-    for (const choice of chat.choices ?? []) {
-      const b = h('button', 'btn choice', choice);
+    for (const c of chat.choices ?? []) {
+      const b = h('button', 'btn choice');
       b.type = 'button';
-      b.addEventListener('click', () => send(choice));
+      b.addEventListener('click', () => send({ choice: c.id }));
       choicesEl.append(b);
     }
+    renderLabels();
     // The secretary talks to you at the reception mat (bottom), so keep the box out of the way.
     root.classList.toggle('top', chat.from === 'secretary');
     root.classList.remove('hidden');
@@ -96,6 +112,17 @@ export function mountDialog(store: OfficeStore, source: OfficeSource): void {
   });
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
-    send(input.value);
+    send({ text: input.value });
+  });
+
+  // Switching language mid-question: swap the words, keep the typing progress and the typed answer.
+  onLangChange(() => {
+    const chat = store.state.chat;
+    if (!chat || chat.id !== currentId) return;
+    fullText = tr(chat.text);
+    shown = Math.min(shown, fullText.length);
+    renderText();
+    renderLabels();
+    if (shown >= fullText.length) finishTyping();
   });
 }

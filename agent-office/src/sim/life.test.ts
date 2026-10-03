@@ -111,7 +111,7 @@ test('when an agent crashes, the head goes to the server room, restarts it and c
   assert.equal(staffActs[0], 'error');
   assert.notEqual(staffActs[staffActs.length - 1], 'error', 'the agent never recovered');
   assert.ok(
-    events.some((e) => e.type === 'agent.activity' && e.agent === head && e.activity === 'typing' && e.note === 'Restarting the tool server'),
+    events.some((e) => e.type === 'agent.activity' && e.agent === head && e.activity === 'typing' && e.note?.key === 'note.restarting'),
     'the head never restarted the server',
   );
   office.dispose();

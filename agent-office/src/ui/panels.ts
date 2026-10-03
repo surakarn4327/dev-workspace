@@ -1,6 +1,8 @@
 // Side panels and the header tracker: inspector, courier queue, event feed, workflow steps.
+// Everything is rendered from keys at display time, so a language switch re-labels it all (feed included).
 
-import { DEPT_COLOR, ROSTER, nameOf } from '../core/roster.ts';
+import { onLangChange, t, tr } from '../core/i18n.ts';
+import { DEPT_COLOR, ROSTER, blurbOf, modelOf, nameOf, roleOf } from '../core/roster.ts';
 import type { OfficeStore } from '../core/state.ts';
 import { describeEvent } from '../core/state.ts';
 import type { AgentId, OfficeEvent, Stage } from '../core/types.ts';
@@ -9,27 +11,12 @@ import type { OfficeView } from '../render/view.ts';
 import { drawPortrait } from '../render/view.ts';
 import { el, h } from './dom.ts';
 
-const STEP_LABEL: Record<string, string> = {
-  brief: 'Brief',
-  approval: 'Approve',
-  meeting: 'Meeting',
-  team: 'Team',
-  work: 'Work',
-  review: 'Review',
-  delivery: 'Deliver',
-};
+const FEED_LIMIT = 80;
 
-const ACTIVITY_LABEL: Record<string, string> = {
-  idle: 'Idle',
-  typing: 'Working',
-  thinking: 'Thinking',
-  talking: 'Talking',
-  reviewing: 'Reviewing',
-  waiting: 'Waiting',
-  break: 'Coffee break',
-  error: 'Error!',
-  celebrate: 'Celebrating',
-};
+interface FeedItem {
+  e: OfficeEvent;
+  at: number;
+}
 
 function clock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -43,14 +30,18 @@ export function mountPanels(store: OfficeStore, view: OfficeView): { onEvent: (e
   const queueEl = el<HTMLUListElement>('#queue');
   const feedEl = el<HTMLUListElement>('#feed');
   const born = Date.now();
+  const feed: FeedItem[] = []; // newest first
 
-  WORK_STAGES.forEach((stage, i) => {
-    const li = h('li', 'step');
-    li.dataset.stage = stage;
-    li.title = STEP_LABEL[stage];
-    li.append(h('span', 'n', String(i + 1)), h('span', 'l', STEP_LABEL[stage]));
-    stepsEl.append(li);
-  });
+  const buildSteps = (): void => {
+    stepsEl.replaceChildren();
+    WORK_STAGES.forEach((stage, i) => {
+      const li = h('li', 'step');
+      li.dataset.stage = stage;
+      li.title = t(`step.${stage}`);
+      li.append(h('span', 'n', String(i + 1)), h('span', 'l', t(`step.${stage}`)));
+      stepsEl.append(li);
+    });
+  };
 
   const renderSteps = (): void => {
     const cur = store.state.stage;
@@ -64,29 +55,26 @@ export function mountPanels(store: OfficeStore, view: OfficeView): { onEvent: (e
   const renderJob = (): void => {
     const job = store.state.job;
     if (job) jobTitle.textContent = job.title;
-    else if (store.state.stage === 'brief') jobTitle.textContent = 'Talking to Rex about the order...';
-    else jobTitle.textContent = 'No active job — press Start or click Rex';
+    else if (store.state.stage === 'brief') jobTitle.textContent = t('hud.briefing');
+    else jobTitle.textContent = t('hud.noJob');
   };
 
   const renderQueue = (): void => {
     const s = store.state;
     queueEl.replaceChildren();
     const carrying = s.agents.courier.carrying;
-    if (carrying) queueEl.append(h('li', 'carrying', `Carrying: ${carrying}`));
+    if (carrying) queueEl.append(h('li', 'carrying', t('queue.carrying', { label: carrying })));
     for (const doc of s.queue) {
-      queueEl.append(h('li', undefined, `${doc.label}  ${nameOf(doc.from)} → ${nameOf(doc.to)}`));
+      queueEl.append(h('li', undefined, `${tr(doc.label)}  ${nameOf(doc.from)} → ${nameOf(doc.to)}`));
     }
-    if (!queueEl.children.length) queueEl.append(h('li', 'empty', 'Queue is empty'));
+    if (!queueEl.children.length) queueEl.append(h('li', 'empty', t('queue.empty')));
   };
 
   const renderInspector = (): void => {
     inspector.replaceChildren();
     const id: AgentId | null = view.selected;
     if (!id) {
-      inspector.append(
-        h('h2', undefined, 'Inspector'),
-        h('p', 'hint', 'Click a character to see what they are doing and their conversations.'),
-      );
+      inspector.append(h('h2', undefined, t('inspector.title')), h('p', 'hint', t('inspector.hint')));
       return;
     }
     const def = ROSTER[id];
@@ -96,33 +84,54 @@ export function mountPanels(store: OfficeStore, view: OfficeView): { onEvent: (e
     drawPortrait(portrait, id);
     const who = h('div', 'who');
     const name = h('div', 'name', def.name);
-    const role = h('div', 'role', def.role);
+    const role = h('div', 'role', roleOf(id));
     role.style.color = DEPT_COLOR[def.dept];
     who.append(name, role);
     head.append(portrait, who);
 
     const chips = h('div', 'chips');
-    chips.append(h('span', `chip act-${st.activity}`, ACTIVITY_LABEL[st.activity] ?? st.activity));
-    if (st.inbox > 0) chips.append(h('span', 'chip', `Inbox ${st.inbox}`));
-    if (st.carrying) chips.append(h('span', 'chip', `Carrying ${st.carrying}`));
+    chips.append(h('span', `chip act-${st.activity}`, t(`act.${st.activity}`)));
+    if (st.inbox > 0) chips.append(h('span', 'chip', t('inspector.inbox', { n: st.inbox })));
+    if (st.carrying) chips.append(h('span', 'chip', t('inspector.carrying', { label: st.carrying })));
 
     const rows = h('dl', 'kv');
     const kv = (k: string, v: string): void => {
       rows.append(h('dt', undefined, k), h('dd', undefined, v));
     };
-    kv('Doing', st.note || '—');
-    kv('Model', def.model);
+    kv(t('inspector.doing'), st.note ? tr(st.note) : '—');
+    kv(t('inspector.model'), modelOf(id));
 
     const convo = h('ul', 'convo');
     const mine = store.state.log.filter((l) => l.from === id || l.to === id).slice(-8);
     for (const line of mine) {
       const li = h('li');
-      li.append(h('b', undefined, `${nameOf(line.from)}${line.to ? ` → ${nameOf(line.to)}` : ''}: `), line.text);
+      li.append(h('b', undefined, `${nameOf(line.from)}${line.to ? ` → ${nameOf(line.to)}` : ''}: `), tr(line.text));
       convo.append(li);
     }
-    if (!mine.length) convo.append(h('li', 'empty', 'No conversations yet'));
+    if (!mine.length) convo.append(h('li', 'empty', t('inspector.noConvos')));
 
-    inspector.append(head, chips, h('p', 'blurb', def.blurb), rows, h('h3', undefined, 'Conversations'), convo);
+    inspector.append(head, chips, h('p', 'blurb', blurbOf(id)), rows, h('h3', undefined, t('inspector.convos')), convo);
+  };
+
+  const renderFeed = (): void => {
+    feedEl.replaceChildren();
+    for (const { e, at } of feed) {
+      const text = describeEvent(e);
+      if (!text) continue;
+      const li = h('li');
+      li.append(h('time', undefined, clock(at - born)), ` ${text}`);
+      if (e.type === 'review.verdict') li.classList.add(e.verdict);
+      if (e.type === 'agent.activity') li.classList.add('reject');
+      if (e.type === 'job.stage' || e.type === 'job.created' || e.type === 'job.done') li.classList.add('stage');
+      feedEl.append(li);
+    }
+  };
+
+  const renderAll = (): void => {
+    renderSteps();
+    renderJob();
+    renderQueue();
+    renderInspector();
   };
 
   let scheduled = false;
@@ -131,26 +140,26 @@ export function mountPanels(store: OfficeStore, view: OfficeView): { onEvent: (e
     scheduled = true;
     requestAnimationFrame(() => {
       scheduled = false;
-      renderSteps();
-      renderJob();
-      renderQueue();
-      renderInspector();
+      renderAll();
     });
   };
   store.subscribe(refresh);
+  buildSteps();
   refresh();
 
+  // Switching language re-renders immediately (no waiting for the next frame or event).
+  onLangChange(() => {
+    buildSteps();
+    renderAll();
+    renderFeed();
+  });
+
   const onEvent = (e: OfficeEvent): void => {
-    const text = describeEvent(e);
-    if (e.type === 'sim.reset') feedEl.replaceChildren();
-    if (!text) return;
-    const li = h('li');
-    li.append(h('time', undefined, clock(Date.now() - born)), ` ${text}`);
-    if (e.type === 'review.verdict') li.classList.add(e.verdict);
-    if (e.type === 'agent.activity') li.classList.add('reject');
-    if (e.type === 'job.stage' || e.type === 'job.created' || e.type === 'job.done') li.classList.add('stage');
-    feedEl.prepend(li);
-    while (feedEl.children.length > 80) feedEl.lastElementChild?.remove();
+    if (e.type === 'sim.reset') feed.length = 0;
+    if (!describeEvent(e)) return;
+    feed.unshift({ e, at: Date.now() });
+    feed.length = Math.min(feed.length, FEED_LIMIT);
+    renderFeed();
   };
 
   return { onEvent, refresh };

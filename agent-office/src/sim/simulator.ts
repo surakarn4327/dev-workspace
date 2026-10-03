@@ -2,10 +2,15 @@
 // same events a real orchestrator would, so the UI never knows the difference.
 // The courier is a real FIFO queue (plain code); everything else is scripted.
 
+import { isAffirmative, isBareRevise } from '../core/intent.ts';
+import { msg, raw, tr } from '../core/i18n.ts';
+import type { Msg } from '../core/i18n.ts';
 import { travelMs } from '../core/world.ts';
 import type {
   Activity,
   AgentId,
+  ChatChoice,
+  ChatReply,
   Doc,
   OfficeEvent,
   OfficeListener,
@@ -49,6 +54,16 @@ const PODS: Record<Pod, { head: AgentId; staff: [AgentId, AgentId] }> = {
   production: { head: 'prod-head', staff: ['prod-1', 'prod-2'] },
 };
 
+/** What the user answered: which button (if any), plus a displayable form of the reply. */
+interface Answer {
+  choice: string | null;
+  msg: Msg;
+  /** The reply as plain text in the current language (used for the job title). */
+  text: string;
+}
+
+const choice = (id: string, key: string): ChatChoice => ({ id, label: msg(key) });
+
 function shorten(text: string, max = 44): string {
   const t = text.trim().replace(/\s+/g, ' ');
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
@@ -68,12 +83,12 @@ export class MockOffice implements OfficeSource {
   private docSeq = 0;
   private pending = new Map<
     string,
-    { from: AgentId; resolve: (t: string) => void; reject: (e: unknown) => void }
+    { from: AgentId; choices: ChatChoice[]; resolve: (a: Answer) => void; reject: (e: unknown) => void }
   >();
   private queue: QueueItem[] = [];
   private wake: (() => void) | null = null;
   private loc = {} as Record<AgentId, PlaceId>;
-  private desired = {} as Record<AgentId, { activity: Activity; note?: string }>;
+  private desired = {} as Record<AgentId, { activity: Activity; note?: Msg }>;
   private blocked = new Set<AgentId>();
   private ambient: boolean;
   private away = new Set<AgentId>();
@@ -97,13 +112,27 @@ export class MockOffice implements OfficeSource {
     return () => this.listeners.delete(listener);
   }
 
-  answer(chatId: string, text: string): void {
+  answer(chatId: string, reply: ChatReply): void {
+    const p = this.pending.get(chatId);
+    if (!p) return;
+    let answer: Answer;
+    if ('choice' in reply) {
+      const picked = p.choices.find((c) => c.id === reply.choice);
+      if (!picked) return; // not one of the offered buttons: ignore, the question stays open
+      answer = { choice: picked.id, msg: picked.label, text: tr(picked.label) };
+    } else {
+      answer = { choice: null, msg: raw(reply.text), text: reply.text };
+    }
+    this.resolveAnswer(chatId, answer);
+  }
+
+  private resolveAnswer(chatId: string, answer: Answer): void {
     const p = this.pending.get(chatId);
     if (!p) return;
     this.pending.delete(chatId);
-    this.emit({ type: 'user.say', text, to: p.from });
+    this.emit({ type: 'user.say', text: answer.msg, to: p.from });
     this.emit({ type: 'chat.closed', id: chatId });
-    p.resolve(text);
+    p.resolve(answer);
   }
 
   // ---------- controls used by the demo panel ----------
@@ -186,7 +215,7 @@ export class MockOffice implements OfficeSource {
       const from = people[Math.floor(Math.random() * people.length)];
       let to = people[Math.floor(Math.random() * people.length)];
       if (to === from) to = people[(people.indexOf(from) + 1) % people.length];
-      this.handoff(from, to, 'Memo').catch(() => {});
+      this.handoff(from, to, msg('doc.memo')).catch(() => {});
     }
   }
 
@@ -216,7 +245,7 @@ export class MockOffice implements OfficeSource {
     });
   }
 
-  private setAct(agent: AgentId, activity: Activity, note?: string): void {
+  private setAct(agent: AgentId, activity: Activity, note?: Msg): void {
     this.desired[agent] = { activity, note };
     if (this.blocked.has(agent)) return;
     this.emit({ type: 'agent.activity', agent, activity, note });
@@ -235,36 +264,40 @@ export class MockOffice implements OfficeSource {
 
   private ask(
     from: AgentId,
-    text: string,
-    opts: { choices?: string[]; placeholder?: string; auto?: string } = {},
-  ): Promise<string> {
+    text: Msg,
+    opts: { choices?: ChatChoice[]; placeholder?: Msg; auto?: Msg } = {},
+  ): Promise<Answer> {
     const id = `chat-${++this.chatSeq}`;
     this.setAct(from, 'talking');
-    const result = new Promise<string>((resolve, reject) => {
-      this.pending.set(id, { from, resolve, reject });
+    const result = new Promise<Answer>((resolve, reject) => {
+      this.pending.set(id, { from, choices: opts.choices ?? [], resolve, reject });
     });
     this.emit({ type: 'chat.ask', id, from, text, choices: opts.choices, placeholder: opts.placeholder });
     if (this.autoAnswer) {
-      const canned = opts.choices?.[0] ?? opts.auto ?? 'Sounds good';
+      const first = opts.choices?.[0];
+      const autoMsg = opts.auto ?? msg('auto.idea');
+      const canned: Answer = first
+        ? { choice: first.id, msg: first.label, text: tr(first.label) }
+        : { choice: null, msg: autoMsg, text: tr(autoMsg) };
       this.sleep(1400)
-        .then(() => this.answer(id, canned))
+        .then(() => this.resolveAnswer(id, canned))
         .catch(() => {});
     }
     return result.finally(() => this.setAct(from, 'idle'));
   }
 
   /** A short scripted conversation; the speaker animates while talking. */
-  private async convo(lines: [AgentId, string, AgentId?][]): Promise<void> {
+  private async convo(lines: [AgentId, Msg, AgentId?][]): Promise<void> {
     for (const [agent, text, to] of lines) {
       this.setAct(agent, 'talking');
       this.emit({ type: 'agent.say', agent, text, to });
-      await this.sleep(1100 + text.length * 22);
+      await this.sleep(1100 + tr(text, 'en').length * 22); // pacing never depends on the UI language
       this.setAct(agent, 'idle');
     }
   }
 
   /** Hand a document over via the courier queue; resolves when delivered. */
-  handoff(from: AgentId, to: AgentId, label: string): Promise<void> {
+  handoff(from: AgentId, to: AgentId, label: Msg): Promise<void> {
     const doc: Doc = { id: `doc-${++this.docSeq}`, label, from, to };
     return new Promise<void>((resolve, reject) => {
       this.queue.push({ doc, resolve, reject });
@@ -328,7 +361,7 @@ export class MockOffice implements OfficeSource {
   }
 
   /** Walk somewhere, stay a while, walk back to the desk. */
-  private async trip(agent: AgentId, place: PlaceId, ms: number, activity: Activity, note: string): Promise<void> {
+  private async trip(agent: AgentId, place: PlaceId, ms: number, activity: Activity, note: Msg): Promise<void> {
     const run = this.runId;
     this.away.add(agent);
     this.occupied.add(place);
@@ -369,8 +402,8 @@ export class MockOffice implements OfficeSource {
         const spot = open[Math.floor(Math.random() * open.length)];
         const t: Promise<void> = (
           coffee
-            ? this.trip(agent, spot, 5000 + Math.random() * 3000, 'break', 'Coffee break')
-            : this.trip(agent, spot, 3000 + Math.random() * 2000, 'idle', 'Restroom')
+            ? this.trip(agent, spot, 5000 + Math.random() * 3000, 'break', msg('note.coffee'))
+            : this.trip(agent, spot, 3000 + Math.random() * 2000, 'idle', msg('note.restroom'))
         ).finally(() => {
           this.trips.delete(t);
         });
@@ -393,18 +426,18 @@ export class MockOffice implements OfficeSource {
   private async errorFlow(run: number, who: AgentId, head: AgentId): Promise<void> {
     this.blocked.add(who);
     this.blocked.add(head);
-    this.emit({ type: 'agent.activity', agent: who, activity: 'error', note: 'Tool crashed' });
-    this.emit({ type: 'agent.say', agent: who, text: 'My tool just crashed!', to: head });
+    this.emit({ type: 'agent.activity', agent: who, activity: 'error', note: msg('note.crashed') });
+    this.emit({ type: 'agent.say', agent: who, text: msg('say.crash'), to: head });
     await this.sleep(1600);
-    this.emit({ type: 'agent.activity', agent: head, activity: 'talking', note: 'Heading to the server room' });
-    this.emit({ type: 'agent.say', agent: head, text: 'I will restart it from the server room.', to: who });
+    this.emit({ type: 'agent.activity', agent: head, activity: 'talking', note: msg('note.toServer') });
+    this.emit({ type: 'agent.say', agent: head, text: msg('say.restartPlan'), to: who });
     await this.walk(head, 'server:0');
-    this.emit({ type: 'agent.activity', agent: head, activity: 'typing', note: 'Restarting the tool server' });
-    this.emit({ type: 'agent.say', agent: head, text: 'Restarting the tool server...' });
+    this.emit({ type: 'agent.activity', agent: head, activity: 'typing', note: msg('note.restarting') });
+    this.emit({ type: 'agent.say', agent: head, text: msg('say.restarting') });
     await this.sleep(2800);
     if (run !== this.runId) return;
-    this.emit({ type: 'agent.say', agent: head, text: 'Restarted. Please retry.', to: who });
-    this.emit({ type: 'agent.say', agent: who, text: 'Working again, thanks!', to: head });
+    this.emit({ type: 'agent.say', agent: head, text: msg('say.restarted'), to: who });
+    this.emit({ type: 'agent.say', agent: who, text: msg('say.recovered'), to: head });
     this.blocked.delete(who);
     this.blocked.delete(head);
     this.emit({ type: 'agent.activity', agent: who, ...this.desired[who] });
@@ -418,46 +451,47 @@ export class MockOffice implements OfficeSource {
 
     // 1. Brief: the user tells the owner what to produce.
     this.stage(jobId, 'brief');
-    const idea = await this.ask('owner', 'Welcome to the office! What would you like us to produce?', {
-      placeholder: 'e.g. A weekly market newsletter',
-      auto: 'A weekly market newsletter',
+    const idea = await this.ask('owner', msg('ask.idea'), {
+      placeholder: msg('ask.idea.ph'),
+      auto: msg('auto.idea'),
     });
-    const title = shorten(idea);
+    const title = shorten(idea.text);
     this.emit({ type: 'job.created', jobId, title });
-    const audience = await this.ask(
-      'owner',
-      `"${title}" - sounds good. Who is it for, and what tone should it have?`,
-      { placeholder: 'e.g. Beginners, friendly tone', auto: 'Beginners, friendly tone' },
-    );
-    const limits = await this.ask('owner', 'Any hard limits? Length, format, deadline...', {
-      choices: ['No limits', 'One page', 'Detailed report'],
-      placeholder: 'or type your own',
+    const audience = await this.ask('owner', msg('ask.audience', { title }), {
+      placeholder: msg('ask.audience.ph'),
+      auto: msg('auto.audience'),
+    });
+    const limits = await this.ask('owner', msg('ask.limits'), {
+      choices: [choice('none', 'choice.none'), choice('one-page', 'choice.onePage'), choice('detailed', 'choice.detailed')],
+      placeholder: msg('ask.limits.ph'),
     });
 
-    this.setAct('secretary', 'typing', 'Writing the brief');
-    this.emit({ type: 'agent.say', agent: 'owner', text: 'Sam, please write this up as a brief.', to: 'secretary' });
+    this.setAct('secretary', 'typing', msg('note.writeBrief'));
+    this.emit({ type: 'agent.say', agent: 'owner', text: msg('say.writeBrief'), to: 'secretary' });
     await this.sleep(2800);
     this.setAct('secretary', 'idle');
-    await this.handoff('secretary', 'owner', 'Brief draft');
+    await this.handoff('secretary', 'owner', msg('doc.briefDraft'));
     this.emit({ type: 'doc.consumed', agent: 'owner' });
 
     // 2. Approval: the owner confirms the brief with the user.
     this.stage(jobId, 'approval');
-    let details = `Goal: ${title}\nAudience & tone: ${audience}\nLimits: ${limits}`;
+    let changes: Msg = raw('');
     let approved = false;
     while (!approved) {
-      const reply = await this.ask('owner', `Here is the brief:\n${details}\n\nShall we start?`, {
-        choices: ['Approve', 'Revise'],
-        placeholder: 'or type a change',
+      const details = msg('brief.body', { goal: title, audience: audience.msg, limits: limits.msg, changes });
+      const reply = await this.ask('owner', msg('ask.approve', { details }), {
+        choices: [choice('approve', 'choice.approve'), choice('revise', 'choice.revise')],
+        placeholder: msg('ask.approve.ph'),
       });
-      if (/^(approve|ok|yes|y|go|start)/i.test(reply.trim())) {
+      if (reply.choice === 'approve' || (reply.choice === null && isAffirmative(reply.text))) {
         approved = true;
       } else {
-        const change = /^revise/i.test(reply.trim())
-          ? await this.ask('owner', 'What should I change?', { placeholder: 'tell me what to change' })
-          : reply;
-        details += `\nChange: ${change}`;
-        this.setAct('secretary', 'typing', 'Updating the brief');
+        const asksWhat = reply.choice === 'revise' || (reply.choice === null && isBareRevise(reply.text));
+        const change = asksWhat
+          ? (await this.ask('owner', msg('ask.reviseWhat'), { placeholder: msg('ask.reviseWhat.ph') })).msg
+          : reply.msg;
+        changes = msg('brief.change', { prev: changes, text: change });
+        this.setAct('secretary', 'typing', msg('note.updateBrief'));
         await this.sleep(1800);
         this.setAct('secretary', 'idle');
       }
@@ -472,10 +506,10 @@ export class MockOffice implements OfficeSource {
       this.walk('prod-head', 'meet:5'),
     ]);
     await this.convo([
-      ['owner', `New job: ${title}. We need Research and Production, then QA.`, 'research-head'],
-      ['research-head', 'Research will gather the facts first.', 'owner'],
-      ['prod-head', 'Production drafts in parallel and merges the facts when they arrive.', 'owner'],
-      ['owner', 'Perfect. Keep me posted.'],
+      ['owner', msg('say.meetOwner', { title }), 'research-head'],
+      ['research-head', msg('say.meetResearch'), 'owner'],
+      ['prod-head', msg('say.meetProd'), 'owner'],
+      ['owner', msg('say.meetOwner2')],
     ]);
     await Promise.all([
       this.walk('owner', 'desk:owner'),
@@ -502,7 +536,7 @@ export class MockOffice implements OfficeSource {
     // Done: celebrate.
     this.stage(jobId, 'done');
     for (const id of AGENT_IDS) if (id !== 'courier') this.setAct(id, 'celebrate');
-    this.emit({ type: 'agent.say', agent: 'owner', text: 'Great job, team! Another one delivered.' });
+    this.emit({ type: 'agent.say', agent: 'owner', text: msg('say.celebrate') });
     this.emit({ type: 'job.done', jobId });
     await this.sleep(3600);
     if (run !== this.runId) return;
@@ -518,15 +552,15 @@ export class MockOffice implements OfficeSource {
     ]);
     if (pod === 'research') {
       await this.convo([
-        [head, 'Leo, Mina: collect facts and sources for the brief.', staff[0]],
-        [staff[0], 'On it. I will take the market data.', head],
-        [staff[1], 'I will cover background and sources.', head],
+        [head, msg('say.huddleResearch'), staff[0]],
+        [staff[0], msg('say.huddleLeo'), head],
+        [staff[1], msg('say.huddleMina'), head],
       ]);
     } else {
       await this.convo([
-        [head, 'Kai, Zoe: start the outline now, merge the research once it lands.', staff[0]],
-        [staff[0], 'I will draft the structure.', head],
-        [staff[1], 'And I will prepare the visuals.', head],
+        [head, msg('say.huddleProd'), staff[0]],
+        [staff[0], msg('say.huddleKai'), head],
+        [staff[1], msg('say.huddleZoe'), head],
       ]);
     }
     await Promise.all([
@@ -541,58 +575,58 @@ export class MockOffice implements OfficeSource {
     const { head: pHead, staff: pStaff } = PODS.production;
 
     const research = (async () => {
-      for (const a of rStaff) this.setAct(a, 'typing', 'Gathering facts');
+      for (const a of rStaff) this.setAct(a, 'typing', msg('note.gathering'));
       await this.sleep(4600);
       await Promise.all(
         rStaff.map((a) => {
           this.setAct(a, 'idle');
-          return this.handoff(a, rHead, 'Findings');
+          return this.handoff(a, rHead, msg('doc.findings'));
         }),
       );
       this.emit({ type: 'doc.consumed', agent: rHead });
       this.emit({ type: 'doc.consumed', agent: rHead });
-      this.setAct(rHead, 'reviewing', 'Reading the findings');
+      this.setAct(rHead, 'reviewing', msg('note.readFindings'));
       await this.sleep(2200);
-      this.setAct(rHead, 'typing', 'Writing the research report');
+      this.setAct(rHead, 'typing', msg('note.writeReport'));
       await this.sleep(2400);
       this.setAct(rHead, 'idle');
-      await this.handoff(rHead, pHead, 'Research report');
+      await this.handoff(rHead, pHead, msg('doc.researchReport'));
       this.emit({ type: 'doc.consumed', agent: pHead });
     })();
 
     const production = (async () => {
-      for (const a of pStaff) this.setAct(a, 'typing', 'Drafting the outline');
+      for (const a of pStaff) this.setAct(a, 'typing', msg('note.outline'));
       await this.sleep(4200);
       // While Research finishes, the producers go and get a coffee.
       const coffee = Promise.all(
         pStaff.map(async (a, i) => {
           this.setAct(a, 'idle');
           await this.walk(a, `pantry:${i as 0 | 1}`);
-          this.setAct(a, 'break', 'Coffee while waiting for the research');
+          this.setAct(a, 'break', msg('note.coffeeWait'));
         }),
       );
       await research;
       await coffee;
       const back = Promise.all(pStaff.map((a) => this.walk(a, `desk:${a}`)));
-      this.setAct(pHead, 'thinking', 'Planning the merge');
+      this.setAct(pHead, 'thinking', msg('note.planMerge'));
       await this.sleep(1600);
       this.setAct(pHead, 'idle');
       await back;
-      await Promise.all(pStaff.map((a) => this.handoff(pHead, a, 'Brief + research')));
+      await Promise.all(pStaff.map((a) => this.handoff(pHead, a, msg('doc.briefResearch'))));
       for (const a of pStaff) {
         this.emit({ type: 'doc.consumed', agent: a });
-        this.setAct(a, 'typing', 'Merging into the draft');
+        this.setAct(a, 'typing', msg('note.merging'));
       }
       await this.sleep(4600);
       await Promise.all(
         pStaff.map((a) => {
           this.setAct(a, 'idle');
-          return this.handoff(a, pHead, 'Draft part');
+          return this.handoff(a, pHead, msg('doc.draftPart'));
         }),
       );
       this.emit({ type: 'doc.consumed', agent: pHead });
       this.emit({ type: 'doc.consumed', agent: pHead });
-      this.setAct(pHead, 'typing', 'Assembling the deliverable');
+      this.setAct(pHead, 'typing', msg('note.assembling'));
       await this.sleep(2800);
       this.setAct(pHead, 'idle');
     })();
@@ -602,27 +636,27 @@ export class MockOffice implements OfficeSource {
 
   private async reviewPhase(): Promise<void> {
     const { head: pHead, staff: pStaff } = PODS.production;
-    await this.handoff(pHead, 'qa', 'Deliverable v1');
+    await this.handoff(pHead, 'qa', msg('doc.deliverable', { version: 1 }));
     this.emit({ type: 'doc.consumed', agent: 'qa' });
 
     for (let round = 1; ; round++) {
-      this.setAct('qa', 'reviewing', 'Checking against the brief');
+      this.setAct('qa', 'reviewing', msg('note.checking'));
       await this.sleep(3800);
       const reject = this.rejectNextReview && round < 3;
       this.rejectNextReview = false;
       if (!reject) {
         this.setAct('qa', 'idle');
-        this.emit({ type: 'review.verdict', verdict: 'pass', reason: 'Matches the brief', round });
-        this.emit({ type: 'agent.say', agent: 'qa', text: 'Looks good. Approved!', to: 'secretary' });
-        await this.handoff('qa', 'secretary', 'Approved package');
+        this.emit({ type: 'review.verdict', verdict: 'pass', reason: msg('reason.matches'), round });
+        this.emit({ type: 'agent.say', agent: 'qa', text: msg('say.qaPass'), to: 'secretary' });
+        await this.handoff('qa', 'secretary', msg('doc.approved'));
         this.emit({ type: 'doc.consumed', agent: 'secretary' });
         return;
       }
-      const reason = 'Section 2 has no sources';
+      const reason = msg('reason.noSources');
       this.setAct('qa', 'idle');
       this.emit({ type: 'review.verdict', verdict: 'reject', reason, round });
-      this.emit({ type: 'agent.say', agent: 'qa', text: `${reason}. Please fix and resubmit.`, to: pHead });
-      await this.handoff('qa', pHead, 'Review notes');
+      this.emit({ type: 'agent.say', agent: 'qa', text: msg('say.qaReject', { reason }), to: pHead });
+      await this.handoff('qa', pHead, msg('doc.reviewNotes'));
       this.emit({ type: 'doc.consumed', agent: pHead });
       await this.rework(pHead, pStaff[0], round + 1);
     }
@@ -630,40 +664,39 @@ export class MockOffice implements OfficeSource {
 
   /** Head hands a fix list to one producer, who fixes it and returns it to QA via the head. */
   private async rework(head: AgentId, worker: AgentId, nextVersion: number): Promise<void> {
-    this.setAct(head, 'thinking', 'Reading the review notes');
+    this.setAct(head, 'thinking', msg('note.readNotes'));
     await this.sleep(1500);
     this.setAct(head, 'idle');
-    await this.handoff(head, worker, 'Fix list');
+    await this.handoff(head, worker, msg('doc.fixList'));
     this.emit({ type: 'doc.consumed', agent: worker });
-    this.setAct(worker, 'typing', 'Fixing the issues');
+    this.setAct(worker, 'typing', msg('note.fixing'));
     await this.sleep(4200);
     this.setAct(worker, 'idle');
-    await this.handoff(worker, head, 'Fixed draft');
+    await this.handoff(worker, head, msg('doc.fixedDraft'));
     this.emit({ type: 'doc.consumed', agent: head });
-    this.setAct(head, 'typing', 'Re-assembling the deliverable');
+    this.setAct(head, 'typing', msg('note.reassembling'));
     await this.sleep(2000);
     this.setAct(head, 'idle');
-    await this.handoff(head, 'qa', `Deliverable v${nextVersion}`);
+    await this.handoff(head, 'qa', msg('doc.deliverable', { version: nextVersion }));
     this.emit({ type: 'doc.consumed', agent: 'qa' });
   }
 
   private async deliveryPhase(jobId: string, title: string): Promise<void> {
     for (let attempt = 1; ; attempt++) {
-      this.setAct('secretary', 'typing', 'Packaging the result');
+      this.setAct('secretary', 'typing', msg('note.packaging'));
       await this.sleep(2400);
       this.setAct('secretary', 'idle');
-      this.emit({ type: 'agent.carry', agent: 'secretary', label: 'Deliverable' });
+      this.emit({ type: 'agent.carry', agent: 'secretary', label: msg('doc.deliverableShort') });
       await this.walk('secretary', 'client');
-      const reply = await this.ask(
-        'secretary',
-        `Your deliverable is ready: "${title}".\n\n(Demo output - a real run would show the actual result here.)\n\nDo you accept it?`,
-        { choices: ['Accept', 'Request changes'], placeholder: 'or describe what to change' },
-      );
-      if (/^(accept|ok|yes|y|good|great)/i.test(reply.trim())) {
+      const reply = await this.ask('secretary', msg('ask.deliver', { title }), {
+        choices: [choice('accept', 'choice.accept'), choice('request-changes', 'choice.requestChanges')],
+        placeholder: msg('ask.deliver.ph'),
+      });
+      if (reply.choice === 'accept' || (reply.choice === null && isAffirmative(reply.text))) {
         // Accepted: Sam files the deliverable in the archive room, then goes back to her desk.
-        this.emit({ type: 'agent.say', agent: 'secretary', text: 'Wonderful. I will file it in the archive.', to: 'owner' });
+        this.emit({ type: 'agent.say', agent: 'secretary', text: msg('say.filing'), to: 'owner' });
         await this.walk('secretary', 'archive:0');
-        this.setAct('secretary', 'typing', 'Filing the deliverable');
+        this.setAct('secretary', 'typing', msg('note.filing'));
         await this.sleep(1600);
         this.setAct('secretary', 'idle');
         this.emit({ type: 'agent.carry', agent: 'secretary', label: null });
@@ -671,20 +704,22 @@ export class MockOffice implements OfficeSource {
         await this.walk('secretary', 'desk:secretary');
         return;
       }
-      const change = /^request/i.test(reply.trim())
-        ? await this.ask('secretary', 'What should we change?', { placeholder: 'tell me what to change' })
-        : reply;
-      this.emit({ type: 'agent.say', agent: 'secretary', text: `Change request noted: ${shorten(change, 60)}`, to: 'prod-head' });
+      const asksWhat = reply.choice === 'request-changes' || (reply.choice === null && isBareRevise(reply.text));
+      const change = asksWhat
+        ? (await this.ask('secretary', msg('ask.changeWhat'), { placeholder: msg('ask.changeWhat.ph') })).msg
+        : reply.msg;
+      const shown = change.key === 'text' ? raw(shorten(String(change.params?.text ?? ''), 60)) : change;
+      this.emit({ type: 'agent.say', agent: 'secretary', text: msg('say.changeNoted', { change: shown }), to: 'prod-head' });
       this.emit({ type: 'agent.carry', agent: 'secretary', label: null });
       await this.walk('secretary', 'desk:secretary');
-      await this.handoff('secretary', 'prod-head', 'Change request');
+      await this.handoff('secretary', 'prod-head', msg('doc.changeRequest'));
       this.emit({ type: 'doc.consumed', agent: 'prod-head' });
       await this.rework('prod-head', 'prod-2', attempt + 1);
-      this.setAct('qa', 'reviewing', 'Re-checking the changes');
+      this.setAct('qa', 'reviewing', msg('note.rechecking'));
       await this.sleep(2600);
       this.setAct('qa', 'idle');
-      this.emit({ type: 'review.verdict', verdict: 'pass', reason: 'Changes applied', round: attempt + 1 });
-      await this.handoff('qa', 'secretary', 'Approved package');
+      this.emit({ type: 'review.verdict', verdict: 'pass', reason: msg('reason.applied'), round: attempt + 1 });
+      await this.handoff('qa', 'secretary', msg('doc.approved'));
       this.emit({ type: 'doc.consumed', agent: 'secretary' });
     }
   }

@@ -135,6 +135,8 @@ body {
 
 .steps {
   display: flex;
+  flex-wrap: wrap; /* a long step name (Thai) must not push the last pips out of the HUD */
+  min-width: 0;
   gap: 3px;
   list-style: none;
   margin: 0;
@@ -164,6 +166,7 @@ body {
 .step .l {
   display: none;
   padding-right: 3px;
+  white-space: nowrap; /* never split a step name (Thai has no spaces, so it would break mid-word) */
 }
 
 .step.current .l {
@@ -592,4 +595,16 @@ body {
   .drawer {
     transition: none;
   }
+}
+
+/* Thai: Cascadia Mono / Consolas have no Thai glyphs, so switch to system Thai fonts (no download).
+   Swap --font-th for an embedded pixel Thai font later if one is approved (see THIRD-PARTY.md). */
+:root {
+  --font-th: 'Leelawadee UI', 'Tahoma', 'Noto Sans Thai', 'Noto Sans Thai UI', sans-serif;
+}
+html[lang='th'] {
+  --font: var(--font-th);
+}
+html[lang='th'] body {
+  line-height: 1.6; /* Thai vowels/tone marks stack above and below the line */
 }

@@ -1,12 +1,19 @@
 import './style.css';
 import { OfficeStore } from './core/state.ts';
-import { ROSTER } from './core/roster.ts';
+import { initLang, onLangChange, t } from './core/i18n.ts';
+import { ROSTER, roleOf } from './core/roster.ts';
 import { OfficeView } from './render/view.ts';
 import { MockOffice } from './sim/simulator.ts';
 import { el } from './ui/dom.ts';
 import { mountCamera } from './ui/camera-controls.ts';
 import { mountDialog } from './ui/dialog.ts';
+import { applyStatic, mountLanguageSwitch } from './ui/i18n-dom.ts';
 import { mountPanels } from './ui/panels.ts';
+
+// Language first: saved choice, else the browser's language (Thai -> Thai, anything else -> English).
+initLang();
+applyStatic();
+mountLanguageSwitch();
 
 const source = new MockOffice();
 const store = new OfficeStore();
@@ -63,7 +70,7 @@ canvas.addEventListener('mousemove', (ev) => {
     return;
   }
   const def = ROSTER[id];
-  tooltip.textContent = `${def.name} · ${def.role}`;
+  tooltip.textContent = `${def.name} · ${roleOf(id)}`;
   tooltip.classList.remove('hidden');
   const sr = stage.getBoundingClientRect();
   tooltip.style.left = `${ev.clientX - sr.left + 12}px`;
@@ -90,10 +97,14 @@ const startBtn = el<HTMLButtonElement>('#btn-start');
 const rejectBtn = el<HTMLButtonElement>('#btn-reject');
 function syncControls(): void {
   startBtn.disabled = source.isRunning;
-  startBtn.textContent = source.isRunning ? 'Job running...' : 'Start job';
+  startBtn.textContent = source.isRunning ? t('hud.running') : t('hud.start');
   rejectBtn.classList.toggle('armed', source.rejectNextReview);
 }
 store.subscribe(syncControls);
+onLangChange(() => {
+  applyStatic();
+  syncControls();
+});
 // The job's "running" flag flips without a store event when it finishes.
 window.setInterval(syncControls, 400);
 syncControls();

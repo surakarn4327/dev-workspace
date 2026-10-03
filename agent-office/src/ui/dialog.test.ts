@@ -1,18 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { msg, raw, setLang } from '../core/i18n.ts';
 import { OfficeStore } from '../core/state.ts';
-import type { OfficeSource } from '../core/types.ts';
+import type { ChatReply, OfficeSource } from '../core/types.ts';
 import { mountDialog } from './dialog.ts';
 import { setupDom, sleep } from './test-dom.ts';
 
 const t = setupDom();
 const doc = t.window.document;
 
-const answers: { id: string; text: string }[] = [];
+const answers: { id: string; reply: ChatReply }[] = [];
 const source: OfficeSource = {
   subscribe: () => () => {},
-  answer: (id, text) => {
-    answers.push({ id, text });
+  answer: (id, reply) => {
+    answers.push({ id, reply });
   },
 };
 const store = new OfficeStore();
@@ -29,7 +30,7 @@ const submit = (): void => {
 };
 
 test('a question from the owner opens the dialog with his name, text and answer box', () => {
-  store.apply({ type: 'chat.ask', id: 'c1', from: 'owner', text: 'What should we make?', placeholder: 'e.g. A newsletter' });
+  store.apply({ type: 'chat.ask', id: 'c1', from: 'owner', text: raw('What should we make?'), placeholder: raw('e.g. A newsletter') });
   assert.equal(dialog.classList.contains('hidden'), false);
   assert.ok((doc.getElementById('dlg-name') as HTMLElement).textContent?.includes('Rex'));
   assert.equal(input.placeholder, 'e.g. A newsletter');
@@ -48,7 +49,7 @@ test('typing an answer and pressing send answers the question and ignores empty 
   assert.equal(answers.length, 0, 'an empty answer must not be sent');
   input.value = '  A weekly newsletter  ';
   submit();
-  assert.deepEqual(answers, [{ id: 'c1', text: 'A weekly newsletter' }]);
+  assert.deepEqual(answers, [{ id: 'c1', reply: { text: 'A weekly newsletter' } }]);
 });
 
 test('the dialog closes when the question is closed', () => {
@@ -61,8 +62,11 @@ test('choice buttons are shown, locked while typing, and answer when clicked', a
     type: 'chat.ask',
     id: 'c2',
     from: 'owner',
-    text: 'Shall we start?',
-    choices: ['Approve', 'Revise'],
+    text: raw('Shall we start?'),
+    choices: [
+      { id: 'approve', label: msg('choice.approve') },
+      { id: 'revise', label: msg('choice.revise') },
+    ],
   });
   const buttons = [...choices.querySelectorAll('button')].map((b) => b.textContent);
   assert.deepEqual(buttons, ['Approve', 'Revise']);
@@ -70,14 +74,41 @@ test('choice buttons are shown, locked while typing, and answer when clicked', a
   await sleep(600); // the typing effect finishes by itself
   assert.equal(choices.classList.contains('pending'), false);
   (choices.querySelectorAll('button')[1] as HTMLButtonElement).click();
-  assert.deepEqual(answers.at(-1), { id: 'c2', text: 'Revise' });
+  assert.deepEqual(answers.at(-1), { id: 'c2', reply: { choice: 'revise' } });
   store.apply({ type: 'chat.closed', id: 'c2' });
 });
 
 test('the secretary talks at the top so the reception area stays visible', () => {
-  store.apply({ type: 'chat.ask', id: 'c3', from: 'secretary', text: 'Your deliverable is ready.', choices: ['Accept'] });
+  store.apply({ type: 'chat.ask', id: 'c3', from: 'secretary', text: raw('Your deliverable is ready.'), choices: [{ id: 'accept', label: msg('choice.accept') }] });
   assert.equal(dialog.classList.contains('top'), true);
   store.apply({ type: 'chat.closed', id: 'c3' });
 });
 
+test('switching language mid-question swaps the words at once and keeps the typed answer', async () => {
+  setLang('en', false);
+  store.apply({
+    type: 'chat.ask',
+    id: 'c4',
+    from: 'owner',
+    text: msg('ask.approve', { details: raw('X') }),
+    placeholder: msg('ask.approve.ph'),
+    choices: [
+      { id: 'approve', label: msg('choice.approve') },
+      { id: 'revise', label: msg('choice.revise') },
+    ],
+  });
+  await sleep(1500); // typing effect done
+  input.value = 'half-typed answer';
+  assert.ok(text.textContent?.includes('Here is the brief'));
+  setLang('th', false);
+  assert.ok(text.textContent?.includes('นี่คือบรีฟ'), 'the question text is Thai now');
+  assert.deepEqual([...choices.querySelectorAll('button')].map((b) => b.textContent), ['อนุมัติ', 'ขอแก้ไข']);
+  assert.equal(input.placeholder, 'หรือพิมพ์สิ่งที่อยากแก้');
+  assert.ok((doc.getElementById('dlg-name') as HTMLElement).textContent?.includes('เจ้าของบริษัท'));
+  assert.equal(input.value, 'half-typed answer', 'what the user was typing is kept');
+  (choices.querySelectorAll('button')[0] as HTMLButtonElement).click();
+  assert.deepEqual(answers.at(-1), { id: 'c4', reply: { choice: 'approve' } }, 'the answer is the same id in any language');
+  store.apply({ type: 'chat.closed', id: 'c4' });
+  setLang('en', false);
+});
 test.after(() => t.stop());
