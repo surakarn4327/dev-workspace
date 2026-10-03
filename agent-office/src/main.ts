@@ -3,6 +3,7 @@ import { OfficeStore } from './core/state.ts';
 import { ROSTER } from './core/roster.ts';
 import { computeLayout } from './core/layout.ts';
 import { W, H } from './core/world.ts';
+import { setWallStyle, type WallStyle } from './render/rooms.ts';
 import { OfficeView } from './render/view.ts';
 import { MockOffice } from './sim/simulator.ts';
 import { el } from './ui/dom.ts';
@@ -132,6 +133,26 @@ el<HTMLButtonElement>('#btn-jam').addEventListener('click', () => {
 el<HTMLInputElement>('#auto').addEventListener('change', (ev) => {
   source.autoAnswer = (ev.target as HTMLInputElement).checked;
 });
+// Wall height: half / mixed / full-height glass (remembered between visits)
+function applyWalls(style: WallStyle): void {
+  setWallStyle(style);
+  view.rebuild();
+  document.querySelectorAll<HTMLButtonElement>('.wall').forEach((o) => o.classList.toggle('active', o.dataset.walls === style));
+  try {
+    localStorage.setItem('agent-office.walls', style);
+  } catch {
+    // storage may be unavailable (private window); the choice just won't be remembered
+  }
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>('.wall')) {
+  b.addEventListener('click', () => applyWalls(b.dataset.walls as WallStyle));
+}
+try {
+  const saved = localStorage.getItem('agent-office.walls');
+  if (saved === 'mixed' || saved === 'full') applyWalls(saved);
+} catch {
+  // ignore
+}
 for (const b of document.querySelectorAll<HTMLButtonElement>('.speed')) {
   b.addEventListener('click', () => {
     source.setSpeed(Number(b.dataset.speed));

@@ -24,10 +24,94 @@ export interface WallFlags {
 }
 
 /**
- * One 8x8 cell of a partition. The wall is ~10px tall: a lit top surface and, where nothing
- * continues to the south, a front face. Neighbour flags join runs together seamlessly.
+ * How tall the partitions are:
+ *  - half:  waist-high panels, everything stays visible (default)
+ *  - mixed: walls running left-right stay waist-high, walls running up-down become full-height
+ *           glass (they only hide a thin strip, so the rooms still read)
+ *  - full:  full-height glass walls everywhere: a solid waist-high panel with clear glass above
  */
+export type WallStyle = 'half' | 'mixed' | 'full';
+let wallStyle: WallStyle = 'half';
+
+export function setWallStyle(style: WallStyle): void {
+  wallStyle = style;
+}
+
+export function getWallStyle(): WallStyle {
+  return wallStyle;
+}
+
+/** Height of a full-height wall in pixels (a person is about 25 tall). */
+const TALL = 30;
+const GLASS = '#bfe6f6';
+const FRAME = '#e3ebf7';
+
 export function drawWallCell(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
+  const vertical = (f.n || f.s) && !(f.e || f.w);
+  const tall = wallStyle === 'full' || (wallStyle === 'mixed' && vertical);
+  if (!tall) {
+    drawHalfWall(g, col, row, f);
+  } else if (vertical) {
+    drawGlassRail(g, col, row, f);
+  } else {
+    drawGlassWall(g, col, row, f);
+  }
+}
+
+/**
+ * A walls running up-down, full height: the waist-high panel stays on the floor and a thin
+ * rail floats at head height with a post at each end. You see the room right through it.
+ */
+function drawGlassRail(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
+  const x = col * 8;
+  const y = row * 8;
+  drawHalfWall(g, col, row, f);
+  const railTop = y + 8 - TALL - 6;
+  rect(g, x + 2, railTop, 4, f.s ? 8 : 6, WALL.top);
+  rect(g, x + 2, railTop, 4, 1, WALL.topHi);
+  g.globalAlpha = 0.18;
+  rect(g, x + 2, railTop + 6, 4, TALL - 12, GLASS);
+  g.globalAlpha = 1;
+  if (!f.n) rect(g, x + 3, y - TALL + 2, 2, TALL - 6, FRAME); // post at the far end
+  if (!f.s) rect(g, x + 3, y + 8 - TALL, 2, TALL - 4, FRAME); // post at the near end
+}
+
+/**
+ * A wall running left-right, full height: a solid waist-high panel, clear glass above with a
+ * frame line at every cell, and a rail on top. Things behind it show through the glass.
+ */
+function drawGlassWall(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
+  const x = col * 8;
+  const base = row * 8 + 8;
+  const panel = 9;
+  // glass first (so the rail and panel sit in front of it)
+  g.globalAlpha = 0.3;
+  rect(g, x, base - TALL, 8, TALL - panel, GLASS);
+  g.globalAlpha = 0.5;
+  if ((col + row) % 2 === 0) rect(g, x + 2, base - TALL + 4, 1, 6, '#ffffff');
+  else rect(g, x + 4, base - TALL + 9, 1, 5, '#ffffff');
+  g.globalAlpha = 1;
+  rect(g, x, base - TALL, 1, TALL - panel, FRAME);
+  if (!f.e) rect(g, x + 7, base - TALL, 1, TALL - panel, FRAME);
+  // rail
+  rect(g, x, base - TALL - 6, 8, 6, WALL.top);
+  rect(g, x, base - TALL - 6, 8, 1, WALL.topHi);
+  rect(g, x, base - TALL, 8, 2, WALL.topSh);
+  // solid panel
+  rect(g, x, base - panel, 8, panel, WALL.front);
+  rect(g, x, base - panel, 8, 1, WALL.frontHi);
+  rect(g, x, base - 1, 8, 1, WALL.base);
+  rect(g, x + 3, base - panel + 2, 1, panel - 4, WALL.frontHi);
+  rect(g, x + 6, base - panel + 2, 1, panel - 4, WALL.frontHi);
+  if (!f.w) rect(g, x, base - panel, 1, panel, WALL.frontHi);
+  if (!f.e) rect(g, x + 7, base - panel, 1, panel, WALL.base);
+}
+
+/**
+ * One 8x8 cell of a waist-high partition: a lit top surface and, where nothing continues to
+ * the south, a front face. Neighbour flags join runs together seamlessly.
+ */
+function drawHalfWall(g: CanvasRenderingContext2D, col: number, row: number, f: WallFlags): void {
   const x = col * 8;
   const y = row * 8;
   const topH = f.s ? 8 : 6;

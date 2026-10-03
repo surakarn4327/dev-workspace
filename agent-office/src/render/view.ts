@@ -141,6 +141,11 @@ export class OfficeView {
     this.bg = buildBackground(cw, ch, this.ox, this.oy);
   }
 
+  /** Repaint the static scenery (needed when something it contains changes, like the wall style). */
+  rebuild(): void {
+    this.bg = buildBackground(this.canvas.width, this.canvas.height, this.ox, this.oy);
+  }
+
   /** Canvas pixels -> office coordinates. */
   toOffice(x: number, y: number): { x: number; y: number } {
     return { x: x - this.ox, y: y - this.oy };

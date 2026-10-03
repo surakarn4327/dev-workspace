@@ -352,6 +352,7 @@ body {
 }
 
 .btn.speed.active,
+.btn.wall.active,
 #btn-panels[aria-expanded='true'] {
   background: var(--accent);
   border-color: var(--accent);
