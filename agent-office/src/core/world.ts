@@ -140,6 +140,22 @@ export const ROOMS: Room[] = [
   { id: 'pantry', rect: cellsRect(51, 17, 58, 27) },
 ];
 
+/** The room each agent's desk is in. Documents inside one room are handed over by hand; across rooms the courier carries them. */
+export const ROOM_OF: Record<AgentId, RoomId> = {
+  owner: 'exec',
+  secretary: 'exec',
+  courier: 'mail',
+  qa: 'qa',
+  'research-head': 'research',
+  'research-1': 'research',
+  'research-2': 'research',
+  'prod-head': 'production',
+  'prod-1': 'production',
+  'prod-2': 'production',
+};
+
+export const sameRoom = (a: AgentId, b: AgentId): boolean => ROOM_OF[a] === ROOM_OF[b];
+
 /** Door gaps in the two horizontal partition rows (columns, 3 cells wide each). */
 const GAPS_TOP: Record<string, number> = {
   restroom: 3,

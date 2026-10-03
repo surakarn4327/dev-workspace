@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { OfficeStore } from '../core/state.ts';
+import { sameRoom } from '../core/world.ts';
 import type { OfficeEvent, Stage } from '../core/types.ts';
 import { MockOffice } from './simulator.ts';
 
@@ -37,13 +38,31 @@ test('every queued document is picked up and delivered exactly once, in FIFO ord
   const queued = events.filter((e) => e.type === 'doc.queued').map((e) => e.doc.id);
   const picked = events.filter((e) => e.type === 'doc.pickup').map((e) => e.doc.id);
   const delivered = events.filter((e) => e.type === 'doc.delivered').map((e) => e.doc.id);
-  assert.ok(queued.length >= 10, 'expected a realistic number of handoffs');
+  assert.ok(queued.length >= 3, 'the courier carries the documents that cross rooms');
   assert.deepEqual([...picked].sort(), [...queued].sort());
   assert.deepEqual(delivered, picked, 'deliveries should follow pickup order');
   // FIFO: documents are picked up in the order they were queued.
   const queuedOrder = new Map(queued.map((id, i) => [id, i]));
   const pickOrder = picked.map((id) => queuedOrder.get(id) ?? -1);
   assert.deepEqual(pickOrder, [...pickOrder].sort((a, b) => a - b));
+});
+
+test('inside a room documents are handed over by hand, only room-crossing ones use the courier', async () => {
+  const events = await runJob();
+  const queued = events.filter((e) => e.type === 'doc.queued');
+  const handed = events.filter((e) => e.type === 'doc.handed');
+  assert.ok(queued.length > 0 && handed.length > 0);
+  assert.ok(queued.every((e) => !sameRoom(e.doc.from, e.doc.to)), 'the courier never carries within one room');
+  assert.ok(handed.every((e) => sameRoom(e.doc.from, e.doc.to)), 'hand-overs stay inside one room');
+  assert.ok(queued.length + handed.length >= 10, 'expected a realistic number of handoffs');
+  // the sender really walks to the recipient's desk, then back to their own
+  const h = handed[0];
+  const i = events.indexOf(h);
+  const before = events.slice(0, i).filter((e) => e.type === 'agent.walk' && e.agent === h.doc.from).at(-1);
+  assert.equal(before?.type === 'agent.walk' && before.to, `visit:${h.doc.to}`);
+  const after = events.slice(i).find((e) => e.type === 'agent.walk' && e.agent === h.doc.from);
+  assert.equal(after?.type === 'agent.walk' && after.to, `desk:${h.doc.from}`);
+  assert.equal(events.some((e) => e.type === 'doc.pickup' && e.doc.id === h.doc.id), false, 'no courier pickup for a hand-over');
 });
 
 test('the user is asked for the brief, approval and acceptance', async () => {

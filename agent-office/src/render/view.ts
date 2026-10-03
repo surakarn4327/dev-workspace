@@ -208,6 +208,7 @@ export class OfficeView {
       case 'agent.walk':
         this.startWalk(this.agents[e.agent], e.to, e.speed);
         break;
+      case 'doc.handed':
       case 'doc.delivered': {
         const d = DESKS[e.doc.to];
         this.particles.burst(d.x + 8, d.y + 2, '#f4f1e8', 6);

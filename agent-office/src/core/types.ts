@@ -96,7 +96,8 @@ export type OfficeEvent =
   | { type: 'user.say'; text: Msg; to: AgentId }
   | { type: 'doc.queued'; doc: Doc }
   | { type: 'doc.pickup'; doc: Doc }
-  | { type: 'doc.delivered'; doc: Doc }
+  | { type: 'doc.delivered'; doc: Doc } // the courier brought it across rooms
+  | { type: 'doc.handed'; doc: Doc } // handed over by hand inside one room (no courier)
   | { type: 'doc.consumed'; agent: AgentId }
   | { type: 'archive.filed'; jobId: string }
   | { type: 'review.verdict'; verdict: 'pass' | 'reject'; reason: Msg; round: number }

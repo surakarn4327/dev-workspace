@@ -115,6 +115,9 @@ export class OfficeStore {
         s.agents.courier.carrying = null;
         s.agents[e.doc.to].inbox += 1;
         break;
+      case 'doc.handed':
+        s.agents[e.doc.to].inbox += 1;
+        break;
       case 'doc.consumed':
         s.agents[e.agent].inbox = Math.max(0, s.agents[e.agent].inbox - 1);
         break;
@@ -165,6 +168,8 @@ export function describeEvent(e: OfficeEvent): string | null {
       return t('feed.queued', { label: e.doc.label, from: nameOf(e.doc.from), to: nameOf(e.doc.to) });
     case 'doc.delivered':
       return t('feed.delivered', { label: e.doc.label, to: nameOf(e.doc.to) });
+    case 'doc.handed':
+      return t('feed.handed', { label: e.doc.label, from: nameOf(e.doc.from), to: nameOf(e.doc.to) });
     case 'archive.filed':
       return t('feed.filed');
     case 'review.verdict':

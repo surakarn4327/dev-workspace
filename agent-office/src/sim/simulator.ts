@@ -5,7 +5,7 @@
 import { isAffirmative, isBareRevise } from '../core/intent.ts';
 import { msg, raw, tr } from '../core/i18n.ts';
 import type { Msg } from '../core/i18n.ts';
-import { travelMs } from '../core/world.ts';
+import { sameRoom, travelMs } from '../core/world.ts';
 import type {
   Activity,
   AgentId,
@@ -86,6 +86,8 @@ export class MockOffice implements OfficeSource {
     { from: AgentId; choices: ChatChoice[]; resolve: (a: Answer) => void; reject: (e: unknown) => void }
   >();
   private queue: QueueItem[] = [];
+  /** Per-person lanes: hand-overs by or to the same person run one after another (nobody walks two ways at once). */
+  private lanes = new Map<AgentId, Promise<void>>();
   private wake: (() => void) | null = null;
   private loc = {} as Record<AgentId, PlaceId>;
   private desired = {} as Record<AgentId, { activity: Activity; note?: Msg }>;
@@ -169,6 +171,7 @@ export class MockOffice implements OfficeSource {
     this.queue = [];
     this.kick();
     this.wakeRecall();
+    this.lanes.clear();
     this.blocked.clear();
     this.away.clear();
     this.trips.clear();
@@ -189,6 +192,7 @@ export class MockOffice implements OfficeSource {
     this.queue = [];
     this.kick();
     this.wakeRecall();
+    this.lanes.clear();
     this.listeners.clear();
   }
 
@@ -213,8 +217,9 @@ export class MockOffice implements OfficeSource {
     const people: AgentId[] = ['owner', 'secretary', 'research-head', 'prod-head', 'qa'];
     for (let i = 0; i < count; i++) {
       const from = people[Math.floor(Math.random() * people.length)];
-      let to = people[Math.floor(Math.random() * people.length)];
-      if (to === from) to = people[(people.indexOf(from) + 1) % people.length];
+      // the courier only works across rooms, so pick someone from another room
+      const others = people.filter((p) => !sameRoom(p, from));
+      const to = others[Math.floor(Math.random() * others.length)];
       this.handoff(from, to, msg('doc.memo')).catch(() => {});
     }
   }
@@ -296,14 +301,35 @@ export class MockOffice implements OfficeSource {
     }
   }
 
-  /** Hand a document over via the courier queue; resolves when delivered. */
+  /**
+   * Pass a document on; resolves when the recipient has it. Inside one room the sender walks it over
+   * to the recipient's desk and back; across rooms it goes through the courier queue.
+   */
   handoff(from: AgentId, to: AgentId, label: Msg): Promise<void> {
     const doc: Doc = { id: `doc-${++this.docSeq}`, label, from, to };
+    if (sameRoom(from, to)) return this.handByHand(doc);
     return new Promise<void>((resolve, reject) => {
       this.queue.push({ doc, resolve, reject });
       this.emit({ type: 'doc.queued', doc });
       this.kick();
     });
+  }
+
+  /** Same room: the sender carries the document to the recipient's desk, hands it over and walks back. */
+  private handByHand(doc: Doc): Promise<void> {
+    const { from, to } = doc;
+    const prev = Promise.all([this.lanes.get(from), this.lanes.get(to)].map((p) => p?.catch(() => {})));
+    const next = prev.then(async () => {
+      this.emit({ type: 'agent.carry', agent: from, label: doc.label });
+      await this.walk(from, `visit:${to}`);
+      this.emit({ type: 'doc.handed', doc });
+      this.emit({ type: 'agent.carry', agent: from, label: null });
+      await this.sleep(300);
+      await this.walk(from, `desk:${from}`);
+    });
+    this.lanes.set(from, next);
+    this.lanes.set(to, next);
+    return next;
   }
 
   private async courierLoop(run: number): Promise<void> {

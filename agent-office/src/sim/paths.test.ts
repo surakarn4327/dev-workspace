@@ -115,9 +115,10 @@ for (const lang of ['en', 'th'] as const) {
     });
     assert.equal(asks.filter(isDelivery).length, 2, 'the result should be delivered twice');
     assert.equal(asks.filter((a) => is(a, 'ask.changeWhat')).length, 1);
-    const labels = events.filter((e) => e.type === 'doc.queued').map((e) => e.doc.label.key);
-    assert.ok(labels.includes('doc.changeRequest'), 'the change request must travel by courier');
-    assert.ok(labels.includes('doc.fixList'), 'the producer must be given a fix list');
+    const carried = events.filter((e) => e.type === 'doc.queued').map((e) => e.doc.label.key);
+    const byHand = events.filter((e) => e.type === 'doc.handed').map((e) => e.doc.label.key);
+    assert.ok(carried.includes('doc.changeRequest'), 'the change request crosses rooms, so the courier carries it');
+    assert.ok(byHand.includes('doc.fixList'), 'the producer is handed the fix list in person (same room)');
     const passes = events.filter((e) => e.type === 'review.verdict' && e.verdict === 'pass');
     assert.equal(passes.length, 2, 'QA should pass the original and the reworked version');
     const filed = events.filter((e) => e.type === 'archive.filed');
