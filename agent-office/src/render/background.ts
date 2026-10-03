@@ -157,11 +157,6 @@ function paintRugs(g: CanvasRenderingContext2D): void {
   // meeting-table rug
   rect(g, 118, 54, 116, 50, '#4a4f7c');
   rect(g, 120, 56, 112, 46, '#5a609a');
-  // reception mat
-  rect(g, 154, 196, 44, 18, '#7a2f35');
-  rect(g, 156, 198, 40, 14, '#a6464d');
-  rect(g, 160, 202, 32, 6, '#7a2f35');
-  rect(g, 162, 203, 28, 4, '#c25a60');
   // department zones
   g.globalAlpha = 0.2;
   rect(g, 2, 98, 98, 94, '#3fb6c6');
