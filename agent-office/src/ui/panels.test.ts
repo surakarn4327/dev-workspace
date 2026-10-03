@@ -97,7 +97,7 @@ test('switching language re-labels steps, the queue, the inspector and the alrea
   assert.equal((doc.querySelectorAll('#steps .step')[6] as HTMLElement).title, 'ส่งมอบ');
   assert.ok(text('#queue').includes('คิวว่าง'));
   const insp = text('#inspector');
-  assert.ok(insp.includes('ผู้ตรวจ QA') && insp.includes('กำลังตรวจ') && insp.includes('กำลังตรวจ เทียบกับบรีฟ') && insp.includes('Quinn'));
+  assert.ok(insp.includes('ผู้ตรวจ QA') && insp.includes('กำลังตรวจ') && insp.includes('กำลังตรวจเทียบกับบรีฟ') && insp.includes('Quinn'));
   assert.equal(text('#job-title'), 'ยังไม่มีงาน — กด "เริ่มงาน" หรือคลิกที่ Rex');
   assert.ok(doc.querySelector('#steps .step.current'), 'step highlighting survives the re-render');
 
