@@ -2,7 +2,9 @@ import './style.css';
 import { OfficeStore } from './core/state.ts';
 import { initLang, onLangChange, t } from './core/i18n.ts';
 import { chooseBrain } from './ai/brain-factory.ts';
+import { createHelperMonitor } from './ai/helper-monitor.ts';
 import { createModels } from './ai/models.ts';
+import { createToolbox } from './ai/toolbox.ts';
 import { ROSTER, roleOf, setLiveModels } from './core/roster.ts';
 import { isDemoSource } from './core/types.ts';
 import type { OfficeSource } from './core/types.ts';
@@ -13,6 +15,7 @@ import { mountCamera } from './ui/camera-controls.ts';
 import { showDemoControls } from './ui/demo-controls.ts';
 import { mountDialog } from './ui/dialog.ts';
 import { mountAiSettings } from './ui/ai-settings.ts';
+import { mountHelperStatus } from './ui/helper-status.ts';
 import { applyStatic, mountLanguageSwitch } from './ui/i18n-dom.ts';
 import { mountPanels } from './ui/panels.ts';
 
@@ -21,6 +24,12 @@ initLang();
 applyStatic();
 mountLanguageSwitch();
 const aiSettings = mountAiSettings();
+
+// The local helper searches the web and reads pages for the team. The Menu shows whether it is there.
+const toolbox = createToolbox();
+const helper = createHelperMonitor(toolbox);
+const helperStatus = mountHelperStatus(helper);
+void helper.check();
 
 // The page only knows the OfficeSource interface. The office plays the choreography; for each job it asks
 // chooseBrain who speaks for the owner and the secretary: Gemini if a key is saved, the demo script if not.
@@ -81,6 +90,7 @@ window.addEventListener('resize', placeDrawer);
 function showPanel(which: 'menu' | 'char' | null): void {
   drawer.classList.toggle('open', which === 'menu');
   charPanel.classList.toggle('open', which === 'char');
+  if (which === 'menu') void helper.check(); // the helper may have been started or stopped since last time
   panelsBtn.setAttribute('aria-expanded', String(which === 'menu'));
   if (which !== 'char' && view.selected) {
     view.selected = null;
@@ -153,6 +163,7 @@ store.subscribe(syncControls);
 onLangChange(() => {
   applyStatic();
   aiSettings.refresh();
+  helperStatus.refresh();
   syncControls();
 });
 // The job's "running" flag flips without a store event when it finishes.

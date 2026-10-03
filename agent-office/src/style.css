@@ -305,6 +305,54 @@ body {
   font: inherit;
 }
 
+/* Search helper status: a pixel square whose colour says whether the helper is there. */
+.helper-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 0.35em;
+  background: var(--muted);
+  border: 2px solid var(--edge);
+  box-shadow: 0 2px 0 var(--edge);
+}
+
+.dot[data-state='ready'] {
+  background: var(--green);
+}
+
+.dot[data-state='degraded'] {
+  background: var(--accent);
+}
+
+.dot[data-state='missing'],
+.dot[data-state='blocked'],
+.dot[data-state='outdated'] {
+  background: var(--red);
+}
+
+.dot[data-state='checking'] {
+  animation: dot-blink 0.8s steps(2) infinite;
+}
+
+@keyframes dot-blink {
+  50% {
+    background: var(--line);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot[data-state='checking'] {
+    animation: none;
+  }
+}
+
 .key-row input {
   flex: 1;
   min-width: 0;

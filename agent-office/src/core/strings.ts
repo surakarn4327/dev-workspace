@@ -44,6 +44,18 @@ const en: Record<string, string> = {
   'credit.font': 'Thai font: Silver by Poppy Works (CC BY 4.0)',
   'dlg.send': 'Send',
   'dlg.placeholder': 'Type your answer...',
+  // ----- search helper (runs on this computer) -----
+  'helper.title': 'Search helper',
+  'helper.recheck': 'Check again',
+  'helper.hint':
+    'It runs on this computer only and needs no key. Your searches go to the search engines, and the page addresses go to those sites.',
+  'helper.state.checking': 'Looking for the helper...',
+  'helper.state.ready': 'Connected. The team can search the web, read the news and open web pages.',
+  'helper.state.degraded': 'Connected, but the search engines are resting for a while. News and web pages still work.',
+  'helper.state.missing':
+    'Not running. The team works without real sources and says so in their work. Start it with "npm run dev" or "npm run helper".',
+  'helper.state.blocked': 'The helper refuses this page. Restart "npm run dev" so it learns this address.',
+  'helper.state.outdated': 'The helper is a different version from the app. Restart "npm run dev".',
   'dlg.thinking': '{name} is thinking...',
   'dlg.writing': '{name} is writing the brief...',
   'dlg.waitQuota': '{name} is waiting for the free AI quota...',
@@ -281,6 +293,17 @@ const th: Record<string, string> = {
   'credit.font': 'ฟอนต์ไทย: Silver โดย Poppy Works (CC BY 4.0)',
   'dlg.send': 'ส่ง',
   'dlg.placeholder': 'พิมพ์คำตอบ...',
+  'helper.title': 'ตัวช่วยค้นข้อมูล',
+  'helper.recheck': 'ตรวจอีกครั้ง',
+  'helper.hint':
+    'ทำงานบนเครื่องนี้เท่านั้นและไม่ต้องใช้คีย์ คำค้นของคุณจะถูกส่งไปยังเครื่องมือค้นหา และที่อยู่หน้าเว็บส่งไปยังเว็บนั้นๆ',
+  'helper.state.checking': 'กำลังตรวจหาตัวช่วย...',
+  'helper.state.ready': 'เชื่อมต่อแล้ว ทีมค้นเว็บ อ่านข่าว และเปิดหน้าเว็บได้',
+  'helper.state.degraded': 'เชื่อมต่อแล้ว แต่เครื่องมือค้นหาพักชั่วคราว ข่าวกับหน้าเว็บยังใช้ได้',
+  'helper.state.missing':
+    'ยังไม่ได้เปิด ทีมจะทำงานโดยไม่มีแหล่งข้อมูลจริงและบอกไว้ในงาน เปิดได้ด้วยคำสั่ง "npm run dev" หรือ "npm run helper"',
+  'helper.state.blocked': 'ตัวช่วยไม่ยอมรับหน้านี้ ให้รีสตาร์ต "npm run dev" เพื่อให้มันรู้จักที่อยู่นี้',
+  'helper.state.outdated': 'ตัวช่วยเป็นคนละเวอร์ชันกับแอป ให้รีสตาร์ต "npm run dev"',
   'dlg.thinking': '{name} กำลังคิด...',
   'dlg.writing': '{name} กำลังเขียนบรีฟ...',
   'dlg.waitQuota': '{name} กำลังรอโควตา AI ฟรี...',

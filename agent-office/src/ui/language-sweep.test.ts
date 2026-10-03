@@ -4,7 +4,10 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createHelperMonitor } from '../ai/helper-monitor.ts';
 import { ModelError } from '../ai/model-client.ts';
+import { ToolError } from '../ai/toolbox.ts';
+import type { HelperHealth } from '../ai/toolbox.ts';
 import type { ModelErrorKind } from '../ai/model-client.ts';
 import type { KeyStore } from '../core/ai-settings.ts';
 import type { BrainWait, Exchange, OwnerTurn } from '../core/brain.ts';
@@ -19,6 +22,7 @@ import type { OfficeView } from '../render/view.ts';
 import { MockOffice } from '../sim/simulator.ts';
 import { ScriptedBrain } from '../sim/scripted-brain.ts';
 import { mountAiSettings } from './ai-settings.ts';
+import { mountHelperStatus } from './helper-status.ts';
 import { mountDialog } from './dialog.ts';
 import { applyStatic } from './i18n-dom.ts';
 import { mountPanels } from './panels.ts';
@@ -38,6 +42,8 @@ const LATIN_OK = new Set<string>([
   'QA', 'AGENT', 'OFFICE', 'English', 'mock', 'script', 'Silver', 'Poppy', 'Works', 'CC', 'BY', 'WASD', 'Dr', TYPED,
   // product names in the AI settings panel
   'API', 'Gemini', 'Google', 'AI', 'Studio',
+  // the commands the user types to start the search helper
+  'npm', 'run', 'dev', 'helper',
 ].filter(Boolean));
 
 /** Every string the page currently shows: visible text nodes plus title / aria-label / placeholder. */
@@ -77,6 +83,7 @@ async function runEveryPath(lang: Lang): Promise<string[]> {
   setLang(lang, false);
   applyStatic();
   aiSettings.refresh(); // main.ts does this on every language change: the status line is not static text
+  helperPanel.refresh();
   store.apply({ type: 'sim.reset' });
   const found = new Set<string>();
   const sweep = (): void => {
@@ -156,6 +163,18 @@ const aiStore: KeyStore = {
 };
 const aiSettings = mountAiSettings(aiStore);
 
+const HELPER_OK: HelperHealth = { name: 'h', protocol: 1, tools: ['search', 'news', 'page'], engines: [{ name: 'bing', restingUntil: null }] };
+const HELPER_STATES: (() => Promise<HelperHealth>)[] = [
+  async () => HELPER_OK,
+  async () => ({ ...HELPER_OK, engines: [{ name: 'bing', restingUntil: Date.now() + 60_000 }] }),
+  async () => { throw new ToolError('missing', 'x'); },
+  async () => { throw new ToolError('forbidden', 'x'); },
+  async () => { throw new ToolError('outdated', 'x'); },
+];
+let helperNext = HELPER_STATES[0];
+const helperMonitor = createHelperMonitor({ health: () => helperNext() });
+const helperPanel = mountHelperStatus(helperMonitor);
+
 const MODEL_ERRORS: ModelErrorKind[] = ['no-key', 'bad-key', 'rate-limit', 'network', 'timeout', 'server', 'empty', 'blocked', 'bad-request'];
 
 /** Fails once with every kind of error, waits for quota once, then writes the brief slowly. */
@@ -208,6 +227,7 @@ async function runAiStates(lang: Lang): Promise<string[]> {
   const key = doc.getElementById('ai-key') as HTMLInputElement;
   const press = (id: string): void => (doc.getElementById(id) as HTMLButtonElement).click();
   aiSettings.refresh();
+  helperPanel.refresh();
   sweep(); // no key yet
   key.value = '';
   press('ai-save');
@@ -222,6 +242,15 @@ async function runAiStates(lang: Lang): Promise<string[]> {
   sweep(); // saved
   press('ai-remove');
   sweep();
+
+  // the search helper panel in each of its states
+  for (const state of HELPER_STATES) {
+    helperNext = state;
+    await helperMonitor.check();
+    sweep();
+  }
+  helperNext = HELPER_STATES[0];
+  await helperMonitor.check();
 
   // thinking, quota wait, secretary writing, and each model failure, through the real dialog
   const timer = setInterval(sweep, 4);
@@ -254,6 +283,7 @@ async function runAiStates(lang: Lang): Promise<string[]> {
   setLang(lang, false);
   applyStatic();
   aiSettings.refresh();
+  helperPanel.refresh();
   await sleep(50);
   sweep();
   clearInterval(timer);
