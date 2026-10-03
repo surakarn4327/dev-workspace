@@ -1,7 +1,9 @@
 import './style.css';
 import { OfficeStore } from './core/state.ts';
 import { initLang, onLangChange, t } from './core/i18n.ts';
-import { ROSTER, roleOf } from './core/roster.ts';
+import { chooseBrain } from './ai/brain-factory.ts';
+import { createModels } from './ai/models.ts';
+import { ROSTER, roleOf, setLiveModels } from './core/roster.ts';
 import { isDemoSource } from './core/types.ts';
 import type { OfficeSource } from './core/types.ts';
 import { OfficeView } from './render/view.ts';
@@ -20,8 +22,14 @@ applyStatic();
 mountLanguageSwitch();
 const aiSettings = mountAiSettings();
 
-// The page only knows the OfficeSource interface; swapping in the real orchestrator changes this one line.
-const source: OfficeSource = new MockOffice();
+// The page only knows the OfficeSource interface. The office plays the choreography; for each job it asks
+// chooseBrain who speaks for the owner and the secretary: Gemini if a key is saved, the demo script if not.
+const models = createModels();
+const source: OfficeSource = new MockOffice({ brain: () => chooseBrain(models, { onChosen: setLiveModels }) });
+// Once the job is over (or abandoned) the inspector goes back to showing the roster's models.
+source.subscribe((e) => {
+  if (e.type === 'job.done' || e.type === 'sim.reset') setLiveModels(null);
+});
 // Rehearsal knobs exist only on the mock office; with any other source they are hidden.
 const demo = isDemoSource(source) ? source : null;
 showDemoControls(demo !== null);

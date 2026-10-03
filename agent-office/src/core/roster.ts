@@ -197,4 +197,12 @@ export function nameOf(id: AgentId | 'user'): string {
 
 export const roleOf = (id: AgentId): string => t(`role.${id}`);
 export const blurbOf = (id: AgentId): string => t(`blurb.${id}`);
-export const modelOf = (id: AgentId): string => (id === 'courier' ? t('model.queue') : ROSTER[id].model);
+/** Models in use for the current job when real ones are plugged in; everybody else shows their roster model. */
+let liveModels: Partial<Record<AgentId, string>> = {};
+
+export function setLiveModels(models: Partial<Record<AgentId, string>> | null): void {
+  liveModels = models ?? {};
+}
+
+export const modelOf = (id: AgentId): string =>
+  id === 'courier' ? t('model.queue') : (liveModels[id] ?? ROSTER[id].model);

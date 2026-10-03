@@ -68,7 +68,7 @@ const en: Record<string, string> = {
   'ai.save': 'Save',
   'ai.remove': 'Remove key',
   'ai.status.none': 'No key yet, so the office runs the demo.',
-  'ai.status.saved': 'Key saved. Real agents are not connected yet, so the office still runs the demo.',
+  'ai.status.saved': 'Key saved. From the next job, Rex and Sam use Gemini for the brief; everyone else still runs the demo.',
   'ai.status.empty': 'Paste a key first.',
   'ai.status.failed': 'This browser would not save the key.',
   'ai.hint':
@@ -304,7 +304,7 @@ const th: Record<string, string> = {
   'ai.save': 'บันทึก',
   'ai.remove': 'ลบคีย์',
   'ai.status.none': 'ยังไม่มีคีย์ ออฟฟิศจึงเล่นโหมดเดโม',
-  'ai.status.saved': 'บันทึกคีย์แล้ว แต่ยังไม่ได้ต่อเอเจนต์จริง ออฟฟิศจึงยังเล่นโหมดเดโมอยู่',
+  'ai.status.saved': 'บันทึกคีย์แล้ว ตั้งแต่งานถัดไป Rex กับ Sam จะใช้ Gemini เขียนบรีฟ ส่วนคนอื่นยังเล่นโหมดเดโม',
   'ai.status.empty': 'วางคีย์ก่อน',
   'ai.status.failed': 'เบราว์เซอร์นี้บันทึกคีย์ไม่ได้',
   'ai.hint':
