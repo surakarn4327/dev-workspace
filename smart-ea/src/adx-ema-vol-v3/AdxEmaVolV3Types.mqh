@@ -1,5 +1,5 @@
-//+------------------------------------------------------------------+
-//| AdxEmaVolV2Types.mqh (สำเนาของ adx-ema\AdxEmaTypes.mqh)                  |
+﻿//+------------------------------------------------------------------+
+//| AdxEmaVolV3Types.mqh (สำเนาของ adx-ema\AdxEmaTypes.mqh)                  |
 //| enum ที่ input block ของ AdxEmaEA.mq5 ต้องใช้ก่อน #include Core       |
 //+------------------------------------------------------------------+
 #ifndef ADXEMA_VOL_V2_TYPES_MQH

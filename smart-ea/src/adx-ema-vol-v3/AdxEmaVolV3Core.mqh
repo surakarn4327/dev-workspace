@@ -1,5 +1,5 @@
 ﻿//+------------------------------------------------------------------+
-//| AdxEmaVolV2Core.mqh — (V2 = AdxEmaVol V1.4 + จำการพุ่งของ volume InpVolSurgeBars) สำเนาของ adx-ema\AdxEmaCore.mqh + หยุดเปิดไม้ใกล้ cutoff + ปรับขนาดไม้ตาม tick volume          |
+//| AdxEmaVolV3Core.mqh — (V2 = AdxEmaVol V1.4 + จำการพุ่งของ volume InpVolSurgeBars) สำเนาของ adx-ema\AdxEmaCore.mqh + หยุดเปิดไม้ใกล้ cutoff + ปรับขนาดไม้ตาม tick volume          |
 //| (ผลงานวิจัย 2026-09-26 ดู CLAUDE.md หัวข้อ "ชุดที่น่าใช้")                                                      |
 //|                                                                    |
 //| AdxEmaCore.mqh (ต้นฉบับ)                                              |
@@ -42,8 +42,8 @@ void AdxEmaSendStatusSummary();
 // เหตุการณ์ของไม้ก่อนหน้า (บั๊กเดียวกันมีใน AdxEma ต้นฉบับ — แก้ใน v1 2026-09-26) ส่งสรุปเองหลังตั้งค่าครบแทน
 void AdxEmaNoopHook() {}
 
-#define ADXEMA_VERSION "V2.4" // เวอร์ชันของ AdxEmaVolV2 (V2.0 = สำเนาจาก AdxEmaVol V1.4 + InpVolSurgeBars, V2.1/V2.2 = เส้น DI + ปุ่ม Indicator + แถว Signal, V2.3 = เอาเส้น DI + ปุ่มออก เหลือแถว Signal มี progress bar + แก้ WarmupEma, V2.4 = ลบ object เส้น/ปุ่มเก่าที่ค้างบนกราฟตอนเริ่ม) — นับแยกจาก AdxEmaVol/AdxEma ต้นฉบับ
-#define ADXEMA_UPDATED "02/10/26"
+#define ADXEMA_VERSION "V3.2" // เวอร์ชันของ AdxEmaVolV3 (V3.2 (2026-10-03) = แก้ dashboard: "Label" แดงที่แถว Signal, แถว "ไม่เปิดไม้ใหม่แล้ว" ค้างทับเหตุการณ์, "vV3.1" ซ้ำ v, ตลาดปิดแสดง Time left=ตลาดปิด + Signal/Volume ว่าง ; V3.1 (2026-10-02) = กฎข่าวเปลี่ยนเป็นโหมด 4: ปิดเฉพาะไม้ที่ไม่กำไรก่อนข่าว ไม้กำไรปล่อยไว้ (โหมด 3 = ไม้กำไรทำ BE) ; V3.0 (2026-10-02) = สำเนาจาก V2.4 + กฎข่าว: ปิดไม้ก่อนข่าวแรง + ห้ามเปิดไม้ใหม่ช่วงข่าว (เวลาข่าวจากไฟล์), V2.0 = สำเนาจาก AdxEmaVol V1.4 + InpVolSurgeBars, V2.1/V2.2 = เส้น DI + ปุ่ม Indicator + แถว Signal, V2.3 = เอาเส้น DI + ปุ่มออก เหลือแถว Signal มี progress bar + แก้ WarmupEma, V2.4 = ลบ object เส้น/ปุ่มเก่าที่ค้างบนกราฟตอนเริ่ม) — นับแยกจาก AdxEmaVol/AdxEma ต้นฉบับ
+#define ADXEMA_UPDATED "03/10/26"
 
 const int ADXEMA_HEARTBEAT_MAX_SEC = 120; // ค่าเดียวกับ SATS (ผู้ใช้เลือกไว้ 2026-09-17)
 
@@ -83,6 +83,27 @@ bool AdxEmaInLateWindow()
    int minsLeft = InpCutoffServerHour * 60 - (nt.hour * 60 + nt.min);
    if(minsLeft < 0) minsLeft += 1440;
    return minsLeft < InpNoEntryBeforeCutoffMin;
+}
+
+//+------------------------------------------------------------------+
+//| ตลาดปิดอยู่ไหม (เสาร์-อาทิตย์/วันหยุด/ช่วงพักรายวัน) — V3.2            |
+//| ดูจาก tick ล่าสุดเก่ากว่า 5 นาทีเทียบเวลา server ที่เดินตามนาฬิกาเครื่อง |
+//| (TimeCurrent() หยุดนิ่งตอนไม่มี tick เลยใช้เทียบไม่ได้) · ใน Tester ไม่เช็ค |
+//+------------------------------------------------------------------+
+bool AdxEmaMarketClosed()
+{
+   if(MQLInfoInteger(MQL_TESTER)) return false;
+   datetime lastTick = (datetime)SymbolInfoInteger(_Symbol, SYMBOL_TIME);
+   if(lastTick <= 0) return false;
+   return (TimeTradeServer() - lastTick) > 300;
+}
+
+// ข้อความ Time left — ตลาดปิดแสดง "ตลาดปิด" แทนเวลาที่นับจากนาฬิกาอย่างเดียว
+string AdxEmaTimeLeftText()
+{
+   if(!InpUseCutoff) return "ปิดใช้งาน";
+   if(AdxEmaMarketClosed()) return "ตลาดปิด";
+   return PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour);
 }
 
 //+------------------------------------------------------------------+
@@ -283,12 +304,86 @@ void CheckMomentumExit(const double adxShift1)
    }
 }
 
+
+//+------------------------------------------------------------------+
+//| ข่าว (ทดสอบ): อ่านเวลาข่าวจากไฟล์ แล้ว BE / ปิดไม้ก่อนข่าว และห้ามเปิดไม้ในช่วง [ข่าว-lead, ข่าว+resume) |
+//+------------------------------------------------------------------+
+datetime gNews[]; int gNewsN = 0; int gNewsIdx = 0; datetime gNewsActed = 0;
+int gNewsCntAct = 0, gNewsCntBeOk = 0, gNewsCntBeLoss = 0, gNewsCntBeFail = 0, gNewsCntClose = 0, gNewsCntBlocked = 0;
+bool NewsLoad()
+{
+   gNewsN = 0; ArrayResize(gNews, 0);
+   if(InpNewsMode == 0) return true;
+   int h = FileOpen(InpNewsFile, FILE_READ|FILE_TXT|FILE_ANSI|FILE_COMMON);
+   if(h == INVALID_HANDLE) { PrintFormat("NEWS: cannot open %s err=%d", InpNewsFile, GetLastError()); return false; }
+   while(!FileIsEnding(h))
+   {
+      string ln = FileReadString(h); StringTrimLeft(ln); StringTrimRight(ln);
+      if(StringLen(ln) < 5) continue;
+      ArrayResize(gNews, gNewsN + 1); gNews[gNewsN++] = (datetime)StringToInteger(ln);
+   }
+   FileClose(h);
+   PrintFormat("NEWS: loaded %d times from %s (mode=%d lead=%d resume=%d)", gNewsN, InpNewsFile, InpNewsMode, InpNewsLead, InpNewsResume);
+   return gNewsN > 0;
+}
+bool NewsWindow(const datetime t, datetime &evt)
+{
+   if(InpNewsMode == 0) return false;
+   while(gNewsIdx < gNewsN && gNews[gNewsIdx] + InpNewsResume * 60 <= t) gNewsIdx++;
+   if(gNewsIdx >= gNewsN) return false;
+   if(t >= gNews[gNewsIdx] - InpNewsLead * 60) { evt = gNews[gNewsIdx]; return true; }
+   return false;
+}
+bool NewsBlocked() { datetime e; bool b = NewsWindow(TimeCurrent(), e); if(b) gNewsCntBlocked++; return b; }
+void NewsAct()
+{
+   if(InpNewsMode == 0 || !PL_HasPosition(InpMagic)) return;
+   datetime evt;
+   if(!NewsWindow(TimeCurrent(), evt) || evt == gNewsActed) return;
+   gNewsActed = evt; gNewsCntAct++;
+   ulong tk = 0;
+   if(InpNewsMode >= 3)   // 3 = ไม้ที่ไม่กำไร -> ปิด, ไม้กำไร -> BE ; 4 = ไม้ที่ไม่กำไร -> ปิด, ไม้กำไร -> ปล่อยไว้ (ค่าที่ใช้)
+   {
+      if(!PL_Select(InpMagic, tk)) return;
+      bool isLong3 = (gMtDir == 1);
+      double bid3 = SymbolInfoDouble(_Symbol, SYMBOL_BID), ask3 = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      bool prof3 = isLong3 ? (bid3 > gMtEntry) : (ask3 < gMtEntry);
+      if(!prof3)
+      {
+         PL_CloseAll(InpMagic); gNewsCntClose++;
+         PL_SetLastEvent("ไม้ปิดแล้ว: ปิดก่อนข่าว (ไม้ไม่กำไร)"); // ต้องตั้งก่อนส่งสรุป
+         double net3; if(AdxEmaClosedNet(net3)) AdxEmaSendStatusSummary();
+         return;
+      }
+      if(InpNewsMode == 3)
+      {
+         double lvl3 = isLong3 ? gMtEntry : gMtEntry + (ask3 - bid3);
+         if(PL_MoveSl(tk, lvl3)) gNewsCntBeOk++; else gNewsCntBeFail++;
+      }
+      return;
+   }
+   if(InpNewsMode == 2)
+   {
+      PL_CloseAll(InpMagic); gNewsCntClose++;
+      PL_SetLastEvent("ไม้ปิดแล้ว: ปิดก่อนข่าว"); // ต้องตั้งก่อนส่งสรุป
+      double newsNet; if(AdxEmaClosedNet(newsNet)) AdxEmaSendStatusSummary();
+      return;
+   }
+   if(!PL_Select(InpMagic, tk)) return;
+   bool isLong = (gMtDir == 1);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID), ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   bool inProfit = isLong ? (bid > gMtEntry) : (ask < gMtEntry);
+   if(!inProfit) { gNewsCntBeLoss++; return; }
+   double lvl = isLong ? gMtEntry : gMtEntry + (ask - bid);
+   if(PL_MoveSl(tk, lvl)) gNewsCntBeOk++; else gNewsCntBeFail++;
+}
 //+------------------------------------------------------------------+
 //| หาสัญญาณเข้าไม้ — เช็คแค่ตอนแท่งใหม่ปิดแล้ว (กัน repaint) เรียกจาก      |
 //| OnTick หลัง UpdateEma()                                             |
 //+------------------------------------------------------------------+
 void CheckEntrySignal(const double adxShift1)
 {
+   if(NewsBlocked()) return;
    if(PL_HasPosition(InpMagic)) return;
    if(InpUseCutoff && PL_PastCutoff(InpCutoffServerHour, InpTradeStartServerHour))
    {
@@ -355,7 +450,7 @@ void CheckEntrySignal(const double adxShift1)
    riskUsd *= volMult;
 
    gPlSummaryHook = AdxEmaNoopHook; // ดูเหตุผลที่ AdxEmaNoopHook() ต้นไฟล์
-   bool opened = PL_Open(dir, sl, tp1, tp2, tp3, riskUsd, InpRiskPointUnit, InpMagic, "AdxEmaVolV2",
+   bool opened = PL_Open(dir, sl, tp1, tp2, tp3, riskUsd, InpRiskPointUnit, InpMagic, "AdxEmaVolV3",
                          usePartials, 0, InpShowChartObjects, false);
    gPlSummaryHook = AdxEmaSendStatusSummary;
    if(opened)
@@ -498,7 +593,7 @@ void AdxEmaDrawDashboard()
    // ใช้ ADXEMA_TRADE_TF ไม่ใช่ Period() (TF ของชาร์ตที่กำลังดูอยู่) — ล็อกเทรด M1 ตายตัวแล้ว
    // (2026-09-22) หัวข้อควรโชว์ TF ที่เทรดจริงเสมอ ไม่ใช่ TF ที่บังเอิญเปิดชาร์ตดูอยู่ตอนนั้น
    string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)ADXEMA_TRADE_TF), 7);
-   string titleText = "AdxEmaVolV2 " + _Symbol + " " + tf;
+   string titleText = "AdxEmaVolV3 " + _Symbol + " " + tf;
 
    // colGap = ระยะจากขอบซ้ายกล่องถึงคอลัมน์ value — ต้องกว้างพอให้หัวข้อ (แถวที่ยาวสุดเสมอ
    // เพราะมีชื่อกลยุทธ์+symbol+timeframe รวมกัน) ไม่ล้นทับคอลัมน์ status ข้างๆ กัน
@@ -558,7 +653,7 @@ void AdxEmaDrawDashboard()
    y += dy;
 
    PL_DashLabel(prefix + "ver_l", "Version", xLabel, y, clrGray, FS, CN, AN);
-   PL_DashLabel(prefix + "ver_v", "v" + ADXEMA_VERSION + " · " + ADXEMA_UPDATED, xValue, y, clrGray, FS, CN, AN);
+   PL_DashLabel(prefix + "ver_v", ADXEMA_VERSION + " · " + ADXEMA_UPDATED, xValue, y, clrGray, FS, CN, AN);
    y += dy;
 
    PL_DashPanelBg(prefix + "div1", boxX + 8, y + 5, panelW - 16, 1, C'58,63,77', C'58,63,77', CN);
@@ -572,14 +667,21 @@ void AdxEmaDrawDashboard()
    color dirClr = (sigDir > 0) ? clrLime : clrRed;
    color sigClr = (sigPct >= 100) ? clrLimeGreen : (sigPct >= 70 ? clrOrange : clrGray);
    PL_DashLabel(prefix + "sig_l", "Signal", xLabel, y, clrSilver, FS, CN, AN);
-   if(sigDir != 0)
+   bool mktClosed = AdxEmaMarketClosed();
+   if(mktClosed)
+   {
+      // V3.2: ตลาดปิด → เว้นว่าง (ใช้ " " ไม่ใช่ "" เพราะ MT5 แสดง label ข้อความว่างเป็นคำว่า "Label")
+      PL_DashLabel(prefix + "sig_a", " ", xValue, y, clrGray, FS, CN, AN);
+      PL_DashLabel(prefix + "sig_v", " ", xValue, y, clrGray, FS, CN, AN);
+   }
+   else if(sigDir != 0)
    {
       PL_DashLabel(prefix + "sig_a", sigDir > 0 ? "▲" : "▼", xValue, y, dirClr, FS, CN, AN);
       PL_DashLabel(prefix + "sig_v", AdxEmaProgressBar(sigPct), xValue + 22, y, sigClr, FS, CN, AN);
    }
    else
    {
-      PL_DashLabel(prefix + "sig_a", "", xValue, y, dirClr, FS, CN, AN);
+      PL_DashLabel(prefix + "sig_a", " ", xValue, y, dirClr, FS, CN, AN); // V3.2: " " กัน MT5 โชว์ "Label"
       PL_DashLabel(prefix + "sig_v", AdxEmaProgressBar(sigPct), xValue, y, sigClr, FS, CN, AN);
    }
    y += dy;
@@ -587,7 +689,7 @@ void AdxEmaDrawDashboard()
    double volNow = AdxEmaVolRatio();
    color volClr = (!InpUseVolSizing || volNow < 0) ? clrGray : (volNow < InpVolSizeThreshold ? clrOrange : clrLimeGreen);
    PL_DashLabel(prefix + "vol_l", "Volume", xLabel, y, clrSilver, FS, CN, AN);
-   PL_DashLabel(prefix + "vol_v", AdxEmaVolText(volNow), xValue, y, volClr, FS, CN, AN);
+   PL_DashLabel(prefix + "vol_v", mktClosed ? " " : AdxEmaVolText(volNow), xValue, y, volClr, FS, CN, AN);
    y += dy;
 
    if(hasPos)
@@ -696,7 +798,7 @@ void AdxEmaDrawDashboard()
 
    PL_DashLabel(prefix + "cutoff_l", "Time left", xLabel, y, clrSilver, FS, CN, AN);
    PL_DashLabel(prefix + "cutoff_v",
-                InpUseCutoff ? PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour) : "ปิดใช้งาน",
+                AdxEmaTimeLeftText(),
                 xValue, y, clrWhite, FS, CN, AN);
    y += dy;
    if(InpUseCutoff && AdxEmaInLateWindow())
@@ -704,6 +806,8 @@ void AdxEmaDrawDashboard()
       PL_DashLabel(prefix + "late_v", "(ไม่เปิดไม้ใหม่แล้ว)", xValue, y, clrOrange, FS, CN, AN);
       y += dy;
    }
+   else
+      ObjectDelete(0, prefix + "late_v"); // V3.2: เดิมไม่ลบ → ค้างทับแถวเหตุการณ์หลังเลย cutoff
 
    PL_DashPanelBg(prefix + "div3", boxX + 8, y + 5, panelW - 16, 1, C'58,63,77', C'58,63,77', CN);
    y += 10;
@@ -752,7 +856,7 @@ void AdxEmaSendStatusSummary()
    else
       statusText = "กำลังทำงาน";
 
-   string s = "AdxEmaVolV2 " + _Symbol + " " + tf + " - " + statusText + "\n\n";
+   string s = "AdxEmaVolV3 " + _Symbol + " " + tf + " - " + statusText + "\n\n";
 
    bool hasPos = (gMtDir != 0);
    if(hasPos)
@@ -803,7 +907,7 @@ void AdxEmaSendStatusSummary()
    s += "Trades: " + IntegerToString(todayTrades) + " ไม้\n";
 
    s += "Time left: " +
-        (InpUseCutoff ? PL_TimeLeftStr(InpCutoffServerHour, InpTradeStartServerHour) : "ปิดใช้งาน") + "\n";
+        AdxEmaTimeLeftText() + "\n";
    if(InpUseCutoff && AdxEmaInLateWindow()) s += "(ไม่เปิดไม้ใหม่แล้ว)\n";
 
    s += "\n";
@@ -816,6 +920,7 @@ void AdxEmaSendStatusSummary()
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   if(InpNewsMode != 0 && !NewsLoad()) { Print("NEWS: ไม่มีไฟล์เวลาข่าว — กฎข่าวไม่ทำงาน"); DC_Send("⚠️ AdxEmaVolV3: โหลดไฟล์เวลาข่าวไม่ได้ (" + InpNewsFile + ") — กฎข่าวไม่ทำงาน"); }
    // เสียบสรุปสถานะเต็มแบบ dashboard เข้า hook ของ PositionLib.mqh (ผู้ใช้ขอ 2026-09-23) — ทำให้
    // เข้าไม้/ปิดไม้(TP,SL)/ปิดบางส่วน/BE ที่เกิดใน PL_Open()/PL_Manage() ส่งสรุปเต็มแทนข้อความสั้นเดิม
    gPlSummaryHook = AdxEmaSendStatusSummary;
@@ -963,6 +1068,7 @@ void OnTimer()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
+   PrintFormat("NEWSDIAG: acts=%d be_ok=%d be_notprofit=%d be_fail=%d closed=%d blockedChecks=%d", gNewsCntAct, gNewsCntBeOk, gNewsCntBeLoss, gNewsCntBeFail, gNewsCntClose, gNewsCntBlocked);
    EventKillTimer();
    PrintFormat("diag: adxLevelReject=%d diGapReject=%d noCross=%d emaNotReady=%d "
                "cutoffBlocked=%d cutoffClose=%d entered=%d momentumExit=%d lateBlocked=%d volLow=%d volHigh=%d | %s",
@@ -1036,6 +1142,7 @@ void DumpPass(const double score)
 void OnTick()
 {
    gLastTickMs = GetTickCount64(); // heartbeat — ดู OnTimer()
+   NewsAct();
 
    if(InpUseCutoff && PL_PastCutoff(InpCutoffServerHour, InpTradeStartServerHour) && PL_HasPosition(InpMagic))
    {
