@@ -42,6 +42,17 @@ window.addEventListener('resize', camera.fit);
 
 const drawer = el<HTMLElement>('#drawer');
 const panelsBtn = el<HTMLButtonElement>('#btn-panels');
+// The HUD grows taller when its step row wraps (long names, e.g. Thai at 24px). Keep the drawer below it
+// whenever the two overlap sideways, instead of letting the HUD cover the drawer's top.
+const hudLeft = el<HTMLElement>('.hud-left');
+function placeDrawer(): void {
+  const h = hudLeft.getBoundingClientRect();
+  const area = el<HTMLElement>('#stage-area').getBoundingClientRect();
+  const drawerLeft = area.right - 8 - Math.min(380, area.width - 16);
+  drawer.style.top = h.right > drawerLeft ? `${Math.ceil(h.bottom - area.top + 8)}px` : '';
+}
+new ResizeObserver(placeDrawer).observe(hudLeft);
+window.addEventListener('resize', placeDrawer);
 function setDrawer(open: boolean): void {
   drawer.classList.toggle('open', open);
   panelsBtn.setAttribute('aria-expanded', String(open));
