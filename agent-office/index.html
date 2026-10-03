@@ -30,6 +30,19 @@
           </div>
         </div>
 
+        <!-- Shown while an old job is being played back -->
+        <div id="replay-bar" class="replay-bar" hidden>
+          <span class="replay-tag" data-i18n="replay.tag"></span>
+          <span id="replay-title" class="replay-title"></span>
+          <span class="replay-speeds" role="group" data-i18n-aria="replay.speed">
+            <button class="btn replay-speed" type="button" data-speed="1">1x</button>
+            <button class="btn replay-speed" type="button" data-speed="4">4x</button>
+            <button class="btn replay-speed" type="button" data-speed="16">16x</button>
+          </span>
+          <span class="replay-progress" aria-hidden="true"><span id="replay-fill" class="replay-fill"></span></span>
+          <button id="replay-stop" class="btn" type="button" data-i18n="replay.stop"></button>
+        </div>
+
         <!-- Floating HUD: tiny, so the office gets the whole window -->
         <div class="hud hud-left">
           <span class="logo" aria-hidden="true"></span>
@@ -108,6 +121,12 @@
               <button id="helper-recheck" class="btn" type="button" data-i18n="helper.recheck"></button>
             </div>
             <p class="hint" data-i18n="helper.hint"></p>
+          </section>
+          <section class="panel" data-i18n-aria="replay.title">
+            <h2 data-i18n="replay.title"></h2>
+            <ul id="replay-list" class="replay-list"></ul>
+            <p id="replay-empty" class="hint" data-i18n="replay.empty"></p>
+            <p class="hint" data-i18n="replay.hint"></p>
           </section>
           <section class="panel">
             <h2 data-i18n="queue.title"></h2>

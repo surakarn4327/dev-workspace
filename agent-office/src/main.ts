@@ -4,6 +4,9 @@ import { initLang, onLangChange, t } from './core/i18n.ts';
 import { chooseBrain } from './ai/brain-factory.ts';
 import { createRuntime } from './ai/runtime.ts';
 import { ROSTER, roleOf, setLiveModels } from './core/roster.ts';
+import { Recorder } from './core/recording.ts';
+import { indexedDbRecordingStore } from './core/recording-store.ts';
+import { RoutedSource } from './core/routed-source.ts';
 import { isDemoSource } from './core/types.ts';
 import type { OfficeSource } from './core/types.ts';
 import { OfficeView } from './render/view.ts';
@@ -16,6 +19,7 @@ import { mountAiSettings } from './ui/ai-settings.ts';
 import { mountHelperStatus } from './ui/helper-status.ts';
 import { applyStatic, mountLanguageSwitch } from './ui/i18n-dom.ts';
 import { mountPanels } from './ui/panels.ts';
+import { mountReplayPanel } from './ui/replay-panel.ts';
 
 // Language first: saved choice, else the browser's language (Thai -> Thai, anything else -> English).
 initLang();
@@ -31,13 +35,22 @@ void helper.check();
 
 // The page only knows the OfficeSource interface. The office plays the choreography; for each job it asks
 // chooseBrain who speaks for the owner and the secretary: Gemini if a key is saved, the demo script if not.
-const source: OfficeSource = new MockOffice({ infra, brain: () => chooseBrain(models, { onChosen: setLiveModels }) });
+const live: OfficeSource = new MockOffice({ infra, brain: () => chooseBrain(models, { onChosen: setLiveModels }) });
 // Once the job is over (or abandoned) the inspector goes back to showing the roster's models.
-source.subscribe((e) => {
+live.subscribe((e) => {
   if (e.type === 'job.done' || e.type === 'sim.reset') setLiveModels(null);
 });
+// Every finished or cancelled job is recorded (what the live office did, not what a replay shows), so it can be
+// played back later from the Menu. The screen listens to `source`, which is the live office or, while a replay
+// plays, the replay.
+const recordings = indexedDbRecordingStore();
+const recorder = new Recorder({ onSave: (r) => void recordings.put(r).then(() => replayPanel?.refresh()) });
+live.subscribe((e) => recorder.feed(e));
+const routed = new RoutedSource(live);
+const source: OfficeSource = routed;
+let replayPanel: ReturnType<typeof mountReplayPanel> | undefined;
 // Rehearsal knobs exist only on the mock office; with any other source they are hidden.
-const demo = isDemoSource(source) ? source : null;
+const demo = isDemoSource(live) ? live : null;
 showDemoControls(demo !== null);
 const store = new OfficeStore();
 const canvas = el<HTMLCanvasElement>('#office');
@@ -49,10 +62,11 @@ source.subscribe((e) => store.apply(e));
 source.subscribe((e) => view.onEvent(e));
 source.subscribe((e) => panels.onEvent(e));
 mountDialog(store, source);
+replayPanel = mountReplayPanel({ routed, store: recordings, stage: el('#stage-area') });
 view.start();
 
 // Handy for poking at the live office from the browser console in dev.
-if (import.meta.env.DEV) Object.assign(window, { office: { source, store, view } });
+if (import.meta.env.DEV) Object.assign(window, { office: { source: live, routed, store, view, recordings } });
 
 // ---------- window sizing, zoom and camera ----------
 
@@ -87,7 +101,10 @@ window.addEventListener('resize', placeDrawer);
 function showPanel(which: 'menu' | 'char' | null): void {
   drawer.classList.toggle('open', which === 'menu');
   charPanel.classList.toggle('open', which === 'char');
-  if (which === 'menu') void helper.check(); // the helper may have been started or stopped since last time
+  if (which === 'menu') {
+    void helper.check(); // the helper may have been started or stopped since last time
+    void replayPanel?.refresh(); // a job may have started or finished: the play buttons follow
+  }
   panelsBtn.setAttribute('aria-expanded', String(which === 'menu'));
   if (which !== 'char' && view.selected) {
     view.selected = null;
@@ -144,7 +161,7 @@ canvas.addEventListener('click', (ev) => {
   else if (openPanel() === 'char') showPanel(null);
   // Clicking the owner when nothing is running opens his first question, like talking to an NPC. The job
   // itself starts only once you send an answer; closing the box (✕) cancels it.
-  if (id === 'owner' && !source.isRunning) source.start();
+  if (id === 'owner' && !source.isRunning && routed.mode === 'live') source.start();
 });
 
 // ---------- controls ----------
@@ -152,8 +169,9 @@ canvas.addEventListener('click', (ev) => {
 const startBtn = el<HTMLButtonElement>('#btn-start');
 const rejectBtn = el<HTMLButtonElement>('#btn-reject');
 function syncControls(): void {
-  startBtn.disabled = source.isRunning;
-  startBtn.textContent = source.isRunning ? t('hud.running') : t('hud.start');
+  const replaying = routed.mode === 'replay';
+  startBtn.disabled = source.isRunning || replaying; // an old job is playing: nothing new can start
+  startBtn.textContent = source.isRunning && !replaying ? t('hud.running') : t('hud.start');
   rejectBtn.classList.toggle('armed', demo?.rejectNextReview ?? false);
 }
 store.subscribe(syncControls);
@@ -161,6 +179,7 @@ onLangChange(() => {
   applyStatic();
   aiSettings.refresh();
   helperStatus.refresh();
+  void replayPanel?.refresh();
   syncControls();
 });
 // The job's "running" flag flips without a store event when it finishes.
@@ -168,11 +187,12 @@ window.setInterval(syncControls, 400);
 syncControls();
 
 startBtn.addEventListener('click', () => {
-  source.start();
+  if (routed.mode === 'live') source.start();
   syncControls();
 });
 el<HTMLButtonElement>('#btn-reset').addEventListener('click', () => {
-  source.reset();
+  if (routed.mode === 'replay') replayPanel?.stop(); // Reset while watching a replay means "leave the replay"
+  else source.reset();
   syncControls();
 });
 

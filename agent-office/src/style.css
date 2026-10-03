@@ -47,7 +47,7 @@ body {
   inset: 0;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  overflow: clip; /* not "hidden": a hidden box can still be scrolled by code (scrollIntoView on the off-screen drawer shifted the whole office) */
   background: #000;
 }
 
@@ -303,6 +303,115 @@ body {
   border: 2px solid var(--line);
   color: var(--text);
   font: inherit;
+}
+
+/* ---------- replay of a finished job ---------- */
+
+.replay-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.replay-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 6px;
+  align-items: center;
+}
+
+.replay-play {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replay-meta {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.replay-del {
+  grid-column: 2;
+  grid-row: 1;
+  padding: 4px 8px;
+}
+
+.replay-bar {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  z-index: 7;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100% - 16px);
+  padding: 6px 10px;
+  background: rgba(18, 15, 31, 0.95);
+  border: 2px solid var(--line);
+  box-shadow: 0 3px 0 rgba(10, 8, 20, 0.7);
+}
+
+.replay-bar[hidden] {
+  display: none;
+}
+
+.replay-tag {
+  color: var(--red);
+  font-weight: 700;
+  letter-spacing: 2px;
+  animation: dot-blink 1s steps(2) infinite;
+}
+
+.replay-title {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replay-speeds {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.replay-speed.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #2a2000;
+}
+
+.replay-progress {
+  width: 56px;
+  height: 6px;
+  background: var(--edge);
+  border: 1px solid var(--line);
+}
+
+.replay-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--blue);
+}
+
+/* A replayed question cannot be answered: the job is over. */
+.replaying .dialog .dlg-form,
+.replaying .dialog .dlg-choices {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .replay-tag {
+    animation: none;
+  }
 }
 
 /* Search helper status: a pixel square whose colour says whether the helper is there. */

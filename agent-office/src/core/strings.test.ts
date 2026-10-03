@@ -74,7 +74,7 @@ test('every key the code and index.html refer to exists in the dictionary', () =
 test('no user-facing words are hard-coded outside the dictionary', () => {
   // Thai characters anywhere, or a string literal made of 2+ English words, in UI/simulator code is a leak.
   // Class names and similar plain code strings are listed explicitly.
-  const allowed = new Set(['btn choice', 'portrait small', 'hud hud-left', 'chip act-${st.activity}', '2d canvas unavailable']);
+  const allowed = new Set(['btn choice', 'portrait small', 'hud hud-left', 'chip act-${st.activity}', '2d canvas unavailable', 'btn replay-play', 'btn replay-del']);
   const offenders: string[] = [];
   const skip = ['strings.ts', 'intent.ts']; // intent.ts holds language-aware matching patterns, not UI text
   for (const file of sourceFiles(SRC)) {
@@ -96,7 +96,7 @@ test('no user-facing words are hard-coded outside the dictionary', () => {
   // ai/ holds developer diagnostics (ModelError.message). They are never shown: the UI translates by
   // ModelError.kind instead (see model-client.ts).
   const ignore = (o: string): boolean =>
-    /^ai[\\/]|Missing element|job failed|error flow failed|\[MockOffice\]|\(not one of the|mouse|keydown|pointer/i.test(o);
+    /^ai[\\/]|IndexedDB (could not|is blocked|request failed)|Missing element|job failed|error flow failed|\[MockOffice\]|\(not one of the|mouse|keydown|pointer/i.test(o);
   assert.deepEqual(offenders.filter((o) => !ignore(o)), [], 'hard-coded text found; move it to strings.ts');
 });
 

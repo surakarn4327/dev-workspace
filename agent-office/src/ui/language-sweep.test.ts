@@ -23,6 +23,12 @@ import { MockOffice } from '../sim/simulator.ts';
 import { ScriptedBrain } from '../sim/scripted-brain.ts';
 import { mountAiSettings } from './ai-settings.ts';
 import { mountHelperStatus } from './helper-status.ts';
+import { memoryRecordingStore } from '../core/recording-store.ts';
+import type { Recording } from '../core/recording.ts';
+import { ReplaySource } from '../core/replay.ts';
+import { RoutedSource } from '../core/routed-source.ts';
+import type { OfficeSource } from '../core/types.ts';
+import { mountReplayPanel } from './replay-panel.ts';
 import { mountDialog } from './dialog.ts';
 import { applyStatic } from './i18n-dom.ts';
 import { mountPanels } from './panels.ts';
@@ -297,6 +303,93 @@ test('Thai mode: the AI settings, thinking box, quota wait and every model failu
 
 test('English mode: the AI settings, thinking box, quota wait and every model failure have no Thai leaks', async () => {
   assert.deepEqual(await runAiStates('en'), []);
+});
+
+// ---------- replay: empty list, recordings of both endings, playing, finished ----------
+
+const replayStore = memoryRecordingStore();
+const replayLive = { running: false };
+const replayRouted = new RoutedSource({
+  subscribe: () => () => {},
+  get isRunning() {
+    return replayLive.running;
+  },
+  start: () => {},
+  reset: () => {},
+  answer: () => {},
+  cancel: () => {},
+} as OfficeSource);
+const replayTimers: { fn: () => void; live: boolean }[] = [];
+const replayPanel = mountReplayPanel({
+  routed: replayRouted,
+  store: replayStore,
+  makeReplay: (r) =>
+    new ReplaySource(r, {
+      schedule: (fn) => {
+        const timer = { fn, live: true };
+        replayTimers.push(timer);
+        return () => void (timer.live = false);
+      },
+    }),
+});
+
+async function runReplayStates(lang: Lang): Promise<string[]> {
+  setLang(lang, false);
+  applyStatic();
+  aiSettings.refresh(); // the other dynamic status lines follow the language too (main.ts refreshes them together)
+  helperPanel.refresh();
+  const found = new Set<string>();
+  const sweep = (): void => {
+    for (const p of problems(rendered(), lang)) found.add(p);
+  };
+  const make = (n: number, ended: Recording['ended'], title: string): Recording => ({
+    v: 1, id: `s${n}`, title, startedAt: Date.UTC(2026, 9, n, 7, 30), durationMs: 65_000, ended,
+    events: [0, 100].map((t, i) => ({ t, e: { type: 'agent.walk', agent: 'qa', to: 'pantry:0', speed: i } as OfficeEvent })),
+  });
+  await replayStore.remove('s1');
+  await replayStore.remove('s2');
+  await replayStore.remove('s3');
+  await replayPanel.refresh();
+  sweep(); // empty
+  await replayStore.put(make(1, 'done', TYPED));
+  await replayStore.put(make(2, 'abandoned', ''));
+  await replayStore.put(make(3, 'done', TYPED));
+  await replayPanel.refresh();
+  sweep(); // a list of three
+  replayLive.running = true;
+  await replayPanel.refresh();
+  sweep(); // buttons locked, with the reason as their tooltip
+  replayLive.running = false;
+  await replayPanel.refresh();
+  (doc.querySelector('#replay-list .replay-play') as HTMLButtonElement).click();
+  await sleep(20);
+  sweep(); // playing
+  for (let i = 0; i < 4; i++) {
+    const next = replayTimers.find((x) => x.live);
+    if (next) {
+      next.live = false;
+      next.fn();
+    }
+  }
+  sweep(); // finished: the button says Close
+  replayPanel.stop();
+  sweep();
+  setLang(lang === 'th' ? 'en' : 'th', false);
+  setLang(lang, false);
+  applyStatic();
+  aiSettings.refresh();
+  helperPanel.refresh();
+  await replayPanel.refresh();
+  sweep();
+  return [...found];
+}
+
+test('Thai mode: the replay panel and bar have no English leaks', async () => {
+  assert.deepEqual(await runReplayStates('th'), []);
+});
+
+test('English mode: the replay panel and bar have no Thai leaks', async () => {
+  assert.deepEqual(await runReplayStates('en'), []);
 });
 
 test.after(() => {
