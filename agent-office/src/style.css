@@ -619,4 +619,16 @@ html[lang='th'] {
 }
 html[lang='th'] .step .l {
   padding-top: 3px; /* room for Thai tone marks above the line */
+}/* Readability: Thai has no spaces between words, so open it up a little. Small letter-spacing everywhere (Thai only;
+   elements with their own letter-spacing, like the HUD title and small labels, keep it) and roomier lines for running
+   text. Buttons and one-line labels keep the English line height so every box stays the same size as in English. */
+html[lang='th'] {
+  letter-spacing: 0.04em;
+}
+html[lang='th'] :is(.dlg-text, .hint, .blurb, .convo li, .feed li, .queue li, .kv dd) {
+  line-height: 1.7;
+}html[lang='th'] .dlg-text {
+  /* the English limits (3.2em .. 9.5em) were counted in 1.45-high lines; keep the same number of lines at 1.7 */
+  min-height: 3.75em;
+  max-height: 11.15em;
 }
