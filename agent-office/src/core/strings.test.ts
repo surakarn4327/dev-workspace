@@ -93,8 +93,10 @@ test('no user-facing words are hard-coded outside the dictionary', () => {
       }
     }
   }
+  // ai/ holds developer diagnostics (ModelError.message). They are never shown: the UI translates by
+  // ModelError.kind instead (see model-client.ts).
   const ignore = (o: string): boolean =>
-    /Missing element|job failed|error flow failed|\[MockOffice\]|\(not one of the|mouse|keydown|pointer/i.test(o);
+    /^ai[\\/]|Missing element|job failed|error flow failed|\[MockOffice\]|\(not one of the|mouse|keydown|pointer/i.test(o);
   assert.deepEqual(offenders.filter((o) => !ignore(o)), [], 'hard-coded text found; move it to strings.ts');
 });
 
