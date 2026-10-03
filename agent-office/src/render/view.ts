@@ -1,4 +1,4 @@
-// Draws the office onto a 384x224 canvas from the store's state and animates
+// Draws the building onto a window-sized canvas from the store's state and animates
 // walking/sitting. It reacts to events only for movement and one-off effects;
 // everything else (poses, bubbles) is derived from the store each frame.
 
@@ -9,13 +9,16 @@ import { AGENT_IDS, WORK_STAGES } from '../core/types.ts';
 import type { Point } from '../core/world.ts';
 import {
   DESKS,
+  DOORS,
   H,
   PROPS,
   SIT_MS,
   TABLE,
   W,
   WALK_SPEED,
+  WALL_CELLS,
   findPath,
+  isWallCell,
   placeFacing,
   placePoint,
   seatPoint,
@@ -25,6 +28,17 @@ import { BOARD, CLOCK, HOLES, buildBackground } from './background.ts';
 import type { Dir, Pose } from './characters.ts';
 import { getSprite } from './characters.ts';
 import { drawChair, drawCooler, drawDesk, drawPlant, drawPrinter, drawTable } from './furniture.ts';
+import {
+  drawCoffeeTable,
+  drawCounter,
+  drawFridge,
+  drawPantryTable,
+  drawRack,
+  drawShelf,
+  drawSofa,
+  drawStall,
+  drawWallCell,
+} from './rooms.ts';
 import type { BubbleSpec, IconName } from './icons.ts';
 import { drawBubble } from './icons.ts';
 import { Particles } from './particles.ts';
@@ -85,6 +99,7 @@ export class OfficeView {
   private store: OfficeStore;
   private bg: HTMLCanvasElement;
   private agents = {} as Record<AgentId, AgentView>;
+  private wallItems: DrawItem[] = [];
   private particles = new Particles();
   private time = 0;
   private last = 0;
@@ -101,6 +116,19 @@ export class OfficeView {
     this.bg = document.createElement('canvas');
     this.resize(W, H);
     this.resetAgents();
+    this.wallItems = WALL_CELLS.map((w): DrawItem => {
+      const flags = {
+        n: isWallCell(w.col, w.row - 1),
+        s: isWallCell(w.col, w.row + 1),
+        e: isWallCell(w.col + 1, w.row),
+        w: isWallCell(w.col - 1, w.row),
+      };
+      return {
+        // a wall that continues to the south is sorted by its middle, the south end by its base
+        y: flags.s ? w.row * 8 + 4 : (w.row + 1) * 8,
+        draw: () => drawWallCell(this.g, w.col, w.row, flags),
+      };
+    });
   }
 
   /** Make the canvas cw x ch office pixels, keeping the office centred and re-painting the scenery. */
@@ -329,6 +357,10 @@ export class OfficeView {
     } else if (st.activity === 'celebrate') {
       a.fx = 0.35;
       this.particles.confetti(a.x, a.y - 24, 2);
+    } else if (st.activity === 'break' && !a.moving && !a.anim) {
+      a.fx = 0.3;
+      this.particles.steam(a.x + 3, a.y - 14);
+      if (a.target === 'pantry:0') this.particles.steam(427, 128);
     } else {
       a.fx = 0.3;
     }
@@ -348,6 +380,8 @@ export class OfficeView {
         return 'wait';
       case 'talking':
         return 'talk';
+      case 'break':
+        return a.seated ? 'sit' : 'sip';
       default:
         break;
     }
@@ -374,6 +408,8 @@ export class OfficeView {
         return Math.floor(t * 5) % 2;
       case 'alert':
         return Math.floor(t * 6) % 2;
+      case 'sip':
+        return Math.floor(t * 1.1) % 2;
       default:
         return t % 3.4 < 0.14 ? 1 : 0;
     }
@@ -395,6 +431,8 @@ export class OfficeView {
         return { icon: 'lines' };
       case 'waiting':
         return { icon: 'zzz' };
+      case 'break':
+        return { icon: 'coffee' };
       case 'reviewing':
         return { icon: 'mag' };
       case 'celebrate':
@@ -421,17 +459,61 @@ export class OfficeView {
       items.push({ y: this.sortY(this.agents[id]), draw: () => this.drawAgent(this.agents[id]) });
     }
     items.push({ y: TABLE.y + TABLE.h, draw: () => drawTable(g, TABLE) });
-    const busy = this.store.state.queue.length > 0;
+
+    const s = this.store.state;
+    const busy = s.queue.length > 0;
+    const working = AGENT_IDS.filter((id) => ['typing', 'reviewing', 'thinking'].includes(s.agents[id].activity)).length;
+    const load = working === 0 ? 0 : working < 4 ? 1 : 2;
+    const error = AGENT_IDS.some((id) => s.agents[id].activity === 'error');
+    const archived = s.archived;
+    const inRestroom = (spot: 'restroom:0' | 'restroom:1'): boolean =>
+      AGENT_IDS.some((id) => {
+        const a = this.agents[id];
+        return a.target === spot && !a.moving && !a.anim;
+      });
+    const atMachine = AGENT_IDS.some((id) => this.agents[id].target === 'pantry:0' && !this.agents[id].moving);
+    let stallN = 0;
+    let rackN = 0;
+    let shelfN = 0;
     for (const p of PROPS) {
+      const rc = p.rect;
+      const stall = p.kind === 'stall' ? stallN++ : 0;
+      const rack = p.kind === 'rack' ? rackN++ : 0;
+      const shelf = p.kind === 'shelf' ? shelfN++ : 0;
       items.push({
-        y: p.rect.y + p.rect.h,
+        y: rc.y + rc.h,
         draw: () => {
-          if (p.kind === 'plant') drawPlant(g, p.rect);
-          else if (p.kind === 'cooler') drawCooler(g, p.rect);
-          else drawPrinter(g, p.rect, busy);
+          switch (p.kind) {
+            case 'plant':
+              return drawPlant(g, rc);
+            case 'cooler':
+              return drawCooler(g, rc);
+            case 'printer':
+              return drawPrinter(g, rc, busy);
+            case 'sofa':
+              return drawSofa(g, rc);
+            case 'coffee-table':
+              return drawCoffeeTable(g, rc);
+            case 'stall':
+              return drawStall(g, rc, inRestroom(stall === 0 ? 'restroom:0' : 'restroom:1'));
+            case 'rack':
+              return drawRack(g, rc, this.time, load, error, rack);
+            case 'shelf':
+              // the right-hand unit fills first as jobs get filed; the left one overflows later
+              return drawShelf(g, rc, shelf === 0 ? Math.min(16, 8 + Math.max(0, archived - 12)) : Math.min(16, 4 + Math.min(archived, 12)));
+            case 'counter':
+              return drawCounter(g, rc, atMachine);
+            case 'fridge':
+              return drawFridge(g, rc);
+            case 'pantry-table':
+              return drawPantryTable(g, rc);
+          }
         },
       });
     }
+
+    // half-height partitions are sorted with everything else, so people pass in front of / behind them
+    items.push(...this.wallItems);
     items.sort((a, b) => a.y - b.y);
     for (const it of items) it.draw();
 
@@ -558,6 +640,26 @@ export class OfficeView {
     hand(((now.getHours() % 12) + now.getMinutes() / 60) * (Math.PI / 6), 2, '#1d1b2e');
     hand(now.getMinutes() * (Math.PI / 30), 3, '#1d1b2e');
     hand(now.getSeconds() * (Math.PI / 30), 3, '#e5484d');
+
+    // door lights: the restroom shows when it is occupied, the server room shows the office's health
+    for (const d of DOORS) {
+      if (d.room === 'restroom') {
+        const busy = AGENT_IDS.some((id) => {
+          const a = this.agents[id];
+          return !!a.target && a.target.startsWith('restroom:') && !a.moving && !a.anim;
+        });
+        g.fillStyle = '#1d1b2e';
+        g.fillRect(d.cx + 8, d.y + 1, 4, 4);
+        g.fillStyle = busy ? '#e5484d' : '#2fb36a';
+        g.fillRect(d.cx + 9, d.y + 2, 2, 2);
+      } else if (d.room === 'server') {
+        const bad = AGENT_IDS.some((id) => s.agents[id].activity === 'error');
+        g.fillStyle = '#1d1b2e';
+        g.fillRect(d.cx + 8, d.y + 1, 4, 4);
+        g.fillStyle = bad ? (Math.floor(this.time * 4) % 2 ? '#e5484d' : '#6b1d21') : '#2fb36a';
+        g.fillRect(d.cx + 9, d.y + 2, 2, 2);
+      }
+    }
   }
 }
 

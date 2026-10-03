@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { computeLayout } from './layout.ts';
-
-const W = 384;
-const H = 224;
+import { H, W } from './world.ts';
 
 const SCREENS: [string, number, number][] = [
   ['full HD minus bars', 1920, 980],
@@ -37,6 +35,43 @@ test('scale is a whole number whenever the office fits at 1x or larger', () => {
   for (const [name, aw, ah] of SCREENS) {
     const l = computeLayout(aw, ah, W, H);
     if (aw >= W && ah >= H) assert.equal(l.scale, Math.floor(l.scale), `${name}: fractional scale`);
+  }
+});
+
+// Growing the building must not make characters smaller on common screens.
+// Sizes are the browser viewport (the controls are an overlay, so the whole viewport is used).
+const OLD = { w: 384, h: 224 };
+const COMMON: [string, number, number][] = [
+  ['1080p fullscreen', 1920, 1080],
+  ['1080p browser', 1920, 945],
+  ['1200p browser', 1920, 1050],
+  ['1440p browser', 2560, 1290],
+  ['4K browser', 3840, 2000],
+  ['ultrawide 1080p', 2560, 945],
+  ['1600x900 browser', 1600, 790],
+  ['1536x864 laptop', 1536, 740],
+  ['1440x900 laptop', 1440, 780],
+  ['1366x768 laptop', 1366, 650],
+  ['1280x720 laptop', 1280, 600],
+];
+
+test('the bigger building keeps the same pixel scale on common screens', () => {
+  for (const [name, vw, vh] of COMMON) {
+    const before = computeLayout(vw, vh, OLD.w, OLD.h).scale;
+    const after = computeLayout(vw, vh, W, H).scale;
+    assert.equal(after, before, `${name}: scale dropped from ${before} to ${after}`);
+  }
+});
+
+test('on the few screens where the scale does drop, it drops by at most one step', () => {
+  const RARE: [string, number, number][] = [
+    ['1680x1050 browser', 1680, 900],
+    ['1280x1024 monitor', 1280, 900],
+  ];
+  for (const [name, vw, vh] of RARE) {
+    const before = computeLayout(vw, vh, OLD.w, OLD.h).scale;
+    const after = computeLayout(vw, vh, W, H).scale;
+    assert.ok(before - after <= 1, `${name}: dropped from ${before} to ${after}`);
   }
 });
 

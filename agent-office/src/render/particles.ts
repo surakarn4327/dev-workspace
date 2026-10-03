@@ -67,6 +67,18 @@ export class Particles {
     });
   }
 
+  /** Coffee steam curling up from a cup or the machine. */
+  steam(x: number, y: number): void {
+    this.add({
+      x: x + rand(-1, 1),
+      y,
+      vx: rand(-3, 3),
+      vy: rand(-12, -7),
+      life: rand(0.8, 1.3),
+      color: Math.random() < 0.5 ? '#ffffff' : '#cfd6e6',
+    });
+  }
+
   confetti(x: number, y: number, n = 1): void {
     for (let i = 0; i < n; i++) {
       this.add({

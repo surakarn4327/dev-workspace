@@ -6,7 +6,7 @@ import { MockOffice } from './simulator.ts';
 
 /** Run a whole job at warp speed and return every event it emitted. */
 function runJob(configure?: (office: MockOffice) => void): Promise<OfficeEvent[]> {
-  const office = new MockOffice({ timeScale: 4000, autoAnswer: true });
+  const office = new MockOffice({ timeScale: 4000, autoAnswer: true, ambient: false });
   configure?.(office);
   const events: OfficeEvent[] = [];
   const store = new OfficeStore();
@@ -65,7 +65,7 @@ test('forcing a QA reject sends the work back once, then it passes', async () =>
 });
 
 test('the store ends the job with an empty courier queue and no open chat', async () => {
-  const office = new MockOffice({ timeScale: 4000, autoAnswer: true });
+  const office = new MockOffice({ timeScale: 4000, autoAnswer: true, ambient: false });
   const store = new OfficeStore();
   await new Promise<void>((resolve) => {
     office.subscribe((e) => {
@@ -80,7 +80,7 @@ test('the store ends the job with an empty courier queue and no open chat', asyn
 });
 
 test('jam queues several memos that the courier clears one by one', async () => {
-  const office = new MockOffice({ timeScale: 4000 });
+  const office = new MockOffice({ timeScale: 4000, ambient: false });
   const events: OfficeEvent[] = [];
   office.subscribe((e) => events.push(e));
   office.jam(4);
@@ -90,7 +90,7 @@ test('jam queues several memos that the courier clears one by one', async () => 
 });
 
 test('reset cancels a running job without leaking events afterwards', async () => {
-  const office = new MockOffice({ timeScale: 4000 });
+  const office = new MockOffice({ timeScale: 4000, ambient: false });
   const events: OfficeEvent[] = [];
   office.subscribe((e) => events.push(e));
   office.start();

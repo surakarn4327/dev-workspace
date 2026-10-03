@@ -35,6 +35,8 @@ export interface OfficeState {
   queue: Doc[];
   log: LogLine[];
   chat: ChatPrompt | null;
+  /** Finished jobs filed on the archive shelves. */
+  archived: number;
 }
 
 function freshAgents(): Record<AgentId, AgentState> {
@@ -54,6 +56,7 @@ export function freshState(): OfficeState {
     queue: [],
     log: [],
     chat: null,
+    archived: 0,
   };
 }
 
@@ -113,6 +116,9 @@ export class OfficeStore {
       case 'doc.consumed':
         s.agents[e.agent].inbox = Math.max(0, s.agents[e.agent].inbox - 1);
         break;
+      case 'archive.filed':
+        s.archived += 1;
+        break;
       case 'review.verdict':
         s.lastVerdict = { verdict: e.verdict, reason: e.reason, round: e.round };
         break;
@@ -157,6 +163,8 @@ export function describeEvent(e: OfficeEvent): string | null {
       return `Queued "${e.doc.label}" ${nameOf(e.doc.from)} > ${nameOf(e.doc.to)}`;
     case 'doc.delivered':
       return `Delivered "${e.doc.label}" to ${nameOf(e.doc.to)}`;
+    case 'archive.filed':
+      return 'Deliverable filed in the archive';
     case 'review.verdict':
       return e.verdict === 'pass'
         ? `QA passed (round ${e.round})`

@@ -21,7 +21,21 @@ class Cancelled extends Error {}
 export interface MockOptions {
   timeScale?: number;
   autoAnswer?: boolean;
+  /** Idle office life: people wander off for coffee or the restroom between jobs (default on). */
+  ambient?: boolean;
 }
+
+/** Everyone who may wander off between jobs (the owner stays reachable, the courier works the queue). */
+const AMBIENT: AgentId[] = [
+  'secretary',
+  'research-head',
+  'research-1',
+  'research-2',
+  'prod-head',
+  'prod-1',
+  'prod-2',
+  'qa',
+];
 
 interface QueueItem {
   doc: Doc;
@@ -61,12 +75,19 @@ export class MockOffice implements OfficeSource {
   private loc = {} as Record<AgentId, PlaceId>;
   private desired = {} as Record<AgentId, { activity: Activity; note?: string }>;
   private blocked = new Set<AgentId>();
+  private ambient: boolean;
+  private away = new Set<AgentId>();
+  private trips = new Set<Promise<void>>();
+  private occupied = new Set<PlaceId>();
+  private recallWaiters = new Set<() => void>();
 
   constructor(opts: MockOptions = {}) {
     this.timeScale = opts.timeScale ?? 1;
     this.autoAnswer = opts.autoAnswer ?? false;
+    this.ambient = opts.ambient ?? true;
     this.initAgents();
     void this.courierLoop(this.runId);
+    if (this.ambient) void this.ambientLoop(this.runId);
   }
 
   // ---------- OfficeSource ----------
@@ -98,6 +119,7 @@ export class MockOffice implements OfficeSource {
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.wakeRecall(); // anyone on a coffee break heads back to their desk
     const run = this.runId;
     this.runJob(run)
       .catch((err: unknown) => {
@@ -117,17 +139,36 @@ export class MockOffice implements OfficeSource {
     for (const q of this.queue) q.reject(new Cancelled());
     this.queue = [];
     this.kick();
+    this.wakeRecall();
     this.blocked.clear();
+    this.away.clear();
+    this.trips.clear();
+    this.occupied.clear();
     this.initAgents();
     this.emit({ type: 'sim.reset' });
     void this.courierLoop(this.runId);
+    if (this.ambient) void this.ambientLoop(this.runId);
+  }
+
+  /** Stop everything for good (no loops restart). Used by tests so the process can exit. */
+  dispose(): void {
+    this.runId++;
+    this.running = false;
+    for (const p of this.pending.values()) p.reject(new Cancelled());
+    this.pending.clear();
+    for (const q of this.queue) q.reject(new Cancelled());
+    this.queue = [];
+    this.kick();
+    this.wakeRecall();
+    this.listeners.clear();
   }
 
   /** Crash a working staff member; their head walks over and fixes it. */
   injectError(): boolean {
     const run = this.runId;
-    const typing = STAFF.filter((a) => this.desired[a].activity === 'typing' && !this.blocked.has(a));
-    const pool = typing.length ? typing : STAFF.filter((a) => !this.blocked.has(a));
+    const atDesk = STAFF.filter((a) => this.loc[a] === `desk:${a}` && !this.blocked.has(a));
+    const typing = atDesk.filter((a) => this.desired[a].activity === 'typing');
+    const pool = typing.length ? typing : atDesk;
     if (!pool.length) return false;
     const who = pool[Math.floor(Math.random() * pool.length)];
     const head = (who.startsWith('research') ? PODS.research : PODS.production).head;
@@ -263,6 +304,88 @@ export class MockOffice implements OfficeSource {
     }
   }
 
+  // ---------- ambient office life ----------
+
+  private wakeRecall(): void {
+    const waiters = [...this.recallWaiters];
+    this.recallWaiters.clear();
+    for (const w of waiters) w();
+  }
+
+  /** Sleep that ends early when a job starts (so people head back to their desks). */
+  private sleepUntilJob(ms: number): Promise<void> {
+    const run = this.runId;
+    return new Promise((resolve, reject) => {
+      const finish = (): void => {
+        clearTimeout(timer);
+        this.recallWaiters.delete(finish);
+        if (run === this.runId) resolve();
+        else reject(new Cancelled());
+      };
+      const timer = setTimeout(finish, Math.max(0, ms / this.timeScale));
+      this.recallWaiters.add(finish);
+    });
+  }
+
+  /** Walk somewhere, stay a while, walk back to the desk. */
+  private async trip(agent: AgentId, place: PlaceId, ms: number, activity: Activity, note: string): Promise<void> {
+    const run = this.runId;
+    this.away.add(agent);
+    this.occupied.add(place);
+    try {
+      await this.walk(agent, place);
+      if (!this.running) {
+        this.setAct(agent, activity, note);
+        await this.sleepUntilJob(ms);
+      }
+      this.setAct(agent, 'idle');
+      this.occupied.delete(place);
+      await this.walk(agent, `desk:${agent}`);
+    } catch (err) {
+      if (!(err instanceof Cancelled)) throw err;
+    } finally {
+      if (run === this.runId) {
+        this.occupied.delete(place);
+        this.away.delete(agent);
+      }
+    }
+  }
+
+  /** Between jobs, now and then somebody goes for coffee or to the restroom. */
+  private async ambientLoop(run: number): Promise<void> {
+    try {
+      while (run === this.runId) {
+        await this.sleep(5000 + Math.random() * 7000);
+        if (this.running || this.away.size >= 2) continue;
+        const free = AMBIENT.filter(
+          (a) => !this.away.has(a) && this.loc[a] === `desk:${a}` && !this.blocked.has(a),
+        );
+        if (!free.length) continue;
+        const agent = free[Math.floor(Math.random() * free.length)];
+        const coffee = Math.random() < 0.65;
+        const spots: PlaceId[] = coffee ? ['pantry:0', 'pantry:1', 'pantry:2'] : ['restroom:0', 'restroom:1'];
+        const open = spots.filter((p) => !this.occupied.has(p));
+        if (!open.length) continue;
+        const spot = open[Math.floor(Math.random() * open.length)];
+        const t: Promise<void> = (
+          coffee
+            ? this.trip(agent, spot, 5000 + Math.random() * 3000, 'break', 'Coffee break')
+            : this.trip(agent, spot, 3000 + Math.random() * 2000, 'idle', 'Restroom')
+        ).finally(() => {
+          this.trips.delete(t);
+        });
+        this.trips.add(t);
+      }
+    } catch (err) {
+      if (!(err instanceof Cancelled)) throw err;
+    }
+  }
+
+  /** Wait until everyone who wandered off is back at their desk. */
+  private async settleAway(): Promise<void> {
+    await Promise.all([...this.trips]);
+  }
+
   private async errorFlow(run: number, who: AgentId, head: AgentId): Promise<void> {
     this.blocked.add(who);
     this.blocked.add(head);
@@ -334,7 +457,8 @@ export class MockOffice implements OfficeSource {
       }
     }
 
-    // 3. Owner meets the department heads.
+    // 3. Owner meets the department heads (everyone is back from any break by now).
+    await this.settleAway();
     this.stage(jobId, 'meeting');
     await Promise.all([
       this.walk('owner', 'meet:1'),
@@ -367,7 +491,7 @@ export class MockOffice implements OfficeSource {
 
     // 7. Secretary delivers the result to the client.
     this.stage(jobId, 'delivery');
-    await this.deliveryPhase(title);
+    await this.deliveryPhase(jobId, title);
 
     // Done: celebrate.
     this.stage(jobId, 'done');
@@ -433,11 +557,21 @@ export class MockOffice implements OfficeSource {
     const production = (async () => {
       for (const a of pStaff) this.setAct(a, 'typing', 'Drafting the outline');
       await this.sleep(4200);
-      for (const a of pStaff) this.setAct(a, 'waiting', 'Waiting for the research');
+      // While Research finishes, the producers go and get a coffee.
+      const coffee = Promise.all(
+        pStaff.map(async (a, i) => {
+          this.setAct(a, 'idle');
+          await this.walk(a, `pantry:${i as 0 | 1}`);
+          this.setAct(a, 'break', 'Coffee while waiting for the research');
+        }),
+      );
       await research;
+      await coffee;
+      const back = Promise.all(pStaff.map((a) => this.walk(a, `desk:${a}`)));
       this.setAct(pHead, 'thinking', 'Planning the merge');
       await this.sleep(1600);
       this.setAct(pHead, 'idle');
+      await back;
       await Promise.all(pStaff.map((a) => this.handoff(pHead, a, 'Brief + research')));
       for (const a of pStaff) {
         this.emit({ type: 'doc.consumed', agent: a });
@@ -507,7 +641,7 @@ export class MockOffice implements OfficeSource {
     this.emit({ type: 'doc.consumed', agent: 'qa' });
   }
 
-  private async deliveryPhase(title: string): Promise<void> {
+  private async deliveryPhase(jobId: string, title: string): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       this.setAct('secretary', 'typing', 'Packaging the result');
       await this.sleep(2400);
@@ -520,7 +654,14 @@ export class MockOffice implements OfficeSource {
         { choices: ['Accept', 'Request changes'], placeholder: 'or describe what to change' },
       );
       if (/^(accept|ok|yes|y|good|great)/i.test(reply.trim())) {
+        // Accepted: Sam files the deliverable in the archive room, then goes back to her desk.
+        this.emit({ type: 'agent.say', agent: 'secretary', text: 'Wonderful. I will file it in the archive.', to: 'owner' });
+        await this.walk('secretary', 'archive:0');
+        this.setAct('secretary', 'typing', 'Filing the deliverable');
+        await this.sleep(1600);
+        this.setAct('secretary', 'idle');
         this.emit({ type: 'agent.carry', agent: 'secretary', label: null });
+        this.emit({ type: 'archive.filed', jobId });
         await this.walk('secretary', 'desk:secretary');
         return;
       }

@@ -13,12 +13,12 @@ const WOOD = {
   handle: '#e8c97e',
 };
 
-function rect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, c: string): void {
+export function rect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, c: string): void {
   g.fillStyle = c;
   g.fillRect(Math.round(x), Math.round(y), w, h);
 }
 
-function shadow(g: CanvasRenderingContext2D, x: number, y: number, w: number, h = 3): void {
+export function shadow(g: CanvasRenderingContext2D, x: number, y: number, w: number, h = 3): void {
   g.globalAlpha = 0.22;
   rect(g, x, y, w, h, '#0c0a18');
   g.globalAlpha = 1;

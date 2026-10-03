@@ -9,20 +9,6 @@
   </head>
   <body>
     <div id="app">
-      <header class="top">
-        <div class="brand">
-          <span class="logo" aria-hidden="true"></span>
-          <h1>AGENT OFFICE</h1>
-          <span class="tag">stage 1 &middot; simulated</span>
-        </div>
-        <ol id="steps" class="steps" aria-label="Workflow progress"></ol>
-        <div class="job-bar">
-          <span class="label">JOB</span>
-          <span id="job-title" class="job-title">No active job &mdash; press Start or click Rex</span>
-        </div>
-        <button id="btn-panels" class="btn" type="button" aria-expanded="false" aria-controls="drawer">Panels</button>
-      </header>
-
       <main class="stage-area" id="stage-area">
         <div class="stage" id="stage">
           <canvas id="office" aria-label="Pixel office"></canvas>
@@ -42,7 +28,39 @@
           </div>
         </div>
 
-        <aside class="drawer" id="drawer" aria-label="Details">
+        <!-- Floating HUD: tiny, so the office gets the whole window -->
+        <div class="hud hud-left">
+          <span class="logo" aria-hidden="true"></span>
+          <h1>AGENT OFFICE</h1>
+          <span id="job-title" class="job-title">No active job &mdash; press Start or click Rex</span>
+          <ol id="steps" class="steps" aria-label="Workflow progress"></ol>
+        </div>
+        <div class="hud hud-right">
+          <button id="btn-start" class="btn primary" type="button">Start job</button>
+          <button id="btn-panels" class="btn" type="button" aria-expanded="false" aria-controls="drawer">Menu</button>
+        </div>
+
+        <aside class="drawer" id="drawer" aria-label="Controls and details">
+          <section class="panel" aria-label="Controls">
+            <h2>Controls</h2>
+            <div class="ctl-row">
+              <button id="btn-reset" class="btn" type="button">Reset</button>
+              <label class="check"><input id="auto" type="checkbox" /> Auto-answer</label>
+            </div>
+            <div class="ctl-row" role="group" aria-label="Simulation speed">
+              <span class="label">SPEED</span>
+              <button class="btn speed active" data-speed="1" type="button">1x</button>
+              <button class="btn speed" data-speed="2" type="button">2x</button>
+              <button class="btn speed" data-speed="4" type="button">4x</button>
+              <button class="btn speed" data-speed="8" type="button">8x</button>
+            </div>
+            <div class="ctl-row">
+              <span class="label">TRY</span>
+              <button id="btn-reject" class="btn" type="button" title="The next QA review sends the work back once">QA reject</button>
+              <button id="btn-error" class="btn" type="button" title="Crash a working staff member">Agent error</button>
+              <button id="btn-jam" class="btn" type="button" title="Drop several memos on the courier">Courier jam</button>
+            </div>
+          </section>
           <section class="panel" id="inspector" aria-label="Selected character"></section>
           <section class="panel">
             <h2>Courier queue</h2>
@@ -54,27 +72,6 @@
           </section>
         </aside>
       </main>
-
-      <footer class="controls">
-        <div class="group">
-          <button id="btn-start" class="btn primary" type="button">Start job</button>
-          <button id="btn-reset" class="btn" type="button">Reset</button>
-        </div>
-        <div class="group" role="group" aria-label="Simulation speed">
-          <span class="label">SPEED</span>
-          <button class="btn speed active" data-speed="1" type="button">1x</button>
-          <button class="btn speed" data-speed="2" type="button">2x</button>
-          <button class="btn speed" data-speed="4" type="button">4x</button>
-          <button class="btn speed" data-speed="8" type="button">8x</button>
-        </div>
-        <label class="check"><input id="auto" type="checkbox" /> Auto-answer</label>
-        <div class="group">
-          <span class="label">TRY</span>
-          <button id="btn-reject" class="btn" type="button" title="The next QA review sends the work back once">QA reject</button>
-          <button id="btn-error" class="btn" type="button" title="Crash a working staff member">Agent error</button>
-          <button id="btn-jam" class="btn" type="button" title="Drop several memos on the courier">Courier jam</button>
-        </div>
-      </footer>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

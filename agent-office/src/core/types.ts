@@ -25,7 +25,11 @@ export type PlaceId =
   | `visit:${AgentId}` // standing beside somebody's desk
   | `meet:${MeetSlot}` // around the meeting table
   | `huddle:${Pod}:${HuddleSlot}` // pod stand-up spot
-  | 'client'; // reception mat where the user is served
+  | `pantry:${0 | 1 | 2}` // coffee machine, fridge, table
+  | `restroom:${0 | 1}`
+  | 'server:0' // in front of the server racks
+  | 'archive:0' // in front of the archive shelves
+  | 'client'; // lobby spot where the user is served
 
 export type Activity =
   | 'idle'
@@ -34,6 +38,7 @@ export type Activity =
   | 'talking'
   | 'reviewing'
   | 'waiting'
+  | 'break' // sipping coffee
   | 'error'
   | 'celebrate';
 
@@ -80,6 +85,7 @@ export type OfficeEvent =
   | { type: 'doc.pickup'; doc: Doc }
   | { type: 'doc.delivered'; doc: Doc }
   | { type: 'doc.consumed'; agent: AgentId }
+  | { type: 'archive.filed'; jobId: string }
   | { type: 'review.verdict'; verdict: 'pass' | 'reject'; reason: string; round: number }
   | {
       type: 'chat.ask';

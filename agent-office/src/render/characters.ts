@@ -15,6 +15,7 @@ export type Pose =
   | 'think'
   | 'wait'
   | 'review'
+  | 'sip'
   | 'cheer'
   | 'alert';
 
@@ -111,7 +112,8 @@ function paint(p: Pen, look: Look, dir: 'down' | 'up' | 'left', pose: Pose, f: n
     by = f % 2 === 1 ? -1 : 0;
   }
   const hb = pose === 'wait' ? 1 : by; // head offset (slumps when waiting)
-  const closedEyes = pose === 'wait' || (f === 1 && (pose === 'stand' || pose === 'sit' || pose === 'think' || pose === 'review'));
+  const closedEyes =
+    pose === 'wait' || (f === 1 && (pose === 'stand' || pose === 'sit' || pose === 'think' || pose === 'review' || pose === 'sip'));
   const mouthOpen = (pose === 'talk' && f === 1) || pose === 'alert';
 
   if (dir === 'left') {
@@ -173,6 +175,13 @@ function paint(p: Pen, look: Look, dir: 'down' | 'up' | 'left', pose: Pose, f: n
       p.r(11, 14 + by, 2, 2, look.skin);
       p.r(10, 8, 4, 4, OUTLINE);
       p.r(11, 9, 2, 2, '#bfe9ff');
+    } else if (pose === 'sip' && !back) {
+      // a cup that rises to the mouth and goes back down
+      const up = f % 2 === 1;
+      p.r(11, up ? 8 : 10, 2, up ? 4 : 5, sleeve);
+      p.r(up ? 9 : 10, up ? 6 : 14, 3, 3, PAPER);
+      p.r(up ? 9 : 10, up ? 6 : 14, 3, 1, '#6b3f1d');
+      p.r(up ? 11 : 12, up ? 9 : 14, 2, 2, look.skin);
     } else {
       p.r(11, 10 + by + ra, 2, 5, sleeve);
       p.r(11, 15 + by + ra, 2, 2, look.skin);
@@ -296,6 +305,12 @@ function paintSide(p: Pen, look: Look, pose: Pose, f: number, o: SideOpts): void
   } else if (pose === 'talk' && f === 1) {
     p.r(3, 9, 3, 3, o.sleeve);
     p.r(2, 8, 2, 2, look.skin);
+  } else if (pose === 'sip') {
+    const up = f % 2 === 1;
+    p.r(3, up ? 8 : 10, 3, up ? 3 : 4, o.sleeve);
+    p.r(up ? 0 : 1, up ? 7 : 12, 3, 3, PAPER);
+    p.r(up ? 0 : 1, up ? 7 : 12, 3, 1, '#6b3f1d');
+    p.r(up ? 2 : 3, up ? 9 : 14, 2, 2, look.skin);
   } else {
     const ax = 5 + (walking ? -swing * 2 : 0);
     p.r(ax, 10 + by, 3, 5, o.sleeve);

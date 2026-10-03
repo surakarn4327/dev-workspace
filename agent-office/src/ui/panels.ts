@@ -26,6 +26,7 @@ const ACTIVITY_LABEL: Record<string, string> = {
   talking: 'Talking',
   reviewing: 'Reviewing',
   waiting: 'Waiting',
+  break: 'Coffee break',
   error: 'Error!',
   celebrate: 'Celebrating',
 };
@@ -46,6 +47,7 @@ export function mountPanels(store: OfficeStore, view: OfficeView): { onEvent: (e
   WORK_STAGES.forEach((stage, i) => {
     const li = h('li', 'step');
     li.dataset.stage = stage;
+    li.title = STEP_LABEL[stage];
     li.append(h('span', 'n', String(i + 1)), h('span', 'l', STEP_LABEL[stage]));
     stepsEl.append(li);
   });

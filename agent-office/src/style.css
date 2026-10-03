@@ -30,147 +30,25 @@ body {
   overflow: hidden;
 }
 
-/* The whole window is the office: header on top, controls below, stage fills the rest. */
+/* The whole window is the office; everything else floats on top of it. */
 #app {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
+  position: fixed;
+  inset: 0;
 }
 
 .hidden {
   display: none !important;
 }
 
-/* ---------- header ---------- */
-
-.top {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
-  padding: 8px 12px;
-  border-bottom: 2px solid var(--line);
-  background: var(--panel);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.brand h1 {
-  margin: 0;
-  font-size: 15px;
-  letter-spacing: 3px;
-  color: var(--accent);
-}
-
-.logo {
-  width: 18px;
-  height: 18px;
-  background: url('/favicon.svg') center/contain no-repeat;
-  image-rendering: pixelated;
-}
-
-.tag {
-  color: var(--muted);
-  font-size: 11px;
-  border: 1px solid var(--line);
-  padding: 1px 6px;
-}
-
-.steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.step {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 8px 2px 3px;
-  background: var(--bg);
-  border: 2px solid var(--line);
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.step .n {
-  display: inline-grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  background: var(--panel-2);
-  color: var(--muted);
-}
-
-.step.done {
-  color: var(--green);
-  border-color: #2b6a47;
-}
-
-.step.done .n {
-  background: var(--green);
-  color: #0d1f15;
-}
-
-.step.current {
-  color: var(--accent);
-  border-color: var(--accent);
-  animation: pulse 1s steps(2) infinite;
-}
-
-.step.current .n {
-  background: var(--accent);
-  color: #2a2000;
-}
-
-@keyframes pulse {
-  50% {
-    border-color: #8a6f1f;
-  }
-}
-
-.job-bar {
-  flex: 1;
-  min-width: 160px;
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  overflow: hidden;
-}
-
-.label {
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 2px;
-}
-
-.job-title {
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* ---------- stage: fills all remaining space ---------- */
+/* ---------- stage: the whole window ---------- */
 
 .stage-area {
-  position: relative;
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse at center, #1b1736 0%, var(--bg) 75%);
+  background: #000;
 }
 
 .stage {
@@ -200,6 +78,131 @@ body {
   white-space: nowrap;
 }
 
+/* ---------- floating HUD ---------- */
+
+.hud {
+  position: absolute;
+  top: 8px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: rgba(18, 15, 31, 0.86);
+  border: 2px solid var(--line);
+  box-shadow: 0 3px 0 rgba(10, 8, 20, 0.7);
+}
+
+.hud-left {
+  left: 8px;
+  max-width: calc(100vw - 190px);
+  flex-wrap: wrap;
+}
+
+.hud-right {
+  right: 8px;
+}
+
+.hud h1 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.logo {
+  width: 16px;
+  height: 16px;
+  background: url('/favicon.svg') center/contain no-repeat;
+  image-rendering: pixelated;
+}
+
+.job-title {
+  max-width: min(36vw, 340px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.label {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+
+.steps {
+  display: flex;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* One small pip per workflow step; the current one shows its name. */
+.step {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 3px;
+  background: var(--bg);
+  border: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.step .n {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  background: var(--panel-2);
+}
+
+.step .l {
+  display: none;
+  padding-right: 3px;
+}
+
+.step.current .l {
+  display: inline;
+}
+
+.step.done {
+  color: var(--green);
+  border-color: #2b6a47;
+}
+
+.step.done .n {
+  background: var(--green);
+  color: #0d1f15;
+}
+
+.step.current {
+  color: var(--accent);
+  border-color: var(--accent);
+  animation: pulse 1s steps(2) infinite;
+}
+
+.step.current .n {
+  background: var(--accent);
+  color: #2a2000;
+}
+
+@keyframes pulse {
+  50% {
+    border-color: #8a6f1f;
+  }
+}
+
+@media (max-width: 760px) {
+  .hud h1,
+  .logo {
+    display: none;
+  }
+}
+
 /* ---------- RPG dialog (sized from the office scale) ---------- */
 
 .dialog {
@@ -220,7 +223,7 @@ body {
 }
 
 .dialog.top {
-  top: calc(var(--scale) * 3px);
+  top: calc(var(--scale) * 3px + 52px);
   bottom: auto;
 }
 
@@ -298,25 +301,7 @@ body {
   font-size: inherit;
 }
 
-/* ---------- controls bar ---------- */
-
-.controls {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px 18px;
-  padding: 8px 12px 10px;
-  border-top: 2px solid var(--line);
-  background: var(--panel);
-}
-
-.group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
+/* ---------- buttons and controls ---------- */
 
 .check {
   display: flex;
@@ -379,23 +364,40 @@ body {
   color: #fff;
 }
 
-/* ---------- details drawer (slides over the right edge of the stage) ---------- */
+.ctl-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ctl-row:last-child {
+  margin-bottom: 0;
+}
+
+.ctl-row .label {
+  min-width: 48px;
+}
+
+/* ---------- details drawer (slides over the right edge, under the HUD) ---------- */
 
 .drawer {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  top: 58px;
+  right: 8px;
+  bottom: 8px;
   z-index: 8;
-  width: min(380px, 92vw);
+  width: min(380px, calc(100vw - 16px));
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 10px;
   overflow-y: auto;
-  background: rgba(18, 15, 31, 0.94);
-  border-left: 2px solid var(--line);
-  transform: translateX(100%);
+  background: rgba(18, 15, 31, 0.95);
+  border: 2px solid var(--line);
+  box-shadow: 0 3px 0 rgba(10, 8, 20, 0.7);
+  transform: translateX(calc(100% + 16px));
   visibility: hidden;
   transition:
     transform 0.18s steps(6),
@@ -464,7 +466,8 @@ body {
 }
 
 .chip.act-talking,
-.chip.act-thinking {
+.chip.act-thinking,
+.chip.act-break {
   border-color: var(--accent);
   color: var(--accent);
 }

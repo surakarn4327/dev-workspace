@@ -1,15 +1,22 @@
-// Pure geometry of the office: layout, named places, walkable grid and A* paths.
-// No DOM here: the simulator uses it to time courier trips and the view uses it
-// to move characters, so both agree on distances.
+// Pure geometry of the office: one building with half-height partitions, named
+// places, a walkable grid and A* paths. No DOM here: the simulator uses it to time
+// trips and the view uses it to move characters, so both agree on distances.
+//
+//   rows 0-5    back wall            rows 13-15  corridor (full width)
+//   rows 6-11   top rooms            rows 17-27  bottom rooms
+//   row 12/16   partitions with door gaps
+//   cols 0-7    left wing   (restroom | archive)      cols 51-58  right wing (server | pantry)
+//   top rooms:    exec · meeting room · mail room · QA lab
+//   bottom rooms: research lab · lobby · production studio
 
 import type { AgentId, HuddleSlot, MeetSlot, PlaceId, Pod } from './types.ts';
 
-export const W = 384;
+export const W = 472;
 export const H = 224;
 export const CELL = 8;
 export const COLS = W / CELL;
 export const ROWS = H / CELL;
-/** Wall occupies y < WALL_H; the floor starts below it. */
+/** Back wall occupies y < WALL_H; floors start below it. */
 export const WALL_H = 44;
 /** Walking speed in logical pixels per second at 1x. */
 export const WALK_SPEED = 46;
@@ -27,32 +34,169 @@ export interface Rect extends Point {
   h: number;
 }
 
+/** Rectangle covering whole grid cells (inclusive). */
+export function cellsRect(c0: number, r0: number, c1: number, r1: number): Rect {
+  return { x: c0 * CELL, y: r0 * CELL, w: (c1 - c0 + 1) * CELL, h: (r1 - r0 + 1) * CELL };
+}
+
 const DESK_W = 34;
 const DESK_H = 20;
 
 export const DESKS: Record<AgentId, Rect> = {
-  owner: { x: 12, y: 52, w: 46, h: 22 },
-  secretary: { x: 70, y: 54, w: DESK_W, h: DESK_H },
-  courier: { x: 250, y: 54, w: DESK_W, h: DESK_H },
-  qa: { x: 330, y: 54, w: DESK_W, h: DESK_H },
-  'research-head': { x: 32, y: 112, w: DESK_W, h: DESK_H },
-  'research-1': { x: 8, y: 160, w: DESK_W, h: DESK_H },
-  'research-2': { x: 56, y: 160, w: DESK_W, h: DESK_H },
-  'prod-head': { x: 318, y: 112, w: DESK_W, h: DESK_H },
-  'prod-1': { x: 294, y: 160, w: DESK_W, h: DESK_H },
-  'prod-2': { x: 342, y: 160, w: DESK_W, h: DESK_H },
+  owner: { x: 76, y: 52, w: 46, h: 22 },
+  secretary: { x: 126, y: 54, w: DESK_W, h: DESK_H },
+  courier: { x: 303, y: 54, w: DESK_W, h: DESK_H },
+  qa: { x: 359, y: 54, w: DESK_W, h: DESK_H },
+  'research-head': { x: 107, y: 146, w: DESK_W, h: DESK_H },
+  'research-1': { x: 76, y: 186, w: DESK_W, h: DESK_H },
+  'research-2': { x: 138, y: 186, w: DESK_W, h: DESK_H },
+  'prod-head': { x: 331, y: 146, w: DESK_W, h: DESK_H },
+  'prod-1': { x: 300, y: 186, w: DESK_W, h: DESK_H },
+  'prod-2': { x: 362, y: 186, w: DESK_W, h: DESK_H },
 };
 
-export const TABLE: Rect = { x: 128, y: 62, w: 96, h: 26 };
+export const TABLE: Rect = { x: 180, y: 62, w: 96, h: 26 };
 
-/** Static floor furniture that blocks walking (besides desks and the table). */
-export const PROPS: { kind: 'plant' | 'cooler' | 'printer'; rect: Rect }[] = [
-  { kind: 'plant', rect: { x: 108, y: 58, w: 12, h: 16 } },
-  { kind: 'plant', rect: { x: 4, y: 196, w: 14, h: 18 } },
-  { kind: 'plant', rect: { x: 366, y: 196, w: 14, h: 18 } },
-  { kind: 'cooler', rect: { x: 140, y: 172, w: 12, h: 20 } },
-  { kind: 'printer', rect: { x: 236, y: 170, w: 22, h: 16 } },
+export type PropKind =
+  | 'plant'
+  | 'cooler'
+  | 'printer'
+  | 'sofa'
+  | 'coffee-table'
+  | 'stall'
+  | 'rack'
+  | 'shelf'
+  | 'counter'
+  | 'fridge'
+  | 'pantry-table';
+
+export interface Prop {
+  kind: PropKind;
+  rect: Rect;
+}
+
+/** Floor furniture that blocks walking (besides desks and the meeting table). */
+export const PROPS: Prop[] = [
+  // lobby
+  { kind: 'plant', rect: { x: 188, y: 140, w: 14, h: 18 } },
+  { kind: 'plant', rect: { x: 270, y: 140, w: 14, h: 18 } },
+  { kind: 'printer', rect: { x: 232, y: 142, w: 22, h: 16 } },
+  { kind: 'sofa', rect: { x: 196, y: 186, w: 44, h: 18 } },
+  { kind: 'coffee-table', rect: { x: 206, y: 208, w: 28, h: 10 } },
+  { kind: 'cooler', rect: { x: 272, y: 196, w: 12, h: 20 } },
+  // corridor ends
+  { kind: 'plant', rect: { x: 2, y: 108, w: 14, h: 18 } },
+  { kind: 'plant', rect: { x: 456, y: 108, w: 14, h: 18 } },
+  // restroom
+  { kind: 'stall', rect: { x: 4, y: 48, w: 24, h: 26 } },
+  { kind: 'stall', rect: { x: 36, y: 48, w: 24, h: 26 } },
+  // server room
+  { kind: 'rack', rect: { x: 412, y: 48, w: 16, h: 30 } },
+  { kind: 'rack', rect: { x: 432, y: 48, w: 16, h: 30 } },
+  { kind: 'rack', rect: { x: 452, y: 48, w: 16, h: 30 } },
+  // archive
+  { kind: 'shelf', rect: { x: 2, y: 138, w: 20, h: 40 } },
+  { kind: 'shelf', rect: { x: 42, y: 138, w: 20, h: 40 } },
+  // pantry
+  { kind: 'counter', rect: { x: 410, y: 138, w: 22, h: 18 } },
+  { kind: 'fridge', rect: { x: 458, y: 138, w: 14, h: 26 } },
+  { kind: 'pantry-table', rect: { x: 432, y: 184, w: 24, h: 16 } },
 ];
+
+// ---------- rooms & doors (used for floors, signs and lights) ----------
+
+export type RoomId =
+  | 'restroom'
+  | 'exec'
+  | 'meeting'
+  | 'mail'
+  | 'qa'
+  | 'server'
+  | 'archive'
+  | 'research'
+  | 'production'
+  | 'pantry'
+  | 'lobby';
+
+export interface Room {
+  id: RoomId;
+  rect: Rect;
+}
+
+export const ROOMS: Room[] = [
+  { id: 'restroom', rect: cellsRect(0, 6, 7, 11) },
+  { id: 'exec', rect: cellsRect(9, 6, 19, 11) },
+  { id: 'meeting', rect: cellsRect(21, 6, 35, 11) },
+  { id: 'mail', rect: cellsRect(37, 6, 42, 11) },
+  { id: 'qa', rect: cellsRect(44, 6, 49, 11) },
+  { id: 'server', rect: cellsRect(51, 6, 58, 11) },
+  { id: 'archive', rect: cellsRect(0, 17, 7, 27) },
+  { id: 'research', rect: cellsRect(9, 17, 21, 27) },
+  { id: 'lobby', rect: cellsRect(23, 17, 35, 27) },
+  { id: 'production', rect: cellsRect(37, 17, 49, 27) },
+  { id: 'pantry', rect: cellsRect(51, 17, 58, 27) },
+];
+
+/** Door gaps in the two horizontal partition rows (columns, 3 cells wide each). */
+const GAPS_TOP: Record<string, number> = {
+  restroom: 3,
+  exec: 13,
+  meeting: 27,
+  mail: 39,
+  qa: 46,
+  server: 54,
+};
+const GAPS_BOTTOM: Record<string, number> = {
+  archive: 3,
+  research: 13,
+  production: 41,
+  pantry: 54,
+};
+
+export interface Door {
+  room: RoomId;
+  /** Centre x and top y of the doorway (3 cells wide, 1 cell tall). */
+  cx: number;
+  y: number;
+}
+
+export const DOORS: Door[] = [
+  ...Object.entries(GAPS_TOP).map(([room, col]) => ({ room: room as RoomId, cx: (col + 1.5) * CELL, y: 12 * CELL })),
+  ...Object.entries(GAPS_BOTTOM).map(([room, col]) => ({ room: room as RoomId, cx: (col + 1.5) * CELL, y: 16 * CELL })),
+];
+
+// ---------- partition walls ----------
+
+export interface WallCell {
+  col: number;
+  row: number;
+}
+
+const wallSet = new Set<number>();
+export const WALL_CELLS: WallCell[] = [];
+
+function addWall(col: number, row: number): void {
+  const key = row * COLS + col;
+  if (wallSet.has(key)) return;
+  wallSet.add(key);
+  WALL_CELLS.push({ col, row });
+}
+
+export function isWallCell(col: number, row: number): boolean {
+  return wallSet.has(row * COLS + col);
+}
+
+(() => {
+  const gapsTop = Object.values(GAPS_TOP).flatMap((c) => [c, c + 1, c + 2]);
+  const gapsBottom = Object.values(GAPS_BOTTOM).flatMap((c) => [c, c + 1, c + 2]);
+  for (let col = 0; col < COLS; col++) {
+    if (!gapsTop.includes(col)) addWall(col, 12);
+    const inLobby = col >= 23 && col <= 35; // the lobby is open to the corridor
+    if (!inLobby && !gapsBottom.includes(col)) addWall(col, 16);
+  }
+  for (const col of [8, 20, 36, 43, 50]) for (let row = 6; row <= 11; row++) addWall(col, row);
+  for (const col of [8, 22, 36, 50]) for (let row = 17; row <= 27; row++) addWall(col, row);
+})();
 
 // ---------- walkable grid ----------
 
@@ -68,7 +212,8 @@ function blockRect(r: Rect): void {
   }
 }
 
-blockRect({ x: 0, y: 0, w: W, h: WALL_H + 4 }); // wall + the strip hidden behind desks
+blockRect({ x: 0, y: 0, w: W, h: WALL_H + 4 }); // back wall + the strip hidden behind desks
+for (const w of WALL_CELLS) blocked[w.row * COLS + w.col] = 1;
 for (const d of Object.values(DESKS)) blockRect(d);
 blockRect(TABLE);
 for (const p of PROPS) blockRect(p.rect);
@@ -113,7 +258,18 @@ export function standPoint(id: AgentId): Point {
   return snap({ x: deskCx(id), y: d.y + d.h + 6 });
 }
 
-const POD_X: Record<Pod, number> = { research: 49, production: 335 };
+export const POD_X: Record<Pod, number> = { research: 124, production: 348 };
+const HUDDLE_Y = 180;
+
+const PANTRY_SPOTS: Point[] = [
+  { x: 420, y: 164 }, // in front of the coffee machine
+  { x: 464, y: 172 }, // by the fridge
+  { x: 444, y: 176 }, // at the table
+];
+const RESTROOM_SPOTS: Point[] = [
+  { x: 16, y: 84 },
+  { x: 48, y: 84 },
+];
 
 export function placePoint(place: PlaceId): Point {
   const [kind, a, b] = place.split(':');
@@ -134,10 +290,18 @@ export function placePoint(place: PlaceId): Point {
     case 'huddle': {
       const pod = a as Pod;
       const slot = Number(b) as HuddleSlot;
-      return snap({ x: POD_X[pod] + (slot - 1) * 16, y: 148 });
+      return snap({ x: POD_X[pod] + (slot - 1) * 16, y: HUDDLE_Y });
     }
+    case 'pantry':
+      return snap(PANTRY_SPOTS[Number(a)]);
+    case 'restroom':
+      return snap(RESTROOM_SPOTS[Number(a)]);
+    case 'server':
+      return snap({ x: 440, y: 84 });
+    case 'archive':
+      return snap({ x: 32, y: 188 });
     default:
-      return snap({ x: 176, y: 208 }); // client
+      return snap({ x: 256, y: 176 }); // client, in the lobby
   }
 }
 
@@ -147,6 +311,7 @@ export function placeFacing(place: PlaceId): Facing {
   const kind = place.split(':')[0];
   if (kind === 'meet') return Number(place.split(':')[1]) < 3 ? 'down' : 'up';
   if (kind === 'visit') return 'left';
+  if (kind === 'pantry' || kind === 'restroom' || kind === 'server' || kind === 'archive') return 'up';
   return 'down';
 }
 
@@ -264,5 +429,12 @@ export const ALL_PLACES: PlaceId[] = [
   'huddle:production:0',
   'huddle:production:1',
   'huddle:production:2',
+  'pantry:0',
+  'pantry:1',
+  'pantry:2',
+  'restroom:0',
+  'restroom:1',
+  'server:0',
+  'archive:0',
   'client',
 ];
