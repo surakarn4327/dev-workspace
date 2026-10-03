@@ -43,39 +43,39 @@ input int    InpNewsLead   = 30;   // นาทีก่อนข่าวที
 input int    InpNewsResume = 35;   // นาทีหลังข่าวที่เปิดไม้ใหม่ได้อีกครั้ง
 input string InpNewsFile   = "news\\news_B.csv"; // ไฟล์เวลาข่าวแรง (NFP/FOMC/CPI) UTC epoch วินาที บรรทัดละ 1 ค่า ใน Common\Files — ได้จากปฏิทิน MT5 (CalendarDump.mq5) ต้องอัปเดตทุกปี
 input group "[จูน] ADX + EMA Momentum Engine"
-input int    InpADXPeriod = 14; // period ของ ADX (+DI/-DI/ADX main) — ยิ่งสั้นยิ่งไวต่อสัญญาณ ยิ่งยาวยิ่งกรองสัญญาณหลอกได้มากขึ้น
-input int    InpEmaPeriod = 5;  // period ของ EMA ที่คำนวณจากค่า ADX main line เอง (Signal Line) — ตามไกด์ผู้ใช้ default = 5
+input int    InpADXPeriod = 8; // period ของ ADX (+DI/-DI/ADX main) — ยิ่งสั้นยิ่งไวต่อสัญญาณ ยิ่งยาวยิ่งกรองสัญญาณหลอกได้มากขึ้น
+input int    InpEmaPeriod = 40;  // period ของ EMA ที่คำนวณจากค่า ADX main line เอง (Signal Line) — ตามไกด์ผู้ใช้ default = 5
 
 input group "[จูน] ตัวกรองสัญญาณ (No-Trade Zone)"
-input double InpMinADXLevel = 15.0; // ADX ต่ำกว่านี้ = ตลาดเงียบ/วอลลุ่มต่ำเกินไป ไม่เข้าไม้ (ไกด์ผู้ใช้เรียก "ตลาดเงียบเกินไป")
-input double InpMinDiGap    = 2.0;  // +DI กับ -DI ต้องห่างกันอย่างน้อยเท่านี้ ไม่งั้นถือว่า "ตัดกันไปมา" (sideway) ไม่เข้าไม้
+input double InpMinADXLevel = 29.0; // ADX ต่ำกว่านี้ = ตลาดเงียบ/วอลลุ่มต่ำเกินไป ไม่เข้าไม้ (ไกด์ผู้ใช้เรียก "ตลาดเงียบเกินไป")
+input double InpMinDiGap    = 9.2;  // +DI กับ -DI ต้องห่างกันอย่างน้อยเท่านี้ ไม่งั้นถือว่า "ตัดกันไปมา" (sideway) ไม่เข้าไม้
 
 input group "[จูน] ATR & SL/TP"
-input int    InpATRPeriod       = 14;  // period ของ ATR ใช้คำนวณ SL/TP
-input double InpSLAtrMult       = 2.0; // SL = ราคาปิดแท่งสัญญาณ ∓ ATR x ค่านี้
-input double InpFixRRTpAtrMult  = 3.0; // TP ของโหมด Fix RR (เป้าเดียว) เป็นเท่าของ ATR
-input double InpTp1AtrMult      = 2.0; // TP1 ของโหมด Fix Multiple RR เป็นเท่าของ ATR
-input double InpTp2AtrMult      = 3.0; // TP2 ของโหมด Fix Multiple RR เป็นเท่าของ ATR
-input double InpTp3AtrMult      = 4.0; // TP3 ของโหมด Fix Multiple RR เป็นเท่าของ ATR
-input double InpDynTpMinAtrMult = 1.5; // TP ต่ำสุดของโหมด Dynamic RR (ตอน ADX เท่า InpMinADXLevel)
-input double InpDynTpMaxAtrMult = 5.0; // TP สูงสุดของโหมด Dynamic RR (ตอน ADX = 50)
+input int    InpATRPeriod       = 84;  // period ของ ATR ใช้คำนวณ SL/TP
+input double InpSLAtrMult       = 8.0; // SL = ราคาปิดแท่งสัญญาณ ∓ ATR x ค่านี้
+input double InpFixRRTpAtrMult  = 20.0; // TP ของโหมด Fix RR (เป้าเดียว) เป็นเท่าของ ATR
+input double InpTp1AtrMult      = 15.0; // TP1 ของโหมด Fix Multiple RR เป็นเท่าของ ATR
+input double InpTp2AtrMult      = 17.0; // TP2 ของโหมด Fix Multiple RR เป็นเท่าของ ATR
+input double InpTp3AtrMult      = 21.0; // TP3 ของโหมด Fix Multiple RR เป็นเท่าของ ATR
+input double InpDynTpMinAtrMult = 11.0; // TP ต่ำสุดของโหมด Dynamic RR (ตอน ADX เท่า InpMinADXLevel)
+input double InpDynTpMaxAtrMult = 31.0; // TP สูงสุดของโหมด Dynamic RR (ตอน ADX = 50)
 
 input group "[จูน] จัดการไม้ตามโมเมนตัม"
-input bool InpExitOnMomentumLoss = true; // ปิดไม้ทันทีถ้า ADX ตกกลับต่ำกว่า EMA ของตัวมันเอง (โมเมนตัมหมด — ตาม "Pro Tip" ของไกด์: ADX โค้งลงหา EMA = รอบเทรนด์ใกล้จบ)
+input bool InpExitOnMomentumLoss = false; // ปิดไม้ทันทีถ้า ADX ตกกลับต่ำกว่า EMA ของตัวมันเอง (โมเมนตัมหมด — ตาม "Pro Tip" ของไกด์: ADX โค้งลงหา EMA = รอบเทรนด์ใกล้จบ)
 
 input group "[ไม่จูน] โหมด TP"
-input ENUM_ADXEMA_TPMODE InpTpMode = TPMODE_FIX_RR; // โหมด TP: Fix RR (default, ไม่แบ่งปิด) / Fix Multiple RR (แบ่งปิด) / Dynamic RR
+input ENUM_ADXEMA_TPMODE InpTpMode = TPMODE_FIX_MULTI_RR; // โหมด TP: Fix RR (ไม่แบ่งปิด) / Fix Multiple RR (แบ่งปิด TP1/TP2/TP3 — ค่าที่ใช้จริง) / Dynamic RR
 
 input group "[ไม่จูน] ความเสี่ยงและการเข้าออก"
 input ENUM_RISK_MODE InpRiskMode      = RISK_PERCENT_EQUITY; // โหมดทุนเสี่ยง: % ของ equity หรือคงที่ USD
-input double         InpRiskPct       = 2.0;  // ทุนเสี่ยงต่อไม้ เป็น % ของ equity (ใช้เมื่อ RiskMode = PercentEquity)
+input double         InpRiskPct       = 5.0;  // ทุนเสี่ยงต่อไม้ เป็น % ของ equity (ใช้เมื่อ RiskMode = PercentEquity)
 input double         InpRiskFixedUsd  = 200;  // ทุนเสี่ยงต่อไม้ คงที่ USD (ใช้เมื่อ RiskMode = FixedUsd)
-input double         InpRiskPointUnit = 1;    // ขนาด 1 จุดในสูตร lot — Strategy Tester (Deposit USD) ใช้ 1 เสมอ, บัญชีจริง cent (USC) ต้องเปลี่ยนเป็น 0.01 ก่อนโหลดใช้จริง
+input double         InpRiskPointUnit = 0.01;    // ขนาด 1 จุดในสูตร lot — default 0.01 = บัญชี cent (USC) ทั้งบัญชีจริงและ Tester ที่ตั้ง Currency=USC (เทสด้วย Deposit USD ต้องเปลี่ยนเป็น 1)
 input long           InpMagic         = 20261001; // magic number — คนละค่ากับ AdxEma ต้นฉบับ (20260919) และ AdxEmaVol V1 (20260927) กันชนกันถ้าแนบหลายตัวในบัญชีเดียวกัน
 
 input group "[ไม่จูน] Day-trade เท่านั้น (ห้ามถือไม้ข้ามคืน)"
 input bool InpUseCutoff             = true; // เปิด/ปิดกฎคัตไม้เที่ยงคืน — true = คัตไม้+ห้ามเปิดใหม่ตามเวลา, false = ปิดกฎนี้ทั้งหมด
-input int  InpCutoffServerHour      = 17;   // ชั่วโมง server ที่ถือว่าเลยเที่ยงคืนไทยแล้ว — วัดจริง 2026-09-14: server ช้ากว่าไทย 7 ชม. ปรับถ้า broker/บัญชีเปลี่ยน
+input int  InpCutoffServerHour      = 16;   // ชั่วโมง server ที่ถือว่าเลยเที่ยงคืนไทยแล้ว — วัดจริง 2026-09-14: server ช้ากว่าไทย 7 ชม. ปรับถ้า broker/บัญชีเปลี่ยน
 input int  InpTradeStartServerHour  = 23;   // ชั่วโมง server ที่เริ่มเปิดไม้ได้ (ใช้เมื่อ InpUseCutoff=true) — ตรงกับ 06:00 เช้าไทย ก่อนถึงชั่วโมงนี้จะยังไม่เปิดไม้ใหม่ให้
 input int  InpNoEntryBeforeCutoffMin = 120; // ไม่เปิดไม้ใหม่เมื่อเหลือเวลาก่อน cutoff น้อยกว่ากี่นาที (0 = ปิด) — 120 กับ cutoff 16 = หยุดเปิดไม้ใหม่ 21:00 ไทย ไม้ที่เปิดอยู่ยังถือถึง cutoff ตามปกติ
 
@@ -85,13 +85,13 @@ input int    InpVolSizeWindow    = 10;   // รวม tick volume กี่น�
 input int    InpVolSizeBaseBars  = 1440; // เทียบกับค่าเฉลี่ย volume ต่อแท่งของกี่แท่ง M1 ล่าสุด (1440 = 1 วัน)
 input int    InpVolSurgeBars     = 30;   // จำการพุ่ง: ใช้ค่าสูงสุดของอัตราส่วน volume ย้อนหลังกี่แท่ง M1 (ช่วงพักตัวหลังพุ่ง ตัวคูณจะไม่ตกทันที) — 0 = ปิด (เท่า AdxEmaVol V1) · ผลทดสอบ real ticks 2026: 30 นาที ได้ 38.1M vs 34.0M ของเดิม (15/45 นาที ~36.8M, 60+ นาทีแย่ลง)
 input double InpVolSizeThreshold = 0.90; // เส้นแบ่ง: volume ช่วงสั้น ÷ ค่าเฉลี่ย ต่ำกว่านี้ = ตลาดเงียบ (งานวิจัย: 0.7-1.2 ได้ผลใกล้กัน)
-input double InpVolSizeLow       = 0.5;  // ตลาดเงียบ: คูณ % เสี่ยงด้วยค่านี้ (0.5 × 5% = เสี่ยง 2.5%)
-input double InpVolSizeHigh      = 1.5;  // ตลาดคึกคัก: คูณ % เสี่ยงด้วยค่านี้ (1.5 × 5% = เสี่ยง 7.5%)
+input double InpVolSizeLow       = 1.0;  // ตลาดเงียบ: คูณ % เสี่ยงด้วยค่านี้ (1.0 × 5% = เสี่ยง 5%)
+input double InpVolSizeHigh      = 2.0;  // ตลาดคึกคัก: คูณ % เสี่ยงด้วยค่านี้ (2.0 × 5% = เสี่ยง 10%)
 
 input group "[ไม่จูน] เกณฑ์ให้คะแนนตอน optimize"
 input int    InpMinTrades  = 30;   // ไม้ขั้นต่ำ ต่ำกว่านี้ให้คะแนน 0
 input double InpMinProfit  = 0;    // กำไรสุทธิขั้นต่ำ ต่ำกว่านี้ให้คะแนน 0
-input bool   InpDumpPasses = true; // เขียนผลทุก pass ลงไฟล์ Common\adxemavolv2_opt\
+input bool   InpDumpPasses = false; // เขียนผลทุก pass ลงไฟล์ Common\adxemavolv2_opt\
 
 input group "[ไม่จูน] แสดงผลบนกราฟ"
 input bool InpShowChartObjects = false; // วาดลูกศรจุดเข้า + เส้น SL/TP1-3 บนชาร์ต — default false เพราะทำให้ backtest/optimize ช้าลง (วาด object ทุก pass) เปิดเป็น true เฉพาะตอนดูสดบนชาร์ตจริงเท่านั้น
