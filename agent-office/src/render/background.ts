@@ -1,12 +1,12 @@
 // The static part of the scene is painted once into an offscreen canvas that covers the
 // whole window. It is always the inside of the company: the real building (rooms, floors,
 // back wall) in the middle, and more of the same building - more rooms,
-// partitions and corridor - around it, fading into shadow towards the edges.
+// partitions and corridor - around it, lit exactly like the office.
 // Everything is in office coordinates (the canvas is translated by the office offset).
 // Partition walls, furniture and people of the real building are dynamic and drawn by
 // the view on top.
 
-import { DOORS, H, ROOMS, W, WALL_H, type Rect, type RoomId } from '../core/world.ts';
+import { DOORS, ROOMS, WALL_H, type Rect, type RoomId } from '../core/world.ts';
 import { paintInterior, type Range } from './decor.ts';
 import { carpet, parquet, serverFloor, tiles } from './floors.ts';
 import { rect } from './furniture.ts';
@@ -35,7 +35,6 @@ export function buildBackground(cw: number, ch: number, ox: number, oy: number):
   paintBackWall(g, r);
   paintRugs(g);
   paintLight(g);
-  paintShadowEdges(g, r);
   g.restore();
   return c;
 }
@@ -170,27 +169,6 @@ function paintLight(g: Ctx): void {
     g.lineTo(wx + 34, WALL_H + 56);
     g.closePath();
     g.fill();
-  }
-  g.globalAlpha = 1;
-}
-
-/** The parts of the building beyond the office fade into shadow, so the eye stays on the office. */
-function paintShadowEdges(g: Ctx, r: Range): void {
-  const worldW = W;
-  const worldH = H;
-  g.fillStyle = '#0c0a18';
-  g.globalAlpha = 0.07;
-  for (let i = 0; i < 6; i++) {
-    const grow = i * 12;
-    const ix0 = -grow;
-    const iy0 = -grow;
-    const ix1 = worldW + grow;
-    const iy1 = worldH + grow;
-    // everything outside the rectangle [ix0, ix1] x [iy0, iy1]
-    g.fillRect(r.x0, r.y0, ix0 - r.x0, r.y1 - r.y0);
-    g.fillRect(ix1, r.y0, r.x1 - ix1, r.y1 - r.y0);
-    g.fillRect(ix0, r.y0, ix1 - ix0, iy0 - r.y0);
-    g.fillRect(ix0, iy1, ix1 - ix0, r.y1 - iy1);
   }
   g.globalAlpha = 1;
 }

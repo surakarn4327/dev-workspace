@@ -61,6 +61,7 @@ export type PropKind =
   | 'plant'
   | 'cooler'
   | 'printer'
+  | 'cabinet'
   | 'sofa'
   | 'coffee-table'
   | 'stall'
@@ -80,9 +81,11 @@ export const PROPS: Prop[] = [
   // lobby
   { kind: 'plant', rect: { x: 188, y: 140, w: 14, h: 18 } },
   { kind: 'plant', rect: { x: 270, y: 140, w: 14, h: 18 } },
-  { kind: 'printer', rect: { x: 232, y: 142, w: 22, h: 16 } },
-  { kind: 'sofa', rect: { x: 196, y: 186, w: 44, h: 18 } },
-  { kind: 'coffee-table', rect: { x: 206, y: 208, w: 28, h: 10 } },
+  // copy corner against the wall on the lab side of the lobby
+  { kind: 'printer', rect: { x: 186, y: 160, w: 22, h: 16 } },
+  { kind: 'cabinet', rect: { x: 188, y: 180, w: 16, h: 22 } },
+  { kind: 'sofa', rect: { x: 210, y: 186, w: 44, h: 18 } },
+  { kind: 'coffee-table', rect: { x: 220, y: 208, w: 28, h: 10 } },
   { kind: 'cooler', rect: { x: 272, y: 196, w: 12, h: 20 } },
   // corridor ends
   { kind: 'plant', rect: { x: 2, y: 108, w: 14, h: 18 } },

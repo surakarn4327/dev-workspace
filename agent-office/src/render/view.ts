@@ -27,7 +27,7 @@ import {
 import { BOARD, CLOCK, HOLES, buildBackground } from './background.ts';
 import type { Dir, Pose } from './characters.ts';
 import { getSprite } from './characters.ts';
-import { drawChair, drawCooler, drawDesk, drawPlant, drawPrinter, drawTable } from './furniture.ts';
+import { drawCabinet, drawChair, drawCooler, drawDesk, drawPlant, drawPrinter, drawTable } from './furniture.ts';
 import {
   drawCoffeeTable,
   drawCounter,
@@ -495,6 +495,8 @@ export class OfficeView {
               return drawCooler(g, rc);
             case 'printer':
               return drawPrinter(g, rc, busy);
+            case 'cabinet':
+              return drawCabinet(g, rc.x, rc.y);
             case 'sofa':
               return drawSofa(g, rc);
             case 'coffee-table':
