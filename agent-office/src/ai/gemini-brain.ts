@@ -43,6 +43,13 @@ export async function complete(client: ModelClient, req: GenerateRequest): Promi
   return second;
 }
 
+/** The language the client writes in: Thai if any of their words contain Thai script, English if they wrote Latin, else the fallback. */
+export function clientLang(texts: readonly string[], fallback: Lang): Lang {
+  const said = texts.join(' ');
+  if (/[฀-๿]/.test(said)) return 'th';
+  return /[A-Za-z]{2,}/.test(said) ? 'en' : fallback;
+}
+
 /** "READY:" (or bare "READY") at the start. A question that merely begins with the word "Ready ..." does not count. */
 const isReady = (text: string): boolean => /^\s*READY\s*(:|$)/i.test(text);
 
@@ -107,7 +114,7 @@ export class GeminiBrain implements IntakeBrain {
   async writeBrief(history: readonly Exchange[], _title: string, signal?: AbortSignal): Promise<Msg> {
     const transcript = history.map((h) => `Owner (Rex): ${tr(h.question)}\nClient: ${h.text}`).join('\n');
     const result = await complete(this.secretary, {
-      system: secretaryPrompt({ fallbackLang: this.lang() }),
+      system: secretaryPrompt({ lang: clientLang(history.map((h) => h.text), this.lang()) }),
       history: [{ role: 'user', text: briefRequest(transcript) }],
       maxOutputTokens: BRIEF_TOKENS,
       signal,
@@ -116,9 +123,9 @@ export class GeminiBrain implements IntakeBrain {
     return raw(this.currentBrief);
   }
 
-  async reviseBrief(_history: readonly Exchange[], _title: string, change: Msg, signal?: AbortSignal): Promise<Msg> {
+  async reviseBrief(history: readonly Exchange[], _title: string, change: Msg, signal?: AbortSignal): Promise<Msg> {
     const result = await complete(this.secretary, {
-      system: secretaryPrompt({ fallbackLang: this.lang() }),
+      system: secretaryPrompt({ lang: clientLang([...history.map((h) => h.text), tr(change)], this.lang()) }),
       history: [{ role: 'user', text: reviseRequest(this.currentBrief, tr(change)) }],
       maxOutputTokens: BRIEF_TOKENS,
       signal,

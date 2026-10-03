@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import type { Exchange } from '../core/brain.ts';
 import { msg, raw, setLang, tr } from '../core/i18n.ts';
 import { MockOffice } from '../sim/simulator.ts';
-import { GeminiBrain, MAX_QUESTIONS, complete, plain } from './gemini-brain.ts';
+import { GeminiBrain, MAX_QUESTIONS, clientLang, complete, plain } from './gemini-brain.ts';
 import { ModelError } from './model-client.ts';
 import type { GenerateRequest, ModelClient } from './model-client.ts';
 import { OPENER } from './prompts.ts';
@@ -210,4 +210,43 @@ test('replies are not cut off at the old, too-small budget', async () => {
   await brain.writeBrief([ex('q', 'a')], 't');
   assert.ok((o.requests[0].maxOutputTokens ?? 0) >= 800, 'questions get room for Thai text and for any thinking');
   assert.ok((s.requests[0].maxOutputTokens ?? 0) >= 1500, 'the brief gets more');
+});
+test('the language the client writes in decides the brief language: Thai script means Thai, Latin means English', () => {
+  assert.equal(clientLang(['ข่าวน้ำท่วม', 'ทั่วไป'], 'en'), 'th');
+  assert.equal(clientLang(['A weekly newsletter'], 'th'), 'en', 'English text wins over a Thai menu');
+  assert.equal(clientLang(['ok mix ข่าว'], 'en'), 'th', 'any Thai script makes it Thai');
+  assert.equal(clientLang(['12345', '!!'], 'th'), 'th', 'nothing to go on: the menu language');
+});
+
+test('a Thai client gets the exact Thai labels, so the brief is not half in English', async () => {
+  const { brain, s } = brainWith([], ['x']);
+  await brain.writeBrief([ex('q', 'ข่าวน้ำท่วมกรุงเทพที่ผ่านมา')], 't');
+  const system = s.requests[0].system ?? '';
+  for (const label of ['เป้าหมาย:', 'กลุ่มเป้าหมายและโทน:', 'รูปแบบและความยาว:', 'ข้อจำกัด:', 'ต้องมีอะไรบ้าง:', '"ไม่ได้ระบุ"']) {
+    assert.ok(system.includes(label), `the prompt lists ${label}`);
+  }
+  assert.match(system, /in Thai, including the labels/);
+  assert.ok(!system.includes('Goal: ...'), 'no English labels offered');
+});
+
+test('an English client gets the English labels even when the menu is Thai', async () => {
+  const o = fakeModel([]);
+  const s = fakeModel(['x']);
+  const brain = new GeminiBrain({ owner: o, secretary: s, lang: () => 'th' });
+  await brain.writeBrief([ex('q', 'A weekly newsletter')], 't');
+  assert.ok((s.requests[0].system ?? '').includes('Goal: ...') && (s.requests[0].system ?? '').includes('"not specified"'));
+});
+
+test('a revision follows the language of the whole conversation and of the change', async () => {
+  const { brain, s } = brainWith([], ['v1', 'v2']);
+  const history = [ex('q', 'A newsletter')];
+  await brain.writeBrief(history, 't');
+  await brain.reviseBrief(history, 't', raw('ช่วยให้สั้นลง'));
+  assert.ok((s.requests[1].system ?? '').includes('เป้าหมาย:'), 'the change was written in Thai, so the revised brief is Thai');
+});
+
+test('the owner is told to ask about limits and must-include points before finishing', async () => {
+  const { brain, o } = brainWith(['q?']);
+  await brain.ownerTurn([ex('q', 'a')], 't');
+  assert.match(o.requests[0].system ?? '', /hard limits/);
 });
