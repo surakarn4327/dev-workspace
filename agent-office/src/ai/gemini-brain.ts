@@ -2,9 +2,10 @@
 // The opening greeting is fixed text (no call), so clicking Rex answers at once and the first request is saved.
 // Questions are capped: once the cap is reached the owner must stop and the brief gets written.
 
-import type { Exchange, IntakeBrain, OwnerTurn } from '../core/brain.ts';
+import type { BrainWait, Exchange, IntakeBrain, OwnerTurn } from '../core/brain.ts';
 import { getLang, msg, raw, tr } from '../core/i18n.ts';
 import type { Lang, Msg } from '../core/i18n.ts';
+import type { RateLimiter } from './limiter.ts';
 import type { ChatTurn, ModelClient } from './model-client.ts';
 import { OPENER, SHORTEN_NUDGE, briefRequest, ownerPrompt, reviseRequest, secretaryPrompt } from './prompts.ts';
 
@@ -19,6 +20,8 @@ export interface GeminiBrainDeps {
   maxQuestions?: number;
   /** Language to fall back to when the client has not written anything yet. */
   lang?: () => Lang;
+  /** The shared rate limiter, so the office can show "waiting for quota". */
+  limiter?: RateLimiter;
 }
 
 /** "READY:" (or bare "READY") at the start. A question that merely begins with the word "Ready ..." does not count. */
@@ -38,16 +41,23 @@ export class GeminiBrain implements IntakeBrain {
   private readonly secretary: ModelClient;
   private readonly maxQuestions: number;
   private readonly lang: () => Lang;
+  private readonly limiter?: RateLimiter;
   private currentBrief = '';
 
   constructor(deps: GeminiBrainDeps) {
+    this.limiter = deps.limiter;
     this.owner = deps.owner;
     this.secretary = deps.secretary;
     this.maxQuestions = deps.maxQuestions ?? MAX_QUESTIONS;
     this.lang = deps.lang ?? getLang;
   }
 
-  async ownerTurn(history: readonly Exchange[], _title: string): Promise<OwnerTurn> {
+  watchWait(listener: (wait: BrainWait) => void): () => void {
+    if (!this.limiter) return () => {};
+    return this.limiter.onStatus((s) => listener(s.phase === 'quota-wait' ? 'quota' : null));
+  }
+
+  async ownerTurn(history: readonly Exchange[], _title: string, signal?: AbortSignal): Promise<OwnerTurn> {
     if (history.length === 0) {
       return { kind: 'ask', question: { text: msg('ask.idea'), placeholder: msg('ask.idea.ph') } };
     }
@@ -59,13 +69,14 @@ export class GeminiBrain implements IntakeBrain {
     }
     const system = ownerPrompt({ remaining: this.maxQuestions - history.length, fallbackLang: this.lang() });
 
-    let reply = (await this.owner.generate({ system, history: turns, maxOutputTokens: 300 })).text.trim();
+    let reply = (await this.owner.generate({ system, history: turns, maxOutputTokens: 300, signal })).text.trim();
     if (!isReady(reply) && reply.length > MAX_QUESTION_CHARS) {
       // One repair attempt; if the model still rambles, keep the start of it rather than fail the job.
       const retry = await this.owner.generate({
         system,
         history: [...turns, { role: 'model', text: reply }, { role: 'user', text: SHORTEN_NUDGE }],
         maxOutputTokens: 300,
+        signal,
       });
       reply = retry.text.trim();
       if (!isReady(reply) && reply.length > MAX_QUESTION_CHARS) reply = reply.slice(0, MAX_QUESTION_CHARS).trimEnd();
@@ -74,22 +85,24 @@ export class GeminiBrain implements IntakeBrain {
     return { kind: 'ask', question: { text: raw(plain(reply)) } };
   }
 
-  async writeBrief(history: readonly Exchange[], _title: string): Promise<Msg> {
+  async writeBrief(history: readonly Exchange[], _title: string, signal?: AbortSignal): Promise<Msg> {
     const transcript = history.map((h) => `Owner (Rex): ${tr(h.question)}\nClient: ${h.text}`).join('\n');
     const result = await this.secretary.generate({
       system: secretaryPrompt({ fallbackLang: this.lang() }),
       history: [{ role: 'user', text: briefRequest(transcript) }],
       maxOutputTokens: 500,
+      signal,
     });
     this.currentBrief = plain(result.text);
     return raw(this.currentBrief);
   }
 
-  async reviseBrief(_history: readonly Exchange[], _title: string, change: Msg): Promise<Msg> {
+  async reviseBrief(_history: readonly Exchange[], _title: string, change: Msg, signal?: AbortSignal): Promise<Msg> {
     const result = await this.secretary.generate({
       system: secretaryPrompt({ fallbackLang: this.lang() }),
       history: [{ role: 'user', text: reviseRequest(this.currentBrief, tr(change)) }],
       maxOutputTokens: 500,
+      signal,
     });
     this.currentBrief = plain(result.text);
     return raw(this.currentBrief);

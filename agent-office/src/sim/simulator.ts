@@ -3,7 +3,7 @@
 // The courier is a real FIFO queue (plain code); everything else is scripted.
 
 import { choice } from '../core/brain.ts';
-import type { Exchange, IntakeBrain } from '../core/brain.ts';
+import type { BrainWait, Exchange, IntakeBrain } from '../core/brain.ts';
 import { isAffirmative, isBareRevise } from '../core/intent.ts';
 import { msg, raw, tr } from '../core/i18n.ts';
 import type { Msg } from '../core/i18n.ts';
@@ -23,6 +23,7 @@ import type {
   Stage,
 } from '../core/types.ts';
 import { AGENT_IDS } from '../core/types.ts';
+import { ModelError } from '../ai/model-client.ts';
 import { ScriptedBrain } from './scripted-brain.ts';
 
 class Cancelled extends Error {}
@@ -34,6 +35,8 @@ export interface MockOptions {
   ambient?: boolean;
   /** Makes the brain (the owner's questions and the secretary's brief) for each job. Default: the canned script. */
   brain?: () => IntakeBrain;
+  /** How long a brain call may take before the chat box shows "thinking" (default 250 ms; scripted brains never reach it). */
+  thinkDelayMs?: number;
 }
 
 /** Everyone who may wander off between jobs (the owner stays reachable, the courier works the queue). */
@@ -101,6 +104,11 @@ export class MockOffice implements OfficeSource, DemoControls {
   private blocked = new Set<AgentId>();
   private ambient: boolean;
   private makeBrain: () => IntakeBrain;
+  private thinkDelayMs: number;
+  /** Aborted on reset/cancel so a model call in flight stops instead of finishing for nobody. */
+  private abort = new AbortController();
+  /** Ids of chat boxes currently showing 'thinking' (the close button cancels through these). */
+  private thinking = new Set<string>();
   private away = new Set<AgentId>();
   private trips = new Set<Promise<void>>();
   private occupied = new Set<PlaceId>();
@@ -111,6 +119,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.autoAnswer = opts.autoAnswer ?? false;
     this.ambient = opts.ambient ?? true;
     this.makeBrain = opts.brain ?? (() => new ScriptedBrain());
+    this.thinkDelayMs = opts.thinkDelayMs ?? 250;
     this.initAgents();
     void this.courierLoop(this.runId);
     if (this.ambient) void this.ambientLoop(this.runId);
@@ -138,6 +147,10 @@ export class MockOffice implements OfficeSource, DemoControls {
   }
 
   cancel(chatId: string): void {
+    if (this.thinking.has(chatId)) {
+      this.reset(); // closed while an agent was still working out a reply: abandon the job
+      return;
+    }
     const p = this.pending.get(chatId);
     if (!p) return;
     if (this.running) {
@@ -195,6 +208,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.runId++;
     this.running = false;
     this.intake = false;
+    this.abortCalls();
     this.rejectNextReview = false;
     for (const p of this.pending.values()) p.reject(new Cancelled());
     this.pending.clear();
@@ -218,6 +232,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.runId++;
     this.running = false;
     this.intake = false;
+    this.abortCalls();
     for (const p of this.pending.values()) p.reject(new Cancelled());
     this.pending.clear();
     for (const q of this.queue) q.reject(new Cancelled());
@@ -226,6 +241,12 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.wakeRecall();
     this.lanes.clear();
     this.listeners.clear();
+  }
+
+  private abortCalls(): void {
+    this.abort.abort();
+    this.abort = new AbortController();
+    this.thinking.clear();
   }
 
   /** Crash a working staff member; their head walks to the server room, restarts it and comes back. */
@@ -502,6 +523,68 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.emit({ type: 'agent.activity', agent: head, ...this.desired[head] });
     await this.walk(head, `desk:${head}`);
   }
+  // ---------- brain calls: thinking, failures, cancel ----------
+
+  /**
+   * Runs one brain call. If it takes a moment the chat box shows gent thinking (and the character does the
+   * thinking pose, or waits for quota). If the model fails the user is asked to try again or cancel the job.
+   */
+  private async think<T>(agent: AgentId, brain: IntakeBrain, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    for (;;) {
+      try {
+        return await this.thinkOnce(agent, brain, work);
+      } catch (err) {
+        if (err instanceof Cancelled || !(err instanceof ModelError)) throw err;
+        if (err.kind === 'cancelled') throw new Cancelled();
+        const reply = await this.ask(agent, msg(`ask.modelError.${err.kind}`), {
+          choices: [choice('retry', 'choice.retry'), choice('cancel', 'choice.cancelJob')],
+        });
+        if (reply.choice === 'cancel') {
+          this.reset();
+          throw new Cancelled();
+        }
+      }
+    }
+  }
+
+  private async thinkOnce<T>(agent: AgentId, brain: IntakeBrain, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const run = this.runId;
+    const id = `think-${++this.chatSeq}`;
+    const before = this.desired[agent];
+    let shown = false;
+    let wait: BrainWait = null;
+
+    const render = (): void => {
+      if (!shown || run !== this.runId) return;
+      this.emit({ type: 'chat.thinking', id, from: agent, wait: wait ?? undefined });
+      if (wait === 'quota') this.setAct(agent, 'waiting', msg('note.quotaWait'));
+      else if (agent === 'owner') this.setAct(agent, 'thinking', msg('note.thinking'));
+      else this.setAct(agent, before.activity, before.note);
+    };
+    const timer = setTimeout(() => {
+      if (run !== this.runId) return;
+      shown = true;
+      this.thinking.add(id);
+      render();
+    }, this.thinkDelayMs);
+    const unwatch = brain.watchWait?.((w) => {
+      wait = w;
+      render();
+    });
+
+    try {
+      return await work(this.abort.signal);
+    } finally {
+      clearTimeout(timer);
+      unwatch?.();
+      if (shown && run === this.runId) {
+        this.thinking.delete(id);
+        this.emit({ type: 'chat.closed', id });
+        this.setAct(agent, before.activity, before.note);
+      }
+    }
+  }
+
   // ---------- the scripted workflow ----------
 
   private async runJob(run: number): Promise<void> {
@@ -513,7 +596,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     const history: Exchange[] = [];
     let title = '';
     for (;;) {
-      const turn = await brain.ownerTurn(history, title);
+      const turn = await this.think('owner', brain, (signal) => brain.ownerTurn(history, title, signal));
       if (turn.kind === 'ready') break;
       const q = turn.question;
       const answer = await this.ask('owner', q.text, { choices: q.choices, placeholder: q.placeholder, auto: q.auto });
@@ -530,7 +613,10 @@ export class MockOffice implements OfficeSource, DemoControls {
 
     this.setAct('secretary', 'typing', msg('note.writeBrief'));
     this.emit({ type: 'agent.say', agent: 'owner', text: msg('say.writeBrief'), to: 'secretary' });
-    let [, brief] = await Promise.all([this.sleep(2800), brain.writeBrief(history, title)]);
+    let [, brief] = await Promise.all([
+      this.sleep(2800),
+      this.think('secretary', brain, (signal) => brain.writeBrief(history, title, signal)),
+    ]);
     this.setAct('secretary', 'idle');
     await this.handoff('secretary', 'owner', msg('doc.briefDraft'));
     this.emit({ type: 'doc.consumed', agent: 'owner' });
@@ -551,7 +637,10 @@ export class MockOffice implements OfficeSource, DemoControls {
           ? (await this.ask('owner', msg('ask.reviseWhat'), { placeholder: msg('ask.reviseWhat.ph') })).msg
           : reply.msg;
         this.setAct('secretary', 'typing', msg('note.updateBrief'));
-        [, brief] = await Promise.all([this.sleep(1800), brain.reviseBrief(history, title, change)]);
+        [, brief] = await Promise.all([
+          this.sleep(1800),
+          this.think('secretary', brain, (signal) => brain.reviseBrief(history, title, change, signal)),
+        ]);
         this.setAct('secretary', 'idle');
       }
     }

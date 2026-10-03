@@ -31,14 +31,23 @@ export interface Exchange {
 
 export type OwnerTurn = { kind: 'ask'; question: Question } | { kind: 'ready' };
 
+/** Why the brain is taking long, when it is more than plain thinking. */
+export type BrainWait = 'quota' | null;
+
+/**
+ * Every method may be slow (a model call) and may throw a ModelError; the office shows "thinking", offers
+ * retry / cancel on failure, and aborts `signal` when the user cancels or resets.
+ */
 export interface IntakeBrain {
   /**
    * The owner's next turn, given the answers so far (`title` is '' before the first answer):
    * ask another question, or say there is enough to write the brief.
    */
-  ownerTurn(history: readonly Exchange[], title: string): Promise<OwnerTurn>;
+  ownerTurn(history: readonly Exchange[], title: string, signal?: AbortSignal): Promise<OwnerTurn>;
   /** The secretary's brief, written from the whole conversation. */
-  writeBrief(history: readonly Exchange[], title: string): Promise<Msg>;
+  writeBrief(history: readonly Exchange[], title: string, signal?: AbortSignal): Promise<Msg>;
   /** The brief again with the user's requested change applied. */
-  reviseBrief(history: readonly Exchange[], title: string, change: Msg): Promise<Msg>;
+  reviseBrief(history: readonly Exchange[], title: string, change: Msg, signal?: AbortSignal): Promise<Msg>;
+  /** Optional: reports while a call is stuck waiting for the free AI quota. Returns an unsubscribe. */
+  watchWait?(listener: (wait: BrainWait) => void): () => void;
 }

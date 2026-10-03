@@ -1,6 +1,6 @@
-import { t, tr } from './i18n.ts';
+import { msg, t, tr } from './i18n.ts';
 import type { Msg } from './i18n.ts';
-import { nameOf } from './roster.ts';
+import { ROSTER, nameOf } from './roster.ts';
 import type { Activity, AgentId, ChatChoice, Doc, OfficeEvent, PlaceId, Stage } from './types.ts';
 import { AGENT_IDS } from './types.ts';
 
@@ -27,6 +27,8 @@ export interface ChatPrompt {
   text: Msg;
   choices?: ChatChoice[];
   placeholder?: Msg;
+  /** The agent is working out a reply: show `text` with no answer box (only the close button works). */
+  thinking?: boolean;
 }
 
 export interface OfficeState {
@@ -136,6 +138,11 @@ export class OfficeStore {
           placeholder: e.placeholder,
         };
         break;
+      case 'chat.thinking': {
+        const key = e.wait === 'quota' ? 'dlg.waitQuota' : e.from === 'secretary' ? 'dlg.writing' : 'dlg.thinking';
+        s.chat = { id: e.id, from: e.from, text: msg(key, { name: ROSTER[e.from].name }), thinking: true };
+        break;
+      }
       case 'chat.closed':
         if (s.chat?.id === e.id) s.chat = null;
         break;

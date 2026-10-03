@@ -76,6 +76,34 @@ test('the X cancels the question instead of answering it', () => {
   assert.deepEqual(cancelled, ['c9'], 'with no question open the X does nothing');
 });
 
+test('a thinking box shows the words with no answer box, its X cancels, and the next question replaces it', () => {
+  setLang('en', false);
+  const before = cancelled.length;
+  store.apply({ type: 'chat.thinking', id: 't1', from: 'owner' });
+  assert.equal(dialog.classList.contains('hidden'), false);
+  assert.equal(dialog.classList.contains('thinking'), true, 'the answer box and buttons are hidden by this class');
+  assert.equal(text.textContent, 'Rex is thinking...');
+
+  store.apply({ type: 'chat.thinking', id: 't1', from: 'owner', wait: 'quota' });
+  assert.equal(text.textContent, 'Rex is waiting for the free AI quota...', 'same box, new words');
+
+  (doc.getElementById('dlg-close') as HTMLButtonElement).click();
+  assert.deepEqual(cancelled.slice(before), ['t1']);
+
+  store.apply({ type: 'chat.ask', id: 'c10', from: 'owner', text: raw('Next question?') });
+  assert.equal(dialog.classList.contains('thinking'), false, 'a real question brings the answer box back');
+  assert.equal(text.textContent, 'Next question?');
+  store.apply({ type: 'chat.closed', id: 'c10' });
+});
+
+test('the secretary thinking box says she is writing the brief', () => {
+  setLang('en', false);
+  store.apply({ type: 'chat.thinking', id: 't2', from: 'secretary' });
+  assert.equal(text.textContent, 'Sam is writing the brief...');
+  store.apply({ type: 'chat.closed', id: 't2' });
+  assert.equal(dialog.classList.contains('hidden'), true);
+});
+
 test('choice buttons are shown, locked while typing, and answer when clicked', async () => {
   store.apply({
     type: 'chat.ask',

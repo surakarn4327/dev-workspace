@@ -73,6 +73,8 @@ export function mountDialog(store: OfficeStore, source: OfficeSource): void {
     fullText = tr(chat.text);
     shown = 0;
     renderText();
+    // While the agent is working out a reply there is nothing to answer: no input, no buttons, just the close button.
+    root.classList.toggle('thinking', chat.thinking === true);
     choicesEl.replaceChildren();
     choicesEl.classList.add('pending');
     for (const c of chat.choices ?? []) {
@@ -91,7 +93,7 @@ export function mountDialog(store: OfficeStore, source: OfficeSource): void {
       renderText();
       if (shown >= fullText.length) {
         finishTyping();
-        input.focus({ preventScroll: true });
+        if (!root.classList.contains('thinking')) input.focus({ preventScroll: true });
       }
     }, TYPE_MS);
   };
@@ -104,7 +106,8 @@ export function mountDialog(store: OfficeStore, source: OfficeSource): void {
 
   store.subscribe(() => {
     const chat = store.state.chat;
-    if (chat && chat.id !== currentId) open();
+    // A "thinking" box can change its words (thinking -> waiting for quota) without changing id.
+    if (chat && (chat.id !== currentId || (chat.thinking && tr(chat.text) !== fullText))) open();
     else if (!chat && currentId) close();
   });
 

@@ -333,6 +333,12 @@ body {
   font-size: inherit;
 }
 
+/* The agent is working out a reply: only the words and the close button. */
+.dialog.thinking .dlg-form,
+.dialog.thinking .dlg-choices {
+  display: none;
+}
+
 /* ---------- buttons and controls ---------- */
 
 .check {

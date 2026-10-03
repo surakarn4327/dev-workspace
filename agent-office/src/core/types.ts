@@ -109,7 +109,11 @@ export type OfficeEvent =
       choices?: ChatChoice[];
       placeholder?: Msg;
     }
-  | { type: 'chat.closed'; id: string };
+  | { type: 'chat.closed'; id: string }
+  // The user has answered and the agent is working out the reply (a real model can take seconds). The chat
+  // box stays open showing that, without an answer box, and its close button cancels. `wait: 'quota'` means
+  // the free AI quota is used up for the moment. The next chat.ask (or a chat.closed) replaces it.
+  | { type: 'chat.thinking'; id: string; from: AgentId; wait?: 'quota' };
 
 export type OfficeListener = (event: OfficeEvent) => void;
 
