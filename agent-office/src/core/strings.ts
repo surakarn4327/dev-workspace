@@ -252,7 +252,7 @@ const th: Record<string, string> = {
   'dlg.placeholder': 'พิมพ์คำตอบ...',
 
   'inspector.title': 'ข้อมูลตัวละคร',
-  'inspector.hint': 'คลิกตัวละคร เพื่อดูว่ากำลังทำอะไรและบทสนทนาของเขา',
+  'inspector.hint': 'คลิกตัวละคร เพื่อดูว่ากำลังทำอะไร และบทสนทนาของเขา',
   'inspector.doing': 'กำลังทำ',
   'inspector.model': 'โมเดล',
   'inspector.convos': 'บทสนทนา',
@@ -386,7 +386,7 @@ const th: Record<string, string> = {
   'say.huddleZoe': 'ส่วนฉันจะเตรียมภาพประกอบ',
   'say.celebrate': 'เก่งมากทุกคน! ส่งมอบได้อีกหนึ่งงาน',
   'say.qaPass': 'ดูดีเลย อนุมัติ!',
-  'say.qaReject': '{reason} กรุณาแก้แล้วส่งใหม่',
+  'say.qaReject': '{reason} กรุณาแก้ แล้วส่งใหม่',
   'say.filing': 'ยอดเยี่ยม เดี๋ยวฉันเก็บเข้าห้องเอกสารนะ',
   'say.changeNoted': 'รับคำขอแก้ไขแล้ว: {change}',
   'say.crash': 'เครื่องมือของฉันเพิ่งล่ม!',
