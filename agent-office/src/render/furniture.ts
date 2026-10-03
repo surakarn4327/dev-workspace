@@ -166,3 +166,16 @@ export function drawPrinter(g: CanvasRenderingContext2D, r: Rect, busy: boolean)
   rect(g, x + w - 5, y + 12, 2, 2, busy ? '#2fb36a' : '#4a5373');
   rect(g, x, y + 14, w, 2, '#6f7889');
 }
+
+/** A tall filing cabinet that stands against the wall. */
+export function drawCabinet(g: CanvasRenderingContext2D, x: number, y: number): void {
+  shadow(g, x + 1, y + 21, 16, 2);
+  rect(g, x, y, 16, 22, '#8f98ab');
+  rect(g, x, y, 16, 1, '#c3cad9');
+  rect(g, x, y + 21, 16, 1, '#5f6879');
+  for (const dy of [2, 8, 14]) {
+    rect(g, x + 2, y + dy, 12, 5, '#a9b2c4');
+    rect(g, x + 2, y + dy + 4, 12, 1, '#6f7889');
+    rect(g, x + 6, y + dy + 2, 4, 1, '#e8c97e');
+  }
+}

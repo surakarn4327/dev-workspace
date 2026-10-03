@@ -76,6 +76,10 @@ export class OfficeView {
   selected: AgentId | null = null;
   hover: AgentId | null = null;
 
+  /** Where the fixed office rectangle sits inside the (window-sized) canvas. */
+  ox = 0;
+  oy = 0;
+
   private canvas: HTMLCanvasElement;
   private g: CanvasRenderingContext2D;
   private store: OfficeStore;
@@ -90,15 +94,28 @@ export class OfficeView {
 
   constructor(canvas: HTMLCanvasElement, store: OfficeStore) {
     this.canvas = canvas;
-    this.canvas.width = W;
-    this.canvas.height = H;
     const g = canvas.getContext('2d');
     if (!g) throw new Error('2d canvas unavailable');
     this.g = g;
-    g.imageSmoothingEnabled = false;
     this.store = store;
-    this.bg = buildBackground();
+    this.bg = document.createElement('canvas');
+    this.resize(W, H);
     this.resetAgents();
+  }
+
+  /** Make the canvas cw x ch office pixels, keeping the office centred and re-painting the scenery. */
+  resize(cw: number, ch: number): void {
+    this.canvas.width = cw;
+    this.canvas.height = ch;
+    this.g.imageSmoothingEnabled = false; // resizing resets context state
+    this.ox = Math.floor((cw - W) / 2);
+    this.oy = Math.floor((ch - H) / 2);
+    this.bg = buildBackground(cw, ch, this.ox, this.oy);
+  }
+
+  /** Canvas pixels -> office coordinates. */
+  toOffice(x: number, y: number): { x: number; y: number } {
+    return { x: x - this.ox, y: y - this.oy };
   }
 
   start(): void {
@@ -256,7 +273,8 @@ export class OfficeView {
     for (const id of AGENT_IDS) this.updateAgent(this.agents[id], dt);
     if (this.confetti > 0) {
       this.confetti -= dt;
-      this.particles.confetti(rand(40, W - 40), 30, 2);
+      // across the whole window, not just the fixed office
+      this.particles.confetti(rand(-this.ox + 20, W + this.ox - 20), -this.oy + 30, 2);
     }
     this.particles.update(dt);
   }
@@ -391,6 +409,8 @@ export class OfficeView {
   private draw(): void {
     const g = this.g;
     g.drawImage(this.bg, 0, 0);
+    g.save();
+    g.translate(this.ox, this.oy);
     this.drawWall();
 
     const items: DrawItem[] = [];
@@ -417,6 +437,7 @@ export class OfficeView {
 
     this.particles.draw(g);
     for (const id of AGENT_IDS) this.drawOverhead(this.agents[id]);
+    g.restore();
   }
 
   private drawDeskOf(id: AgentId): void {

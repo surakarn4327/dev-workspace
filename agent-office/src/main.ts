@@ -1,6 +1,7 @@
 import './style.css';
 import { OfficeStore } from './core/state.ts';
 import { ROSTER } from './core/roster.ts';
+import { computeLayout } from './core/layout.ts';
 import { W, H } from './core/world.ts';
 import { OfficeView } from './render/view.ts';
 import { MockOffice } from './sim/simulator.ts';
@@ -24,19 +25,21 @@ view.start();
 // Handy for poking at the live office from the browser console in dev.
 if (import.meta.env.DEV) Object.assign(window, { office: { source, store, view } });
 
-// ---------- canvas sizing: the office fills all space left by the header and controls ----------
+// ---------- canvas sizing: the scenery fills the whole window, the office sits in the middle ----------
 
 const stage = el<HTMLDivElement>('#stage');
 const area = el<HTMLElement>('#stage-area');
-// Border + shadow around the canvas, plus a little breathing room.
-const FRAME = 24;
+let lastSize = '';
 function fit(): void {
-  const availW = Math.max(120, area.clientWidth - FRAME);
-  const availH = Math.max(80, area.clientHeight - FRAME);
-  const scale = Math.min(availW / W, availH / H);
-  canvas.style.width = `${Math.floor(W * scale)}px`;
-  canvas.style.height = `${Math.floor(H * scale)}px`;
-  document.documentElement.style.setProperty('--scale', scale.toFixed(3));
+  const l = computeLayout(area.clientWidth, area.clientHeight, W, H);
+  const key = `${l.cw}x${l.ch}`;
+  if (key !== lastSize) {
+    lastSize = key;
+    view.resize(l.cw, l.ch);
+  }
+  canvas.style.width = `${Math.round(l.cw * l.scale)}px`;
+  canvas.style.height = `${Math.round(l.ch * l.scale)}px`;
+  document.documentElement.style.setProperty('--scale', l.scale.toFixed(3));
 }
 new ResizeObserver(fit).observe(area);
 window.addEventListener('resize', fit);
@@ -58,9 +61,10 @@ window.addEventListener('keydown', (ev) => {
 // ---------- pointer: hover tooltip + click to select ----------
 
 const tooltip = el<HTMLDivElement>('#tooltip');
+/** Mouse position in office coordinates (the canvas is bigger than the office). */
 function logical(ev: MouseEvent): { x: number; y: number } {
   const r = canvas.getBoundingClientRect();
-  return { x: ((ev.clientX - r.left) * W) / r.width, y: ((ev.clientY - r.top) * H) / r.height };
+  return view.toOffice(((ev.clientX - r.left) * canvas.width) / r.width, ((ev.clientY - r.top) * canvas.height) / r.height);
 }
 
 canvas.addEventListener('mousemove', (ev) => {
