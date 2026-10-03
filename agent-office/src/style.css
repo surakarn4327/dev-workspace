@@ -597,14 +597,24 @@ body {
   }
 }
 
-/* Thai: Cascadia Mono / Consolas have no Thai glyphs, so switch to system Thai fonts (no download).
-   Swap --font-th for an embedded pixel Thai font later if one is approved (see THIRD-PARTY.md). */
+/* Thai: Cascadia Mono / Consolas have no Thai glyphs. Silver (Poppy Works, CC BY 4.0, see THIRD-PARTY.md)
+   is a pixel font with Thai; the browser only downloads it once Thai text is shown. System Thai fonts are
+   the fallback if the file is missing. */
+@font-face {
+  font-family: 'Silver';
+  src: url('/fonts/Silver.ttf') format('truetype');
+  font-display: swap;
+}
 :root {
-  --font-th: 'Leelawadee UI', 'Tahoma', 'Noto Sans Thai', 'Noto Sans Thai UI', sans-serif;
+  --font-th: 'Silver', 'Leelawadee UI', 'Tahoma', 'Noto Sans Thai', 'Noto Sans Thai UI', sans-serif;
 }
 html[lang='th'] {
   --font: var(--font-th);
 }
-html[lang='th'] body {
-  line-height: 1.6; /* Thai vowels/tone marks stack above and below the line */
+/* Silver is drawn on a 16px grid: any other size blurs it, so everything is exactly 16px in Thai
+   (!important because many components set their own sizes). */
+html[lang='th'] body,
+html[lang='th'] body * {
+  font-size: 16px !important;
+  line-height: 1.5; /* Thai vowels/tone marks stack above and below the line */
 }

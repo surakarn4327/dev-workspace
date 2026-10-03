@@ -40,6 +40,7 @@ const en: Record<string, string> = {
   'queue.carrying': 'Carrying: {label}',
   'queue.empty': 'Queue is empty',
   'feed.title': 'Event feed',
+  'credit.font': 'Thai font: Silver by Poppy Works (CC BY 4.0)',
   'dlg.send': 'Send',
   'dlg.placeholder': 'Type your answer...',
 
@@ -246,6 +247,7 @@ const th: Record<string, string> = {
   'queue.carrying': 'กำลังถือ: {label}',
   'queue.empty': 'คิวว่าง',
   'feed.title': 'ฟีดเหตุการณ์',
+  'credit.font': 'ฟอนต์ไทย: Silver โดย Poppy Works (CC BY 4.0)',
   'dlg.send': 'ส่ง',
   'dlg.placeholder': 'พิมพ์คำตอบ...',
 
