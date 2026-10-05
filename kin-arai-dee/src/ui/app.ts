@@ -4,14 +4,54 @@ import type { Check, Data, Menu, RowResult, Verdict } from '../engine/types';
 let d: Data;
 const DIET_CHIP = 'กลืนแร่';
 
+const ACCENTS: { id: string; name: string; color: string }[] = [
+  { id: 'sage', name: 'เขียว', color: '#5e8c61' },
+  { id: 'blue', name: 'ฟ้า', color: '#5b7f9a' },
+  { id: 'rose', name: 'ชมพู', color: '#a8697a' },
+  { id: 'clay', name: 'ส้ม', color: '#b4795a' },
+];
+
+interface Theme {
+  mode: 'light' | 'dark';
+  accent: string;
+}
+
+function loadTheme(): Theme {
+  let saved: Partial<Theme> = {};
+  try {
+    saved = JSON.parse(localStorage.getItem('theme') ?? '{}');
+  } catch {
+    /* storage may be blocked */
+  }
+  return {
+    mode: saved.mode ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+    accent: ACCENTS.some((a) => a.id === saved.accent) ? saved.accent! : 'sage',
+  };
+}
+
+const theme = loadTheme();
+
+function applyTheme(): void {
+  document.documentElement.dataset.mode = theme.mode;
+  document.documentElement.dataset.accent = theme.accent;
+  try {
+    localStorage.setItem('theme', JSON.stringify(theme));
+  } catch {
+    /* storage may be blocked */
+  }
+}
+
+applyTheme();
+
 interface State {
   query: string;
   chipOn: boolean;
   infoOpen: boolean;
+  themeOpen: boolean;
   notFound: string | null;
 }
 
-const state: State = { query: '', chipOn: true, infoOpen: false, notFound: null };
+const state: State = { query: '', chipOn: true, infoOpen: false, themeOpen: false, notFound: null };
 const root = document.getElementById('app')!;
 let slideTimer: number | undefined;
 
@@ -44,6 +84,19 @@ function infoSheet(menu: Menu | null): string {
   </div></div>`;
 }
 
+const tools = (): string =>
+  `<div class="tools"><button class="info theme" data-act="open-theme" aria-label="เลือกธีม">◐</button><button class="info" data-act="open-info" aria-label="ข้อมูลและที่มา">i</button></div>`;
+
+function themeSheet(): string {
+  return `<div class="sheet-bg" data-act="close-theme"><div class="sheet" data-stop>
+    <h3>โหมดหน้าจอ</h3>
+    <div class="group"><button class="mode ${theme.mode === 'light' ? 'on' : ''}" data-set-mode="light">สว่าง</button><button class="mode ${theme.mode === 'dark' ? 'on' : ''}" data-set-mode="dark">มืด</button></div>
+    <h3 style="margin-top:18px">สี</h3>
+    <div class="group">${ACCENTS.map((a) => `<button class="swatch ${a.id === theme.accent ? 'on' : ''}" data-set-accent="${a.id}" style="background:${a.color}" aria-label="${a.name}"></button>`).join('')}</div>
+    <button class="close" data-act="close-theme">ปิด</button>
+  </div></div>`;
+}
+
 function nav(active: 'home' | 'library'): string {
   return `<div class="nav"><button class="${active === 'home' ? 'on' : ''}" data-act="home">หน้าแรก</button><button class="${active === 'library' ? 'on' : ''}" data-act="library">คลังข้อมูล</button></div>`;
 }
@@ -52,7 +105,7 @@ function homeView(): string {
   const sugg = suggest(d, state.query);
   const withImg = d.menus.filter((m) => m.image);
   return `<div class="page">
-    <div class="top"><h1>กินอะไร"ดี"</h1><button class="info" data-act="open-info" aria-label="ข้อมูลและที่มา">i</button></div>
+    <div class="top"><h1>กินอะไร"ดี"</h1>${tools()}</div>
     <div class="search">
       <input id="q" value="${esc(state.query)}" placeholder="ชื่อเมนู" autocomplete="off" enterkeyhint="search" />
       ${state.query ? '<button class="clear" data-act="clear" aria-label="ล้าง">✕</button>' : ''}
@@ -110,7 +163,7 @@ function resultView(menu: Menu, protein: string | null): string {
     ? `<div class="options">${check.byProtein.map((b) => `<button class="opt ${b.option === protein ? 'on' : ''}" data-opt="${esc(b.option)}">${diet ? `<i class="${b.verdict === 'ok' ? '' : b.verdict}"></i>` : ''}${esc(b.option)}</button>`).join('')}</div>`
     : '';
   return `<div class="page">
-    <div class="top"><button class="back" data-act="home">‹ กลับ</button><button class="info" data-act="open-info" aria-label="ข้อมูลและที่มา">i</button></div>
+    <div class="top"><button class="back" data-act="home">‹ กลับ</button>${tools()}</div>
     <div class="hero"><div class="dish" ${menu.image ? `style="background-image:${cssUrl(menu.image.url)}"` : ''}>${menu.image ? '' : 'ยังไม่มีรูปเมนูนี้'}</div></div>
     <h1 class="title">${esc(menu.name)}${protein && !/^ไม่/.test(protein) ? ` <span style="font-weight:500">(${esc(protein)})</span>` : ''}</h1>
     ${pill}${options}
@@ -124,7 +177,7 @@ function resultView(menu: Menu, protein: string | null): string {
 
 function notFoundView(text: string): string {
   return `<div class="page">
-    <div class="top"><button class="back" data-act="home">‹ กลับ</button><button class="info" data-act="open-info" aria-label="ข้อมูลและที่มา">i</button></div>
+    <div class="top"><button class="back" data-act="home">‹ กลับ</button>${tools()}</div>
     <div class="hero"><div class="dish">ยังไม่มีรูปเมนูนี้</div></div>
     <h1 class="title">${esc(text)}</h1>
     <div class="verdict"><span class="pill unsure">${DIET_CHIP} : ไม่แน่ใจ ควรเลี่ยง</span><p class="reasons">ยังไม่มีเมนูนี้ในฐานข้อมูล จึงตรวจวัตถุดิบไม่ได้ เมื่อไม่แน่ใจจะถือว่ายังไม่ผ่าน</p></div>
@@ -191,7 +244,7 @@ export function render(): void {
   } else {
     html = homeView();
   }
-  root.innerHTML = html + (state.infoOpen ? infoSheet(menu) : '');
+  root.innerHTML = html + (state.infoOpen ? infoSheet(menu) : '') + (state.themeOpen ? themeSheet() : '');
   startSlides();
   const q = document.getElementById('q') as HTMLInputElement | null;
   if (q && document.activeElement === document.body && state.query) {
@@ -237,7 +290,17 @@ root.addEventListener('keydown', (e) => {
 
 root.addEventListener('click', (e) => {
   const target = e.target as HTMLElement;
-  if (target.closest('[data-stop]') && !target.closest('[data-act="close-info"]')) return;
+  const inSheet = target.closest('[data-stop]');
+  const modeBtn = target.closest<HTMLElement>('[data-set-mode]');
+  const accentBtn = target.closest<HTMLElement>('[data-set-accent]');
+  if (modeBtn || accentBtn) {
+    if (modeBtn) theme.mode = modeBtn.dataset.setMode as Theme['mode'];
+    if (accentBtn) theme.accent = accentBtn.dataset.setAccent!;
+    applyTheme();
+    render();
+    return;
+  }
+  if (inSheet && !target.closest('[data-act="close-info"]') && !target.closest('[data-act="close-theme"]')) return;
   const pick = target.closest<HTMLElement>('[data-pick]');
   const opt = target.closest<HTMLElement>('[data-opt]');
   const goto = target.closest<HTMLElement>('[data-go]');
@@ -263,6 +326,9 @@ root.addEventListener('click', (e) => {
     const pool = randomPool();
     const pick = pool[Math.floor(Math.random() * pool.length)];
     go(pick.menu, pick.protein);
+  } else if (act === 'open-theme' || act === 'close-theme') {
+    state.themeOpen = act === 'open-theme';
+    render();
   } else if (act === 'open-info' || act === 'close-info') {
     state.infoOpen = act === 'open-info';
     render();
