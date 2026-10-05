@@ -84,6 +84,7 @@ function evalRow(data: Data, r: EvalRow): RowResult {
       if (optional) return { ...base, kind: 'omit', use: 'ไม่ใส่', reason };
       const sub = info.substitute;
       if (!r.identity && sub.startsWith('ไข่ขาว')) return { ...base, kind: 'swap', use: 'เปลี่ยนเป็นไข่ขาว', swapTo: 'ไข่ขาว', reason };
+      if (!r.identity && sub.startsWith('เปลี่ยนเป็น')) return { ...base, kind: 'swap', use: sub, swapTo: sub, reason };
       if (!r.identity && sub.startsWith('เนื้อสัตว์สดปรุงเอง')) return { ...base, kind: 'swap', use: 'เปลี่ยนเป็นเนื้อสัตว์สดที่ปรุงเอง', swapTo: 'เนื้อสัตว์สดปรุงเอง', reason };
       if (r.identity || sub.startsWith('ไม่มีของทดแทน')) return { ...base, kind: 'banned', use: 'ห้ามทาน', reason };
       // A mandatory main ingredient that can only be cut: not safe to call it edible.
