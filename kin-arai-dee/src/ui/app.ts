@@ -1,8 +1,7 @@
-import data from '../data/data.json';
 import { checkMenu, nearby, parseInput, suggest } from '../engine/check';
 import type { Check, Data, Menu, RowResult, Verdict } from '../engine/types';
 
-const d = data as unknown as Data;
+let d: Data;
 const DIET_CHIP = 'กลืนแร่';
 
 interface State {
@@ -171,6 +170,11 @@ function randomPool(): { menu: Menu; protein: string | null }[] {
 
 let page: 'home' | 'library' | 'notfound' = 'home';
 let notFoundText = '';
+
+export function start(data: Data): void {
+  d = data;
+  render();
+}
 
 export function render(): void {
   window.clearInterval(slideTimer);

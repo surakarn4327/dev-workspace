@@ -3,6 +3,7 @@ import '@fontsource/noto-sans-thai/thai-500.css';
 import '@fontsource/noto-sans-thai/thai-600.css';
 import '@fontsource/noto-sans-thai/thai-700.css';
 import './style.css';
-import { render } from './ui/app';
+import { loadData } from './data/load';
+import { start } from './ui/app';
 
-render();
+start(await loadData());
