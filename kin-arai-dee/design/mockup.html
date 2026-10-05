@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>กินอะไร"ดี" — ภาพตัวอย่างหน้าจอ</title>
+<style>
+:root{--bg:#F4F6F3;--card:#fff;--ink:#26302A;--sub:#6B766E;--accent:#5E8C61;--accent-soft:#E3EDE2;--accent2:#C9873A;--warn-soft:#F7EDD3}
+*{box-sizing:border-box;margin:0}
+body{font-family:"Noto Sans Thai","Sarabun",system-ui,sans-serif;background:#DDE2DB;color:var(--ink);padding:32px 16px;display:flex;flex-wrap:wrap;gap:40px;justify-content:center;align-items:flex-start}
+.label{width:100%;text-align:center;color:var(--sub);font-size:14px}
+.phone{width:390px;height:844px;background:var(--bg);border-radius:44px;box-shadow:0 20px 50px rgba(0,0,0,.18);position:relative;overflow:hidden}
+.scroll{height:100%;overflow-y:auto;padding:28px 20px 130px}
+h1{font-size:28px;font-weight:700;line-height:1.3}
+.lead{color:var(--sub);font-size:16px;margin-top:6px}
+.search{margin-top:22px;background:var(--card);border-radius:28px;padding:18px 22px;font-size:18px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 18px rgba(40,60,45,.07)}
+.search span{color:var(--sub)}
+.suggest{margin-top:10px;background:var(--card);border-radius:24px;padding:6px 8px;box-shadow:0 4px 18px rgba(40,60,45,.07)}
+.suggest div{padding:12px 16px;font-size:17px;border-radius:16px}
+.suggest div:first-child{background:var(--accent-soft)}
+h2{font-size:19px;margin:26px 0 12px}
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:30px;padding:8px 20px 8px 8px;font-size:17px;box-shadow:0 2px 10px rgba(40,60,45,.06)}
+.chip i{width:38px;height:38px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center;font-style:normal;font-size:12px;color:var(--accent)}
+.chip.on{background:var(--accent);color:#fff}
+.chip.on i{background:rgba(255,255,255,.25);color:#fff}
+.dice{margin-top:22px;display:flex;align-items:center;gap:16px;background:var(--card);border-radius:28px;padding:14px;box-shadow:0 4px 18px rgba(40,60,45,.07)}
+.dice .plate{transition:opacity .25s;width:84px;height:84px;border-radius:50%;background:var(--accent-soft) center/cover;flex:none}
+.dice b{font-size:18px;display:block}.dice small{color:var(--sub);font-size:15px}
+.cta{position:absolute;left:20px;right:20px;bottom:92px;background:var(--accent);color:#fff;text-align:center;border-radius:36px;padding:20px;font-size:20px;font-weight:700;box-shadow:0 10px 24px rgba(94,140,97,.4)}
+.nav{position:absolute;left:20px;right:20px;bottom:16px;background:var(--card);border-radius:36px;height:62px;display:flex;justify-content:space-around;align-items:center;font-size:15px;color:var(--sub);box-shadow:0 4px 18px rgba(40,60,45,.1)}
+.nav .on{background:var(--accent-soft);color:var(--accent);padding:10px 22px;border-radius:24px;font-weight:700}
+.note{margin-top:22px;font-size:13px;color:var(--sub);text-align:center}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.back{font-size:16px;color:var(--sub)}.info{width:32px;height:32px;border-radius:50%;background:#fff;color:var(--sub);display:grid;place-items:center;font-size:15px;font-style:italic;font-family:Georgia,serif;box-shadow:0 2px 8px rgba(40,60,45,.08)}
+.hero{display:flex;justify-content:center;margin:6px 0 4px}
+.hero .dish{width:210px;height:210px;border-radius:50%;background:center/cover;box-shadow:0 14px 30px rgba(40,60,45,.25);border:8px solid #fff}
+.credit{text-align:center;font-size:11px;color:var(--sub);margin-top:6px}
+.verdict{margin-top:14px;border-radius:28px;padding:18px 20px;background:var(--accent-soft)}
+.verdict .t{font-size:24px;font-weight:700;color:#3D6B40}
+.verdict p{margin-top:4px;font-size:16px;line-height:1.55}
+.tags{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.tag{font-size:14px;padding:5px 14px;border-radius:20px;background:#fff;color:var(--accent)}
+.row{background:var(--card);border-radius:24px;padding:12px 14px;display:flex;align-items:center;gap:14px;margin-bottom:10px;box-shadow:0 2px 10px rgba(40,60,45,.05)}
+.ph{width:56px;height:56px;border-radius:16px;background:repeating-linear-gradient(45deg,#EEF1EC,#EEF1EC 6px,#E6EAE4 6px,#E6EAE4 12px);flex:none;display:grid;place-items:center;font-size:10px;color:var(--sub);text-align:center;line-height:1.2}
+.row .n{font-size:17px;font-weight:600}.row .s{font-size:14px;color:var(--accent2);margin-top:2px}
+.row .ok{margin-left:auto;font-size:13px;color:var(--accent);background:var(--accent-soft);border-radius:14px;padding:4px 12px;white-space:nowrap}
+.brand{background:var(--card);border-radius:24px;padding:14px;margin-bottom:12px;box-shadow:0 2px 10px rgba(40,60,45,.05)}
+.brand .h{font-size:16px;font-weight:700;margin-bottom:10px}
+.brand .main{display:flex;gap:14px;align-items:center}
+.brand .main .ph{width:76px;height:76px}
+.brand .alt{margin-top:10px;font-size:15px;color:var(--sub);line-height:1.5}
+.brand .shop{margin-top:8px;font-size:14px;color:var(--accent)}
+.disc{margin-top:18px;font-size:13px;color:var(--sub);background:var(--warn-soft);border-radius:18px;padding:12px 16px;line-height:1.5}
+.anno{width:390px;font-size:14px;line-height:1.7;color:#3A433D;background:#fff;border-radius:24px;padding:20px 22px}
+.anno b{display:block;margin-bottom:6px;font-size:16px}
+
+.verdict.bad{background:#F6E4E1}.verdict.bad .t{color:#9A4038}.verdict.bad .tag{color:#9A4038}
+.verdict.unk{background:#F7EDD3}.verdict.unk .t{color:#8A6A1F}.verdict.unk .tag{color:#8A6A1F}
+.row .ok.no{color:#9A4038;background:#F6E4E1}
+.alt-card{background:#fff;border-radius:24px;padding:12px 14px;display:flex;align-items:center;gap:14px;box-shadow:0 2px 10px rgba(40,60,45,.05)}
+.alt-card .plate{width:64px;height:64px;border-radius:50%;background:center/cover;flex:none}
+.cta.ghost{background:#fff;color:var(--accent);box-shadow:0 4px 18px rgba(40,60,45,.12)}
+.row .use{font-size:14px;color:var(--sub);margin-top:2px}.brand .use{font-size:16px;font-weight:600}.ok.pick{margin-left:auto;color:#8A6A1F;background:#F7EDD3}.verdict,.verdict.bad,.verdict.unk{background:none;padding:0;border-radius:0;margin-top:8px;text-align:center}
+.verdict .t{display:inline-block;font-size:17px;padding:6px 20px;border-radius:20px;background:var(--accent-soft);color:#3D6B40}
+.verdict.bad .t{background:#F6E4E1}.verdict.unk .t{background:#F7EDD3}
+.verdict p{font-size:15px;color:var(--sub);margin-top:10px;line-height:1.6}
+.verdict .tags{display:none}ul.alt{list-style:none;padding:0;margin:8px 0 0}ul.alt li{font-size:15px;color:var(--sub);line-height:1.7}ul.alt li:before{content:"- "}</style>
+</head>
+<body>
+<div class="label">ภาพตัวอย่างหน้าจอ (ร่าง) — ช่องลายทางคือตำแหน่งรูปสินค้าและวัตถุดิบจริงที่ยังไม่ได้หามา</div>
+
+<div class="phone"><div class="scroll">
+  <div class="top"><h1>กินอะไร"ดี"</h1><span class="info">i</span></div>
+  
+  <div class="search">ผัดผัก<span>ล้าง</span></div>
+  <div class="suggest"><div>ผัดผักบุ้ง</div><div>ผัดผักรวม</div><div>ผัดผักกาดใส่ไข่</div></div>
+  <h2>โรคหรือการรักษาที่ต้องควบคุมอาหาร</h2>
+  <div class="chips">
+    <div class="chip on"><i>รูป</i>กลืนแร่</div>
+    <div class="chip"><i>รูป</i>ความดันสูง</div>
+    <div class="chip"><i>รูป</i>เบาหวาน</div>
+    <div class="chip"><i>รูป</i>โรคไต</div>
+  </div>
+  <div class="dice">
+    <div class="plate" style="overflow:hidden"><div id="spin" style="display:flex;height:100%"></div></div>
+    <div><b>สุ่มเมนูอาหาร</b></div>
+  </div>
+</div>
+<div class="cta">ตรวจเมนู</div>
+<div class="nav"><span class="on">หน้าแรก</span><span>คลังข้อมูล</span></div>
+</div>
+
+<div class="phone"><div class="scroll">
+  <div class="top"><span class="back">‹ กลับ</span><span class="info">i</span></div>
+  <div class="hero"><div class="dish" style="background-image:url('https://commons.wikimedia.org/wiki/Special:FilePath/Tumis_kangkung_Makassar.JPG?width=500')"></div></div>
+  <h1 style="text-align:center;margin-top:10px">ผัดผักบุ้ง</h1>
+  <div class="verdict">
+    <div class="t">กลืนแร่ : ทานได้</div>
+    
+    <div class="tags"><span class="tag">กลืนแร่</span></div>
+  </div>
+  <h2>วัตถุดิบทั้งหมด</h2><div class="row"><div class="ph">รูปจริง</div><div><div class="n">ผักบุ้ง</div><div class="use">ใช้ผักบุ้งสด</div></div><span class="ok">ทานได้</span></div><div class="row"><div class="ph">รูปจริง</div><div><div class="n">กระเทียมบุบ</div><div class="use">ใช้กระเทียมสด</div></div><span class="ok">ทานได้</span></div><div class="row"><div class="ph">รูปจริง</div><div><div class="n">พริกชี้ฟ้าหรือพริกจินดา</div><div class="use">ใช้พริกสด</div></div><span class="ok">ทานได้</span></div><div class="row"><div class="ph">รูปจริง</div><div><div class="n">น้ำมันพืช</div><div class="use">ใช้น้ำมันพืชได้ทุกยี่ห้อ</div></div><span class="ok">ทานได้</span></div><div class="row"><div class="ph">รูปจริง</div><div><div class="n">น้ำตาลทราย</div><div class="use">ใช้ได้ทุกยี่ห้อ</div></div><span class="ok">ทานได้</span></div><div class="brand"><div class="main"><div class="ph">รูปสินค้า<br>จริง</div><div><div class="n" style="font-size:17px;font-weight:600">ซอสหอยนางรม</div></div><span class="ok pick">เลือกยี่ห้อ</span></div><div class="use" style="margin-top:10px">ใช้ ง่วนเชียง รุ่นที่ไม่เติมไอโอดีน</div><ul class="alt"><li>เด็กสมบูรณ์ (ดั้งเดิม / ลดโซเดียม)</li><li>HEINZ</li><li>ภูเขาทอง</li><li>101 พลัส</li></ul></div><div class="brand"><div class="main"><div class="ph">รูปสินค้า<br>จริง</div><div><div class="n" style="font-size:17px;font-weight:600">เต้าเจี้ยว</div></div><span class="ok pick">เลือกยี่ห้อ</span></div><div class="use" style="margin-top:10px">ใช้ เด็กสมบูรณ์ สูตรเห็ดหอม / ฉลากฟ้า / สูตร 1</div></div></div>
+<div class="nav"><span class="on">หน้าแรก</span><span>คลังข้อมูล</span></div>
+</div>
+
+
+<div class="phone"><div class="scroll">
+  <div class="top"><span class="back">‹ กลับ</span><span class="info">i</span></div>
+  <div class="hero"><div class="dish" style="background-image:url('https://commons.wikimedia.org/wiki/Special:FilePath/Pan-fried_egg.jpg?width=500')"></div></div>
+  <h1 style="text-align:center;margin-top:10px">ไข่ดาว</h1>
+  <div class="verdict bad">
+    <div class="t">กลืนแร่ : ไม่ควรทาน</div>
+    <p>ไข่ทั้งฟองเป็นวัตถุดิบหลักของเมนูนี้ และมีไอโอดีนสูง (49 มคก. ต่อ 100 กรัม) ไม่มีวัตถุดิบอื่นที่ใช้แทนได้โดยที่เมนูยังเป็นไข่ดาว</p>
+    <div class="tags"><span class="tag">กลืนแร่</span></div>
+  </div>
+  <h2>วัตถุดิบ</h2>
+  <div class="row"><div class="ph">รูปจริง</div><div><div class="n">ไข่ไก่</div></div><span class="ok no">ห้ามทาน</span></div>
+  <div class="row"><div class="ph">รูปจริง</div><div><div class="n">น้ำมันพืช</div></div><span class="ok">ทานได้</span></div>
+  <h2>เมนูใกล้เคียงที่ทานได้</h2>
+  <div class="alt-card"><div class="plate" style="background-image:url('https://commons.wikimedia.org/wiki/Special:FilePath/Tumis_kangkung_Makassar.JPG?width=200')"></div><div><div style="font-size:17px;font-weight:600">ผัดผักบุ้ง</div></div></div>
+</div>
+<div class="nav"><span class="on">หน้าแรก</span><span>คลังข้อมูล</span></div>
+</div>
+
+<div class="phone"><div class="scroll">
+  <div class="top"><span class="back">‹ กลับ</span><span class="info">i</span></div>
+  <div class="hero"><div class="dish ph" style="width:210px;height:210px;border-radius:50%;font-size:14px;border:8px solid #fff">ยังไม่มีรูปเมนูนี้</div></div>
+  <h1 style="text-align:center;margin-top:18px">พิซซ่า</h1>
+  <div class="verdict unk">
+    <div class="t">กลืนแร่ : ไม่แน่ใจ ควรเลี่ยง</div>
+    <p>ยังไม่มีเมนูนี้ในฐานข้อมูล จึงตรวจวัตถุดิบไม่ได้ เมื่อไม่แน่ใจจะถือว่ายังไม่ผ่าน</p>
+    <div class="tags"><span class="tag">กลืนแร่</span></div>
+  </div>
+  <h2>ลองเมนูที่มีในฐานข้อมูล</h2>
+  <div class="alt-card" style="margin-bottom:10px"><div class="plate" style="background-image:url('https://commons.wikimedia.org/wiki/Special:FilePath/Fried_rice_in_home.jpg?width=200')"></div><div><div style="font-size:17px;font-weight:600">ข้าวผัด</div></div></div>
+</div>
+<div class="nav"><span class="on">หน้าแรก</span><span>คลังข้อมูล</span></div>
+</div>
+
+<div class="anno"><b>หมายเหตุสำหรับตรวจแบบ</b>
+• ปุ่ม i มุมขวาบนเปิดแผ่นข้อมูล รวมเครดิตภาพ แหล่งข้อมูล และข้อความ "ไม่ใช่คำแนะนำทางการแพทย์" ไว้ที่เดียว หน้าหลักจึงไม่รก<br>• ภาพอาหารเป็นรูปจริงที่ผ่านการตรวจสิทธิ์แล้ว (Wikimedia Commons) ส่วนรูปวัตถุดิบและสินค้ายังเป็นช่องว่าง<br>
+• หน้าผลตรวจมี 3 แบบ: ทานได้ (เขียว) ผัดผักบุ้ง / ไม่ควรทาน (แดง) ไข่ดาว / ไม่แน่ใจ (เหลือง) พิซซ่า ซึ่งไม่มีในฐานข้อมูล<br>
+• ธีมสว่าง/มืด และชุดสีอื่นจะเพิ่มในปุ่มตั้งค่า<br>
+• ข้อความและวัตถุดิบมาจากข้อมูลจริงในโฟลเดอร์ docs</div>
+<script>
+(function(){var f=['Fried_rice_in_home.jpg','Phat_Thai_kung_Chang_Khien_street_stall.jpg','Tom_yam_kung_maenam.jpg','Kaeng_som-marum63.JPG','Hainanese_chicken_rice.jpg','Kai_phat_khing.jpg','Phanaeng_mu.jpg'];
+var u=function(n){return 'https://commons.wikimedia.org/wiki/Special:FilePath/'+n+'?width=300'};
+var t=document.getElementById('spin');
+f.concat(f[0]).forEach(function(n){var d=document.createElement('div');d.style.cssText="flex:none;width:84px;height:84px;background:center/cover url('"+u(n)+"')";t.appendChild(d)});
+var i=0;
+setInterval(function(){i++;t.style.transition='transform .5s ease';t.style.transform='translateX(-'+i*84+'px)';
+if(i===f.length)setTimeout(function(){t.style.transition='none';t.style.transform='translateX(0)';i=0},520)},2000)})();
+</script>
+</body>
+</html>
