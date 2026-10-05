@@ -42,8 +42,8 @@ void AdxEmaSendStatusSummary();
 // เหตุการณ์ของไม้ก่อนหน้า (บั๊กเดียวกันมีใน AdxEma ต้นฉบับ — แก้ใน v1 2026-09-26) ส่งสรุปเองหลังตั้งค่าครบแทน
 void AdxEmaNoopHook() {}
 
-#define ADXEMA_VERSION "V3.3" // เวอร์ชันของ AdxEmaVolV3 (V3.3 (2026-10-03) = เปลี่ยนค่า input เริ่มต้นให้ตรงชุดที่ใช้จริง (ReportTester-263616066: ADX 8/EMA 40/MinADX 29/gap 9.2/ATR 84/SL 8/TP 15-17-21/Fix Multiple RR/เสี่ยง 5%/cutoff 16/volume 1.0-2.0/RiskPointUnit 0.01) ตรรกะไม่เปลี่ยน ; V3.2 (2026-10-03) = แก้ dashboard: "Label" แดงที่แถว Signal, แถว "ไม่เปิดไม้ใหม่แล้ว" ค้างทับเหตุการณ์, "vV3.1" ซ้ำ v, ตลาดปิดแสดง Time left=ตลาดปิด + Signal/Volume ว่าง ; V3.1 (2026-10-02) = กฎข่าวเปลี่ยนเป็นโหมด 4: ปิดเฉพาะไม้ที่ไม่กำไรก่อนข่าว ไม้กำไรปล่อยไว้ (โหมด 3 = ไม้กำไรทำ BE) ; V3.0 (2026-10-02) = สำเนาจาก V2.4 + กฎข่าว: ปิดไม้ก่อนข่าวแรง + ห้ามเปิดไม้ใหม่ช่วงข่าว (เวลาข่าวจากไฟล์), V2.0 = สำเนาจาก AdxEmaVol V1.4 + InpVolSurgeBars, V2.1/V2.2 = เส้น DI + ปุ่ม Indicator + แถว Signal, V2.3 = เอาเส้น DI + ปุ่มออก เหลือแถว Signal มี progress bar + แก้ WarmupEma, V2.4 = ลบ object เส้น/ปุ่มเก่าที่ค้างบนกราฟตอนเริ่ม) — นับแยกจาก AdxEmaVol/AdxEma ต้นฉบับ
-#define ADXEMA_UPDATED "03/10/26"
+#define ADXEMA_VERSION "V3.4" // เวอร์ชันของ AdxEmaVolV3 (V3.4 (2026-10-05) = dashboard กว้างตามข้อความจริง + แก้ OnTimer ข้ามวันอาทิตย์ตามเวลา server ทำให้สรุป Discord/heartbeat หายคืนวันอาทิตย์ 23:00-24:00 UTC ; V3.3 (2026-10-03) = เปลี่ยนค่า input เริ่มต้นให้ตรงชุดที่ใช้จริง (ReportTester-263616066: ADX 8/EMA 40/MinADX 29/gap 9.2/ATR 84/SL 8/TP 15-17-21/Fix Multiple RR/เสี่ยง 5%/cutoff 16/volume 1.0-2.0/RiskPointUnit 0.01) ตรรกะไม่เปลี่ยน ; V3.2 (2026-10-03) = แก้ dashboard: "Label" แดงที่แถว Signal, แถว "ไม่เปิดไม้ใหม่แล้ว" ค้างทับเหตุการณ์, "vV3.1" ซ้ำ v, ตลาดปิดแสดง Time left=ตลาดปิด + Signal/Volume ว่าง ; V3.1 (2026-10-02) = กฎข่าวเปลี่ยนเป็นโหมด 4: ปิดเฉพาะไม้ที่ไม่กำไรก่อนข่าว ไม้กำไรปล่อยไว้ (โหมด 3 = ไม้กำไรทำ BE) ; V3.0 (2026-10-02) = สำเนาจาก V2.4 + กฎข่าว: ปิดไม้ก่อนข่าวแรง + ห้ามเปิดไม้ใหม่ช่วงข่าว (เวลาข่าวจากไฟล์), V2.0 = สำเนาจาก AdxEmaVol V1.4 + InpVolSurgeBars, V2.1/V2.2 = เส้น DI + ปุ่ม Indicator + แถว Signal, V2.3 = เอาเส้น DI + ปุ่มออก เหลือแถว Signal มี progress bar + แก้ WarmupEma, V2.4 = ลบ object เส้น/ปุ่มเก่าที่ค้างบนกราฟตอนเริ่ม) — นับแยกจาก AdxEmaVol/AdxEma ต้นฉบับ
+#define ADXEMA_UPDATED "05/10/26"
 
 const int ADXEMA_HEARTBEAT_MAX_SEC = 120; // ค่าเดียวกับ SATS (ผู้ใช้เลือกไว้ 2026-09-17)
 
@@ -555,7 +555,16 @@ string AdxEmaProgressBar(const int pct)
 //+------------------------------------------------------------------+
 int AdxEmaTextWidth(const string text, const int fontSize)
 {
-   return (int)MathCeil(StringLen(text) * fontSize * 0.85);
+   // V3.4: อักษรไทยบน MT5 วาดแคบกว่าอังกฤษมาก (วัดจากสกรีนช็อต FS12: ไทย ~4.5-5px/ตัว, อังกฤษ/ตัวเลข ~9px/ตัว)
+   // เดิมนับเท่ากันหมด (10.2px) ทำให้แถวเหตุการณ์ภาษาไทยดันกล่องกว้างเกินจริง — ไทยนับ 0.5 ของอังกฤษ
+   double w = 0;
+   int n = StringLen(text);
+   for(int i = 0; i < n; i++)
+   {
+      ushort c = StringGetCharacter(text, i);
+      w += (c >= 0x0E00 && c <= 0x0E7F) ? 0.5 : 1.0;
+   }
+   return (int)MathCeil(w * fontSize * 0.85);
 }
 
 //+------------------------------------------------------------------+
@@ -593,7 +602,7 @@ void AdxEmaDrawDashboard()
    // ใช้ ADXEMA_TRADE_TF ไม่ใช่ Period() (TF ของชาร์ตที่กำลังดูอยู่) — ล็อกเทรด M1 ตายตัวแล้ว
    // (2026-09-22) หัวข้อควรโชว์ TF ที่เทรดจริงเสมอ ไม่ใช่ TF ที่บังเอิญเปิดชาร์ตดูอยู่ตอนนั้น
    string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)ADXEMA_TRADE_TF), 7);
-   string titleText = "AdxEmaVolV3 " + _Symbol + " " + tf;
+   string titleText = "AdxEmaVolV3 " + tf; // V3.4: ตัด symbol ออก (ผู้ใช้สั่ง 2026-10-05) ให้หัวข้อสั้นลง
 
    // colGap = ระยะจากขอบซ้ายกล่องถึงคอลัมน์ value — ต้องกว้างพอให้หัวข้อ (แถวที่ยาวสุดเสมอ
    // เพราะมีชื่อกลยุทธ์+symbol+timeframe รวมกัน) ไม่ล้นทับคอลัมน์ status ข้างๆ กัน
@@ -603,11 +612,51 @@ void AdxEmaDrawDashboard()
    // เพดานบน/ล่างตายตัว — กันพลาดซ้ำแบบที่เจอมาแล้ว 2 รอบ (ครั้งแรกแคบเกินจนล้น ครั้งที่สองกว้างเกิน
    // จนกินเกือบเต็มจอ) ไม่ว่าสูตรประมาณด้านบนจะคลาดเคลื่อนแค่ไหน กล่องจะไม่มีวันหลุดช่วงนี้ไปได้
    colGap = (int)MathMax(170, MathMin(260, colGap));
-   // 250 = พื้นที่คอลัมน์ value (ต้นฉบับ 210) — v1 มีข้อความยาวขึ้น: "Time left ... (ไม่เปิดไม้ใหม่แล้ว)" และแถว Volume
-   // 220 (V1.4, was 180 in V1.3) — room for "4188.964 (12345) ✓" after TP gains came back
-   int panelW = colGap + 220;
 
    bool hasPos = (gMtDir != 0);
+
+   // V3.4: ความกว้างคอลัมน์ value ขยับตามข้อความที่ขึ้นจริงทุกรอบ (เดิมตายตัว colGap+220 เผื่อ
+   // "4188.964 (12345) ✓" ไว้ตลอด ทำให้กล่องโล่งด้านขวา) — วัดทุกค่าที่จะวาดในคอลัมน์ขวา + แถวเหตุการณ์
+   // (แถวเหตุการณ์เริ่มจากซ้ายสุดวิ่งใต้ทั้งสองคอลัมน์ กล่องต้องไม่แคบกว่านี้)
+   string curStatus = (gLastProblem != "") ? gLastProblem : "กำลังทำงาน";
+   string valTexts[];
+   ArrayResize(valTexts, 0);
+   #define ADXEMA_ADDVAL(s) { int n_ = ArraySize(valTexts); ArrayResize(valTexts, n_ + 1); valTexts[n_] = (s); }
+   ADXEMA_ADDVAL(curStatus);
+   ADXEMA_ADDVAL(ADXEMA_VERSION + " · " + ADXEMA_UPDATED);
+   ADXEMA_ADDVAL("▲ ██████████ 100%");
+   ADXEMA_ADDVAL(AdxEmaVolText(AdxEmaVolRatio()));
+   if(hasPos)
+   {
+      double dbgP = 0; ulong dbgT = 0;
+      if(PL_Select(InpMagic, dbgT) && PositionSelectByTicket(dbgT))
+         dbgP = PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+      ADXEMA_ADDVAL(PL_DirStr(gMtDir) + " " + DoubleToString(gMtEntry, _Digits));
+      ADXEMA_ADDVAL(DoubleToString(gMtLot, 2) + " / " + DoubleToString(PL_RiskRemaining(InpRiskPointUnit), 0) + " " + curr);
+      ADXEMA_ADDVAL(DoubleToString(gMtSlInit, _Digits));
+      ADXEMA_ADDVAL((dbgP >= 0 ? "+" : "") + DoubleToString(dbgP, 0) + " " + curr);
+      double gAll = gMtLot * (MathMax(MathAbs(gMtTp3 - gMtEntry), MathMax(MathAbs(gMtTp1 - gMtEntry), MathAbs(gMtTp2 - gMtEntry))) / InpRiskPointUnit);
+      ADXEMA_ADDVAL(DoubleToString(gMtTp3, _Digits) + " (" + DoubleToString(gAll, 0) + ") ✓"); // ตัวแทนแถว TP ที่ยาวสุด
+   }
+   else
+      ADXEMA_ADDVAL("ไม่มีไม้เปิดอยู่");
+   double dbgTodayP; int dbgTodayN;
+   AdxEmaComputeTodayStats(dbgTodayP, dbgTodayN);
+   ADXEMA_ADDVAL((dbgTodayP >= 0 ? "+" : "") + DoubleToString(dbgTodayP, 0) + " " + curr + " · " + IntegerToString(dbgTodayN) + " ไม้");
+   ADXEMA_ADDVAL(DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 0) + " " + curr);
+   ADXEMA_ADDVAL(DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 0) + " " + curr);
+   ADXEMA_ADDVAL(AdxEmaTimeLeftText());
+   if(InpUseCutoff && AdxEmaInLateWindow()) ADXEMA_ADDVAL("(ไม่เปิดไม้ใหม่แล้ว)");
+   #undef ADXEMA_ADDVAL
+   int maxValW = 0;
+   for(int vi = 0; vi < ArraySize(valTexts); vi++)
+      maxValW = (int)MathMax(maxValW, AdxEmaTextWidth(valTexts[vi], FS));
+   int panelW = colGap + maxValW + 24;
+   // แถวเหตุการณ์ล่าสุด (เริ่มที่ padLeft) ต้องไม่ล้นขอบขวา
+   string evTextW = (gLastEvent == "") ? "ยังไม่มีเหตุการณ์" : PL_ServerTimeToThaiStr(gLastEventTime) + "  " + gLastEvent;
+   panelW = (int)MathMax(panelW, padLeft + AdxEmaTextWidth(evTextW, FS) + 24);
+   // เพดานกันกล่องกินเกือบเต็มจอถ้าวัดพลาด
+   panelW = (int)MathMax(colGap + 100, MathMin(panelW, colGap + 330));
    int tpRows = gCurUsePartials ? 3 : 1;
    int rowCount = 1 + 1 + 1 + 1 + (hasPos ? (4 + tpRows) : 1) + 4 + 1 + ((InpUseCutoff && AdxEmaInLateWindow()) ? 1 : 0); // +1 = แถว Volume, +1 = แถว "ไม่เปิดไม้ใหม่แล้ว" // header + version + progress + ไม้ + (balance/equity/วันนี้/เวลาเทรด) + เหตุการณ์ล่าสุด
    int panelH = padTop + rowCount * dy + 30 + padBottom;
@@ -1001,9 +1050,12 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   // V3.4: เดิมเช็ควันจาก TimeCurrent() (เวลา server = UTC) → คืนวันอาทิตย์ 23:00-24:00 UTC (06:00-07:00 ไทย)
+   // ซึ่งตลาดเปิดและ EA เทรดอยู่แล้วถูกนับเป็น "วันอาทิตย์" ข้ามสรุป Discord/heartbeat ทั้งชั่วโมง
+   // ใช้ UTC แทน: ข้ามเฉพาะเสาร์ทั้งวัน และอาทิตย์ก่อน 21:00 UTC (ตลาดทองเปิดอาทิตย์ 21:00-22:00 UTC)
    MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
-   if(dt.day_of_week == 0 || dt.day_of_week == 6)
+   TimeToStruct(TimeGMT(), dt);
+   if(dt.day_of_week == 6 || (dt.day_of_week == 0 && dt.hour < 21))
    {
       // เจอระหว่างตรวจสอบ 2026-09-23: ต้อง refresh gLastTickMs ต่อเนื่องตลอดสุดสัปดาห์ ไม่งั้น
       // OnTimer() ครั้งแรกหลังตลาดเปิดวันจันทร์จะเจอ idleSec สะสมทั้งสุดสัปดาห์ (ไม่มี tick มาเป็นวันๆ
