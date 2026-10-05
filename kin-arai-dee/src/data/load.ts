@@ -4,8 +4,11 @@ import type { Brand, Data, IngredientInfo, Menu, ProteinMapEntry } from '../engi
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
+// New-style keys (sb_publishable_...) are not JWTs, so they go in `apikey` only.
+const authHeaders = (k: string): Record<string, string> => (k.startsWith('sb_') ? { apikey: k } : { apikey: k, Authorization: `Bearer ${k}` });
+
 async function table<T>(name: string): Promise<T[]> {
-  const res = await fetch(`${url}/rest/v1/${name}?select=*&limit=5000`, { headers: { apikey: key!, Authorization: `Bearer ${key}` } });
+  const res = await fetch(`${url}/rest/v1/${name}?select=*&limit=5000`, { headers: authHeaders(key!) });
   if (!res.ok) throw new Error(`${name}: ${res.status}`);
   return res.json();
 }

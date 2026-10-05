@@ -10,7 +10,8 @@ if (!url || !key) {
 }
 
 const data = JSON.parse(fs.readFileSync('src/data/data.json', 'utf8'));
-const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+// New-style keys (sb_secret_...) are not JWTs, so they go in `apikey` only.
+const headers = { apikey: key, ...(key.startsWith('sb_') ? {} : { Authorization: `Bearer ${key}` }), 'Content-Type': 'application/json' };
 
 async function call(method, path, body, extra = {}) {
   const res = await fetch(`${url}/rest/v1/${path}`, { method, headers: { ...headers, ...extra }, body: body ? JSON.stringify(body) : undefined });
