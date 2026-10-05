@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:/nvm4w/nodejs/node.exe C:/dev/.claude/hooks/session-start-welcome.cjs"
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-welcome.cjs\""
           }
         ]
       }
