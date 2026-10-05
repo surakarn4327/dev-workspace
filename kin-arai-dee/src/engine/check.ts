@@ -29,10 +29,12 @@ function findBrands(data: Data, name: string) {
   return [...byBrand].map(([brand, v]) => ({ brand, variants: v.variants, notes: [...v.notes], singleSource: !v.confirmed }));
 }
 
-function isIdentity(menu: Menu, row: MenuRow): boolean {
+function isIdentity(data: Data, menu: Menu, row: MenuRow): boolean {
   if (row.role !== 'หลัก') return false;
+  // Egg-white is allowed, so any dish that works with egg white only is never "identity".
+  if (data.ingredients[row.ingredient]?.substitute.startsWith('ไข่ขาว')) return false;
   if (menu.name.includes(row.ingredient)) return true;
-  // Whole egg / yolk is the dish itself in egg dishes (ไข่ดาว ไข่พะโล้ ไข่เจียว ...).
+  // Salted yolk (no egg-white swap) is the dish itself in ไข่ครอบ and the like.
   return menu.name.includes('ไข่') && row.ingredient.startsWith('ไข่');
 }
 
@@ -54,7 +56,7 @@ function buildRows(data: Data, menu: Menu, option: string | null): EvalRow[] {
       });
       return;
     }
-    out.push({ ...row, identity: isIdentity(menu, row), protein: false, lookup: row.ingredient });
+    out.push({ ...row, identity: isIdentity(data, menu, row), protein: false, lookup: row.ingredient });
   });
   return out;
 }

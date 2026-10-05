@@ -38,8 +38,6 @@ function infoSheet(menu: Menu | null): string {
   return `<div class="sheet-bg" data-act="close-info"><div class="sheet" data-stop>
     <h3>ข้อมูลนี้ไม่ใช่คำแนะนำทางการแพทย์</h3>
     <p>กรุณายึดคำสั่งของแพทย์เป็นหลัก และตรวจฉลากสินค้าปัจจุบันก่อนซื้อทุกครั้ง</p>
-    <h3>เครื่องหมาย *</h3>
-    <p>ยี่ห้อที่มีเครื่องหมาย * ยืนยันจากแหล่งเดียว (คู่มือรามาธิบดี) ยังไม่มีฉลากสินค้ายืนยันซ้ำ</p>
     <h3>แหล่งข้อมูล</h3>
     <p>คู่มืออาหารไอโอดีนต่ำ ภาควิชารังสีวิทยา คณะแพทยศาสตร์โรงพยาบาลรามาธิบดี และแนวทางของ Memorial Sloan Kettering Cancer Center</p>
     ${img ? `<h3>ที่มาของภาพ</h3><p>${esc(img.creator || 'ไม่ระบุผู้เผยแพร่')} · ${esc(img.license)} · <a href="${esc(img.page)}" target="_blank" rel="noopener">ดูต้นฉบับ</a></p>` : ''}
@@ -81,7 +79,7 @@ function rowHtml(r: RowResult, diet: boolean): string {
   if (!diet) return `<div class="row"><div class="n">${esc(r.ingredient)}</div></div>`;
   if (r.kind === 'brand') {
     const list = r.brands?.length
-      ? `<ul>${r.brands.map((b) => `<li>${esc(b.brand)}${b.variants.length ? ` (${esc(b.variants.join(' / '))})` : ''}${b.singleSource ? '*' : ''}${b.notes.map((n) => `<br><small>${esc(n)}</small>`).join('')}</li>`).join('')}</ul>`
+      ? `<ul>${r.brands.map((b) => `<li>${esc(b.brand)}${[...b.variants, ...b.notes].length ? ` (${esc([...b.variants, ...b.notes].join(' / '))})` : ''}</li>`).join('')}</ul>`
       : `<p class="none">${esc(r.reason ?? 'ต้องเลือกชนิดที่ไม่เสริมไอโอดีน')}</p>`;
     return `<div class="brand"><div class="head"><div class="n" style="font-size:17px;font-weight:600">${esc(r.ingredient)}</div><span class="tag warn">เลือกยี่ห้อ</span></div>${list}</div>`;
   }
@@ -94,7 +92,7 @@ function rowHtml(r: RowResult, diet: boolean): string {
     banned: ['ห้ามทาน', 'bad'],
   };
   const [label, cls] = tag[r.kind];
-  return `<div class="row"><div><div class="n">${esc(r.ingredient)}</div><div class="use">${esc(r.use)}</div></div><span class="tag ${cls}">${label}</span></div>`;
+  return `<div class="row"><div><div class="n">${esc(r.ingredient)}</div>${r.kind === 'ok' || r.kind === 'limit' ? '' : `<div class="use">${esc(r.use)}</div>`}</div><span class="tag ${cls}">${label}</span></div>`;
 }
 
 // Anything that is not plainly edible comes first, then "eat sparingly", then edible.
