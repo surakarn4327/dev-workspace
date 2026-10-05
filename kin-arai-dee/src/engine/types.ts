@@ -17,6 +17,8 @@ export interface Brand {
   category: string;
   brand: string;
   variant: string;
+  note: string;
+  confirmed: boolean;
 }
 
 export interface MenuRow {
@@ -60,7 +62,7 @@ export interface RowResult {
   use: string;
   reason?: string;
   swapTo?: string;
-  brands?: { brand: string; variants: string[] }[];
+  brands?: { brand: string; variants: string[]; notes: string[]; singleSource: boolean }[];
   protein?: boolean;
 }
 

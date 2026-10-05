@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import data from '../data/data.json';
+import data from '../data/data.full.json';
 import { checkMenu, parseInput } from './check';
 import type { Data, Verdict } from './types';
 

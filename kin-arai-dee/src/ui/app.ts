@@ -38,6 +38,8 @@ function infoSheet(menu: Menu | null): string {
   return `<div class="sheet-bg" data-act="close-info"><div class="sheet" data-stop>
     <h3>ข้อมูลนี้ไม่ใช่คำแนะนำทางการแพทย์</h3>
     <p>กรุณายึดคำสั่งของแพทย์เป็นหลัก และตรวจฉลากสินค้าปัจจุบันก่อนซื้อทุกครั้ง</p>
+    <h3>เครื่องหมาย *</h3>
+    <p>ยี่ห้อที่มีเครื่องหมาย * ยืนยันจากแหล่งเดียว (คู่มือรามาธิบดี) ยังไม่มีฉลากสินค้ายืนยันซ้ำ</p>
     <h3>แหล่งข้อมูล</h3>
     <p>คู่มืออาหารไอโอดีนต่ำ ภาควิชารังสีวิทยา คณะแพทยศาสตร์โรงพยาบาลรามาธิบดี และแนวทางของ Memorial Sloan Kettering Cancer Center</p>
     ${img ? `<h3>ที่มาของภาพ</h3><p>${esc(img.creator || 'ไม่ระบุผู้เผยแพร่')} · ${esc(img.license)} · <a href="${esc(img.page)}" target="_blank" rel="noopener">ดูต้นฉบับ</a></p>` : ''}
@@ -79,13 +81,13 @@ function rowHtml(r: RowResult, diet: boolean): string {
   if (!diet) return `<div class="row"><div class="n">${esc(r.ingredient)}</div></div>`;
   if (r.kind === 'brand') {
     const list = r.brands?.length
-      ? `<ul>${r.brands.map((b) => `<li>${esc(b.brand)}${b.variants.length ? ` (${esc(b.variants.join(' / '))})` : ''}</li>`).join('')}</ul>`
+      ? `<ul>${r.brands.map((b) => `<li>${esc(b.brand)}${b.variants.length ? ` (${esc(b.variants.join(' / '))})` : ''}${b.singleSource ? '*' : ''}${b.notes.map((n) => `<br><small>${esc(n)}</small>`).join('')}</li>`).join('')}</ul>`
       : `<p class="none">${esc(r.reason ?? 'ต้องเลือกชนิดที่ไม่เสริมไอโอดีน')}</p>`;
     return `<div class="brand"><div class="head"><div class="n" style="font-size:17px;font-weight:600">${esc(r.ingredient)}</div><span class="tag warn">เลือกยี่ห้อ</span></div>${list}</div>`;
   }
   const tag: Record<string, [string, string]> = {
     ok: ['ทานได้', ''],
-    limit: ['จำกัดปริมาณ', ''],
+    limit: ['ไม่ควรทานมาก', 'warn'],
     swap: ['เปลี่ยนวัตถุดิบ', 'warn'],
     omit: ['ไม่ใส่', 'warn'],
     unknown: ['ไม่แน่ใจ', 'warn'],
@@ -94,6 +96,10 @@ function rowHtml(r: RowResult, diet: boolean): string {
   const [label, cls] = tag[r.kind];
   return `<div class="row"><div><div class="n">${esc(r.ingredient)}</div><div class="use">${esc(r.use)}</div></div><span class="tag ${cls}">${label}</span></div>`;
 }
+
+// Anything that is not plainly edible comes first, then "eat sparingly", then edible.
+const ROW_ORDER: Record<RowResult['kind'], number> = { banned: 0, unknown: 1, swap: 2, omit: 3, brand: 4, limit: 5, ok: 6 };
+const sortRows = (rows: RowResult[]): RowResult[] => [...rows].sort((a, b) => ROW_ORDER[a.kind] - ROW_ORDER[b.kind]);
 
 function resultView(menu: Menu, protein: string | null): string {
   const diet = state.chipOn;
@@ -112,7 +118,7 @@ function resultView(menu: Menu, protein: string | null): string {
     <h1 class="title">${esc(menu.name)}${protein && !/^ไม่/.test(protein) ? ` <span style="font-weight:500">(${esc(protein)})</span>` : ''}</h1>
     ${pill}${options}
     <h2>วัตถุดิบทั้งหมด</h2>
-    ${check.rows.map((r) => rowHtml(r, diet)).join('')}
+    ${(diet ? sortRows(check.rows) : check.rows).map((r) => rowHtml(r, diet)).join('')}
     ${variants.length ? `<h2>เมนูใกล้เคียงที่ทานได้</h2>${variants.map((v) => `<button class="near" data-go="${esc(menu.name)}" data-protein="${esc(v.option)}"><div class="plate" ${menu.image ? `style="background-image:${cssUrl(menu.image.url)}"` : ''}></div>${esc(menu.name + v.option)}</button>`).join('')}` : ''}
     ${near.length ? `<h2>เมนูใกล้เคียงที่ทานได้</h2>${near.map((m) => `<button class="near" data-go="${esc(m.name)}"><div class="plate" ${m.image ? `style="background-image:${cssUrl(m.image.url)}"` : ''}></div>${esc(m.name)}</button>`).join('')}` : ''}
   </div>
@@ -148,6 +154,21 @@ function startSlides(): void {
       }, 520);
     }
   }, 2000);
+}
+
+/** With a diet chip on, only menus (and protein choices) that pass; otherwise every menu. */
+function randomPool(): { menu: Menu; protein: string | null }[] {
+  if (!state.chipOn) return d.menus.map((menu) => ({ menu, protein: null }));
+  const pool: { menu: Menu; protein: string | null }[] = [];
+  for (const menu of d.menus) {
+    const c = checkMenu(d, menu, null);
+    if (c.byProtein.length) {
+      for (const b of c.byProtein) if (b.verdict === 'ok') pool.push({ menu, protein: b.option });
+    } else if (c.verdict === 'ok') {
+      pool.push({ menu, protein: null });
+    }
+  }
+  return pool;
 }
 
 let page: 'home' | 'library' | 'notfound' = 'home';
@@ -237,8 +258,9 @@ root.addEventListener('click', (e) => {
     state.chipOn = !state.chipOn;
     render();
   } else if (act === 'random') {
-    const m = d.menus[Math.floor(Math.random() * d.menus.length)];
-    go(m, null);
+    const pool = randomPool();
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    go(pick.menu, pick.protein);
   } else if (act === 'open-info' || act === 'close-info') {
     state.infoOpen = act === 'open-info';
     render();

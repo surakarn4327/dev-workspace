@@ -18,9 +18,15 @@ function findBrands(data: Data, name: string) {
     // "ซอสพริก" / "ซอสมะเขือเทศ" live under the dipping-sauce category, matched by variant text.
     list = data.brands.filter((b) => b.category === 'ซอสสำหรับจิ้ม' && b.variant.includes(name));
   }
-  const byBrand = new Map<string, string[]>();
-  for (const b of list) byBrand.set(b.brand, [...(byBrand.get(b.brand) ?? []), ...(b.variant ? [b.variant] : [])]);
-  return [...byBrand].map(([brand, variants]) => ({ brand, variants }));
+  const byBrand = new Map<string, { variants: string[]; notes: Set<string>; confirmed: boolean }>();
+  for (const b of list) {
+    const cur = byBrand.get(b.brand) ?? { variants: [], notes: new Set<string>(), confirmed: true };
+    if (b.variant) cur.variants.push(b.variant);
+    if (b.note) cur.notes.add(b.note);
+    cur.confirmed = cur.confirmed && b.confirmed;
+    byBrand.set(b.brand, cur);
+  }
+  return [...byBrand].map(([brand, v]) => ({ brand, variants: v.variants, notes: [...v.notes], singleSource: !v.confirmed }));
 }
 
 function isIdentity(menu: Menu, row: MenuRow): boolean {
@@ -66,7 +72,7 @@ function evalRow(data: Data, r: EvalRow): RowResult {
     case 'กินได้':
       return { ...base, kind: 'ok', use: `ใช้${r.ingredient}` };
     case 'จำกัดปริมาณ':
-      return { ...base, kind: 'limit', use: `ใช้${r.ingredient}ในปริมาณจำกัด`, reason };
+      return { ...base, kind: 'limit', use: `ใช้${r.ingredient}ได้ แต่ไม่ควรทานมาก`, reason };
     case 'ตามยี่ห้อ':
       return { ...base, kind: 'brand', use: 'เลือกยี่ห้อตามรายการ', reason, brands: findBrands(data, r.ingredient) };
     case 'ต้องตรวจส่วนประกอบ':

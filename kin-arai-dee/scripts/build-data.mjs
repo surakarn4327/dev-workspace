@@ -8,6 +8,7 @@ const ingredientRows = read('ingredient-iodine.csv');
 const menuRows = read('menu-ingredients.csv');
 const brandRows = read('rama-seasonings.csv');
 const proteinRows = read('protein-map.csv');
+const noteRows = read('brand-notes.csv');
 const regionRows = read('menu-images.csv');
 const imageUrls = fs.existsSync('docs/menu-image-urls.json') ? JSON.parse(fs.readFileSync('docs/menu-image-urls.json', 'utf8')) : {};
 
@@ -18,7 +19,11 @@ const isNone = (o) => o.startsWith('ไม่ใส่เนื้อสัต�
 
 const ingredients = Object.fromEntries(ingredientRows.map((r) => [r.ingredient, { status: r.status, reason: r.reason, substitute: r.substitute, source: r.source }]));
 const proteinMap = Object.fromEntries(proteinRows.map((r) => [r.option, { mapsTo: r.maps_to, status: r.status, reason: r.reason }]));
-const brands = brandRows.filter((r) => r.group === 'restricted').map((r) => ({ category: r.category, brand: r.brand, variant: r.variant }));
+const noteFor = (r) => noteRows.find((n) => n.category === r.category && n.brand === r.brand && (!n.variant_contains || r.variant.includes(n.variant_contains)));
+// confirmed = a second source (a product label) agrees with the Ramathibodi list; otherwise the brand is single-source.
+const brands = brandRows
+  .filter((r) => r.group === 'restricted')
+  .map((r) => ({ category: r.category, brand: r.brand, variant: r.variant, note: noteFor(r)?.note ?? '', confirmed: noteFor(r)?.confirmed_by_label === 'yes' }));
 const regions = Object.fromEntries(regionRows.map((r) => [r.name, r.region]));
 
 const names = [...new Set(menuRows.map((r) => r.menu))];
@@ -47,8 +52,14 @@ const menus = names.map((name) => {
   };
 });
 
+// Rule (CLAUDE.md): a menu without a verified photo stays out of the app until it has one.
+const shown = menus.filter((m) => m.image);
+const hidden = menus.filter((m) => !m.image).map((m) => m.name);
 fs.mkdirSync('src/data', { recursive: true });
-fs.writeFileSync('src/data/data.json', JSON.stringify({ ingredients, proteinMap, brands, menus }));
+fs.writeFileSync('src/data/data.json', JSON.stringify({ ingredients, proteinMap, brands, menus: shown }));
+// Tests check the rules on every menu, including the ones hidden from the app.
+fs.writeFileSync('src/data/data.full.json', JSON.stringify({ ingredients, proteinMap, brands, menus }));
+console.log('hidden (no image):', hidden.length, hidden.join(', '));
 const noSlot = menus.filter((m) => m.options.some((o) => !isNone(o)) && m.slot < 0);
 console.log('menus', menus.length, '| with image', menus.filter((m) => m.image).length, '| meaty options but no slot:', noSlot.map((m) => m.name).join(', ') || '-');
-for (const m of menus.filter((m) => m.slot >= 0)) console.log(m.name.padEnd(18), '->', m.rows[m.slot].ingredient, '|', m.options.join(' / '));
+
