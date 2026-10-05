@@ -1,7 +1,7 @@
 name,region,source_count,status,note,sources
-ลาบปลาทับทิม,คู่มือรามาฯ,,rama,,rama_pdf
-ต้มซุปไก่มะเขือเทศ,คู่มือรามาฯ,,rama,,rama_pdf
-ข้าวผัดหมู,คู่มือรามาฯ,,rama,,rama_pdf
+ลาบปลาทับทิม,คู่มือรามาฯ,,cut,ผู้ใช้ตัด: สูตรรามาฯ ยุ่งยากเกินกว่าจะทำกินจริง,rama_pdf
+ต้มซุปไก่มะเขือเทศ,คู่มือรามาฯ,,cut,ผู้ใช้ตัด: สูตรรามาฯ ยุ่งยากเกินกว่าจะทำกินจริง,rama_pdf
+ข้าวผัดหมู,คู่มือรามาฯ,,cut,ผู้ใช้ตัด: สูตรรามาฯ ยุ่งยากเกินกว่าจะทำกินจริง,rama_pdf
 ข้าวผัด,ภาคกลางและทั่วประเทศ,28,pass,,c_nlove;c_sgethai;e_weaving;fish_nlove;g_joomyak100;g_kapook_kg;g_propertyhub;g_streetratchada;nd_kapook40;nd_kapookkj;ne_kapook1;ne_kapook2;ne_kapook3;ne_tfc;np_kapook;ofm_150;pptv_100;rleaw_100;s_kapook;s_kapook2;s_tfc50;sanook_100;soup_kapook;tfc_100;thairath_100;wiki_en;wiki_th_cats;wiki_th_list
 ข้าวผัดกะเพรา,ภาคกลางและทั่วประเทศ,2,pass,,sanook_100;wiki_en
 ข้าวผัดอเมริกัน,ภาคกลางและทั่วประเทศ,8,pass,,c_nlove;ne_tfc;ofm_150;pptv_100;sanook_100;tfc_100;wiki_en;wiki_th_cats
