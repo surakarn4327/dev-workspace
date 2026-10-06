@@ -48,10 +48,11 @@ interface State {
   chipOn: boolean;
   infoOpen: boolean;
   themeOpen: boolean;
+  zoom: { url: string; caption: string } | null;
   notFound: string | null;
 }
 
-const state: State = { query: '', chipOn: true, infoOpen: false, themeOpen: false, notFound: null };
+const state: State = { query: '', chipOn: true, infoOpen: false, themeOpen: false, zoom: null, notFound: null };
 const root = document.getElementById('app')!;
 let slideTimer: number | undefined;
 
@@ -103,6 +104,10 @@ function infoSheet(menu: Menu | null, credits: { label: string; img: PhotoCredit
 const tools = (): string =>
   `<div class="tools"><button class="info theme" data-act="open-theme" aria-label="เลือกธีม">◐</button><button class="info" data-act="open-info" aria-label="ข้อมูลและที่มา">i</button></div>`;
 
+function zoomView(z: { url: string; caption: string }): string {
+  return `<div class="zoom-bg" data-act="close-zoom"><img src="${esc(z.url)}" alt="${esc(z.caption)}" /><p>${esc(z.caption)}</p></div>`;
+}
+
 function themeSheet(): string {
   return `<div class="sheet-bg" data-act="close-theme"><div class="sheet" data-stop>
     <h3>โหมดหน้าจอ</h3>
@@ -143,13 +148,11 @@ function libraryView(): string {
   return `<div class="page"><div class="top"><h1>คลังข้อมูล</h1></div><p class="empty">อยู่ระหว่างจัดทำ</p></div>${nav('library')}`;
 }
 
-const photo = (img: PhotoCredit | null | undefined, cls = 'ph'): string => (img ? `<div class="${cls}" style="background-image:${cssUrl(img.url)}"></div>` : '');
-
 function rowHtml(r: RowResult, diet: boolean): string {
   if (!diet) return `<div class="row"><div class="n">${esc(r.ingredient)}</div></div>`;
   if (r.kind === 'brand') {
     const list = r.brands?.length
-      ? `<ul>${r.brands.map((b) => `<li class="${b.image ? 'has-img' : ''}">${photo(b.image, 'bph')}<span>${esc(b.brand)}${[...b.variants, ...b.notes].length ? ` (${esc([...b.variants, ...b.notes].join(' / '))})` : ''}</span></li>`).join('')}</ul>`
+      ? `<ul>${r.brands.map((b) => `<li class="${b.image ? 'has-img' : ''}">${b.image ? `<button class="bph" data-zoom="${esc(b.image.url.replace('.200.jpg', '.400.jpg'))}" data-caption="${esc(b.brand)}" aria-label="ดูรูป ${esc(b.brand)}" style="background-image:${cssUrl(b.image.url)}"></button>` : ''}<span>${esc(b.brand)}${[...b.variants, ...b.notes].length ? ` (${esc([...b.variants, ...b.notes].join(' / '))})` : ''}</span></li>`).join('')}</ul>`
       : `<p class="none">${esc(r.reason ?? 'ต้องเลือกชนิดที่ไม่เสริมไอโอดีน')}</p>`;
     return `<div class="brand"><div class="head"><div class="n" style="font-size:17px;font-weight:600">${esc(r.ingredient)}</div><span class="tag warn">เลือกยี่ห้อ</span></div>${list}</div>`;
   }
@@ -264,7 +267,7 @@ export function render(): void {
   } else {
     html = homeView();
   }
-  root.innerHTML = html + (state.infoOpen ? infoSheet(menu, credits) : '') + (state.themeOpen ? themeSheet() : '');
+  root.innerHTML = html + (state.infoOpen ? infoSheet(menu, credits) : '') + (state.themeOpen ? themeSheet() : '') + (state.zoom ? zoomView(state.zoom) : '');
   startSlides();
   const q = document.getElementById('q') as HTMLInputElement | null;
   if (q && document.activeElement === document.body && state.query) {
@@ -317,6 +320,17 @@ root.addEventListener('click', (e) => {
     if (modeBtn) theme.mode = modeBtn.dataset.setMode as Theme['mode'];
     if (accentBtn) theme.accent = accentBtn.dataset.setAccent!;
     applyTheme();
+    render();
+    return;
+  }
+  const zoomBtn = target.closest<HTMLElement>('[data-zoom]');
+  if (zoomBtn) {
+    state.zoom = { url: zoomBtn.dataset.zoom!, caption: zoomBtn.dataset.caption ?? '' };
+    render();
+    return;
+  }
+  if (target.closest('[data-act="close-zoom"]')) {
+    state.zoom = null;
     render();
     return;
   }
