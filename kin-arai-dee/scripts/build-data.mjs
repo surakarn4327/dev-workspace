@@ -35,7 +35,7 @@ const productImages = readJson('product-image-urls.json');
 for (const m of read('brand-images.csv')) {
   const p = productImages[m.barcode];
   if (!p?.url) continue;
-  const image = { url: p.url, full: p.url.replace('.400.jpg', '.full.jpg'), creator: p.creator, license: p.license, page: p.page };
+  const image = { url: p.url, full: p.full ?? p.url.replace('.400.jpg', '.full.jpg'), creator: p.creator, license: p.license, page: p.page };
   for (const b of brands.filter((x) => x.category === m.category && x.brand === m.brand && (!m.variant_contains || x.variant.includes(m.variant_contains)))) b.image = image;
 }
 

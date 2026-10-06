@@ -18,6 +18,8 @@ const CODES = {
   '8850206110025': 'เด็กสมบูรณ์ น้ำจิ้มไก่',
   '8850250004035': 'ทาคูมิอายิ เทอริยากิ',
 };
+// Barcodes whose selected front photo is tiny or cropped: use a sharper raw upload of the same bottle instead (checked by eye).
+const RAW_IMAGE = { '8850206067053': 3, '8850206252527': 1 };
 const UA = { 'User-Agent': 'kin-arai-dee-build/0.1 (personal non-commercial project)' };
 const out = {};
 for (const [code, name] of Object.entries(CODES)) {
@@ -29,8 +31,11 @@ for (const [code, name] of Object.entries(CODES)) {
   const p = j.product;
   const front = Object.entries(p?.images ?? {}).find(([k]) => k.startsWith('front'));
   const imgid = front?.[1]?.imgid;
-  const uploader = imgid ? p.images[imgid]?.uploader : undefined;
-  out[code] = { name, brand: p?.brands ?? '', url: p?.image_front_url ?? null, creator: uploader ?? '', license: 'CC BY-SA 3.0', page: `https://world.openfoodfacts.org/product/${code}` };
+  const uploader = (RAW_IMAGE[code] ?? imgid) ? p.images[RAW_IMAGE[code] ?? imgid]?.uploader : undefined;
+  const raw = RAW_IMAGE[code];
+  const base = `https://images.openfoodfacts.org/images/products/${code.slice(0, 3)}/${code.slice(3, 6)}/${code.slice(6, 9)}/${code.slice(9)}`;
+  const front400 = raw ? `${base}/${raw}.400.jpg` : (p?.image_front_url ?? null);
+  out[code] = { name, brand: p?.brands ?? '', url: front400, full: raw ? `${base}/${raw}.jpg` : front400?.replace('.400.jpg', '.full.jpg'), creator: uploader ?? '', license: 'CC BY-SA 3.0', page: `https://world.openfoodfacts.org/product/${code}` };
   console.log(p?.image_front_url ? 'ok  ' : 'FAIL', code, name, '|', uploader);
   await new Promise((s) => setTimeout(s, 700));
 }

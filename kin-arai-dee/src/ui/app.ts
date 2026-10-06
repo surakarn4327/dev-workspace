@@ -160,7 +160,7 @@ function rowHtml(r: RowResult, diet: boolean): string {
     ok: ['ทานได้', ''],
     limit: ['ไม่ควรทานมาก', 'warn'],
     swap: ['เปลี่ยนวัตถุดิบ', 'warn'],
-    omit: ['ไม่ใส่', 'warn'],
+    omit: ['ไม่ใส่', 'bad'],
     unknown: ['ไม่แน่ใจ', 'warn'],
     banned: ['ห้ามทาน', 'bad'],
   };
