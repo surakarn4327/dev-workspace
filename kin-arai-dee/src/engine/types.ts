@@ -2,6 +2,8 @@ export type Status = 'กินได้' | 'จำกัดปริมาณ' 
 
 export interface PhotoCredit {
   url: string;
+  /** Sharper version, loaded only when the photo is enlarged. */
+  full?: string;
   creator: string;
   license: string;
   page: string;

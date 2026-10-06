@@ -152,7 +152,7 @@ function rowHtml(r: RowResult, diet: boolean): string {
   if (!diet) return `<div class="row"><div class="n">${esc(r.ingredient)}</div></div>`;
   if (r.kind === 'brand') {
     const list = r.brands?.length
-      ? `<ul>${r.brands.map((b) => `<li class="${b.image ? 'has-img' : ''}">${b.image ? `<button class="bph" data-zoom="${esc(b.image.url.replace('.200.jpg', '.400.jpg'))}" data-caption="${esc(b.brand)}" aria-label="ดูรูป ${esc(b.brand)}" style="background-image:${cssUrl(b.image.url)}"></button>` : ''}<span>${esc(b.brand)}${[...b.variants, ...b.notes].length ? ` (${esc([...b.variants, ...b.notes].join(' / '))})` : ''}</span></li>`).join('')}</ul>`
+      ? `<ul>${r.brands.map((b) => `<li class="${b.image ? 'has-img' : ''}">${b.image ? `<button class="bph" data-zoom="${esc(b.image.full ?? b.image.url)}" data-caption="${esc(b.brand)}" aria-label="ดูรูป ${esc(b.brand)}" style="background-image:${cssUrl(b.image.url)}"></button>` : ''}<span>${esc(b.brand)}${[...b.variants, ...b.notes].length ? ` (${esc([...b.variants, ...b.notes].join(' / '))})` : ''}</span></li>`).join('')}</ul>`
       : `<p class="none">${esc(r.reason ?? 'ต้องเลือกชนิดที่ไม่เสริมไอโอดีน')}</p>`;
     return `<div class="brand"><div class="head"><div class="n" style="font-size:17px;font-weight:600">${esc(r.ingredient)}</div><span class="tag warn">เลือกยี่ห้อ</span></div>${list}</div>`;
   }

@@ -441,10 +441,10 @@ h2 {
   border: 0;
   padding: 0;
   cursor: zoom-in;
-  width: 44px;
-  height: 44px;
+  width: 64px;
+  height: 96px;
   border-radius: 12px;
-  background: var(--accent-soft) center / cover;
+  background: #fff center / contain no-repeat;
   flex: none;
 }
 
