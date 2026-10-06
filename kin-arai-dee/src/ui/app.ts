@@ -1,5 +1,5 @@
 import { checkMenu, nearby, parseInput, suggest } from '../engine/check';
-import type { Check, Data, Menu, RowResult, Verdict } from '../engine/types';
+import type { Check, Data, Menu, PhotoCredit, RowResult, Verdict } from '../engine/types';
 
 let d: Data;
 const DIET_CHIP = 'กลืนแร่';
@@ -72,14 +72,31 @@ function go(menu: Menu, protein: string | null): void {
   location.hash = `#/r/${encodeURIComponent(menu.name)}${protein ? '/' + encodeURIComponent(protein) : ''}`;
 }
 
-function infoSheet(menu: Menu | null): string {
+/** Every photo on the result page other than the dish itself, one entry per source page. */
+function photoCredits(menu: Menu, protein: string | null): { label: string; img: PhotoCredit }[] {
+  const out: { label: string; img: PhotoCredit }[] = [];
+  const seen = new Set<string>();
+  const add = (label: string, img?: PhotoCredit | null): void => {
+    if (!img || seen.has(img.page)) return;
+    seen.add(img.page);
+    out.push({ label, img });
+  };
+  for (const r of checkMenu(d, menu, protein).rows) {
+    add(r.ingredient, r.image);
+    for (const b of r.brands ?? []) add(`${r.ingredient} ${b.brand}`, b.image);
+  }
+  return out;
+}
+
+function infoSheet(menu: Menu | null, credits: { label: string; img: PhotoCredit }[] = []): string {
   const img = menu?.image;
   return `<div class="sheet-bg" data-act="close-info"><div class="sheet" data-stop>
     <h3>ข้อมูลนี้ไม่ใช่คำแนะนำทางการแพทย์</h3>
     <p>กรุณายึดคำสั่งของแพทย์เป็นหลัก และตรวจฉลากสินค้าปัจจุบันก่อนซื้อทุกครั้ง</p>
     <h3>แหล่งข้อมูล</h3>
     <p>คู่มืออาหารไอโอดีนต่ำ ภาควิชารังสีวิทยา คณะแพทยศาสตร์โรงพยาบาลรามาธิบดี และแนวทางของ Memorial Sloan Kettering Cancer Center</p>
-    ${img ? `<h3>ที่มาของภาพ</h3><p>${esc(img.creator || 'ไม่ระบุผู้เผยแพร่')} · ${esc(img.license)} · <a href="${esc(img.page)}" target="_blank" rel="noopener">ดูต้นฉบับ</a></p>` : ''}
+    ${img ? `<h3>ที่มาของภาพ</h3><p>เมนู : ${esc(img.creator || 'ไม่ระบุผู้เผยแพร่')} · ${esc(img.license)} · <a href="${esc(img.page)}" target="_blank" rel="noopener">ดูต้นฉบับ</a></p>` : ''}
+    ${credits.map((c) => `<p>${esc(c.label)} : ${esc(c.img.creator || 'ไม่ระบุผู้เผยแพร่')} · ${esc(c.img.license)} · <a href="${esc(c.img.page)}" target="_blank" rel="noopener">ดูต้นฉบับ</a></p>`).join('')}
     <button class="close" data-act="close-info">ปิด</button>
   </div></div>`;
 }
@@ -127,11 +144,13 @@ function libraryView(): string {
   return `<div class="page"><div class="top"><h1>คลังข้อมูล</h1></div><p class="empty">อยู่ระหว่างจัดทำ</p></div>${nav('library')}`;
 }
 
+const photo = (img: PhotoCredit | null | undefined, cls = 'ph'): string => (img ? `<div class="${cls}" style="background-image:${cssUrl(img.url)}"></div>` : '');
+
 function rowHtml(r: RowResult, diet: boolean): string {
-  if (!diet) return `<div class="row"><div class="n">${esc(r.ingredient)}</div></div>`;
+  if (!diet) return `<div class="row">${photo(r.image)}<div class="n">${esc(r.ingredient)}</div></div>`;
   if (r.kind === 'brand') {
     const list = r.brands?.length
-      ? `<ul>${r.brands.map((b) => `<li>${esc(b.brand)}${[...b.variants, ...b.notes].length ? ` (${esc([...b.variants, ...b.notes].join(' / '))})` : ''}</li>`).join('')}</ul>`
+      ? `<ul>${r.brands.map((b) => `<li class="${b.image ? 'has-img' : ''}">${photo(b.image, 'bph')}<span>${esc(b.brand)}${[...b.variants, ...b.notes].length ? ` (${esc([...b.variants, ...b.notes].join(' / '))})` : ''}</span></li>`).join('')}</ul>`
       : `<p class="none">${esc(r.reason ?? 'ต้องเลือกชนิดที่ไม่เสริมไอโอดีน')}</p>`;
     return `<div class="brand"><div class="head"><div class="n" style="font-size:17px;font-weight:600">${esc(r.ingredient)}</div><span class="tag warn">เลือกยี่ห้อ</span></div>${list}</div>`;
   }
@@ -144,7 +163,7 @@ function rowHtml(r: RowResult, diet: boolean): string {
     banned: ['ห้ามทาน', 'bad'],
   };
   const [label, cls] = tag[r.kind];
-  return `<div class="row"><div><div class="n">${esc(r.ingredient)}</div>${r.kind === 'ok' || r.kind === 'limit' ? '' : `<div class="use">${esc(r.use)}</div>`}</div><span class="tag ${cls}">${label}</span></div>`;
+  return `<div class="row">${photo(r.image)}<div><div class="n">${esc(r.ingredient)}</div>${r.kind === 'ok' || r.kind === 'limit' ? '' : `<div class="use">${esc(r.use)}</div>`}</div><span class="tag ${cls}">${label}</span></div>`;
 }
 
 // Anything that is not plainly edible comes first, then "eat sparingly", then edible.
@@ -234,9 +253,11 @@ export function render(): void {
   const r = route();
   let html: string;
   let menu: Menu | null = null;
+  let credits: { label: string; img: PhotoCredit }[] = [];
   if (r) {
     menu = r.menu;
     html = resultView(r.menu, r.protein);
+    credits = photoCredits(r.menu, r.protein);
   } else if (page === 'notfound') {
     html = notFoundView(notFoundText);
   } else if (page === 'library') {
@@ -244,7 +265,7 @@ export function render(): void {
   } else {
     html = homeView();
   }
-  root.innerHTML = html + (state.infoOpen ? infoSheet(menu) : '') + (state.themeOpen ? themeSheet() : '');
+  root.innerHTML = html + (state.infoOpen ? infoSheet(menu, credits) : '') + (state.themeOpen ? themeSheet() : '');
   startSlides();
   const q = document.getElementById('q') as HTMLInputElement | null;
   if (q && document.activeElement === document.body && state.query) {

@@ -24,10 +24,13 @@ export async function loadData(): Promise<Data> {
       table<Menu>('menus'),
     ]);
     if (!menus.length) return bundled as unknown as Data;
+    // Ingredient and product photos ship with the build; the Supabase tables carry no photo columns.
+    const local = bundled as unknown as Data;
+    const brandImage = (b: Brand) => local.brands.find((x) => x.category === b.category && x.brand === b.brand && x.variant === b.variant)?.image ?? null;
     return {
-      ingredients: Object.fromEntries(ing.map((r) => [r.name, { status: r.status, reason: r.reason, substitute: r.substitute, source: r.source }])),
+      ingredients: Object.fromEntries(ing.map((r) => [r.name, { status: r.status, reason: r.reason, substitute: r.substitute, source: r.source, image: local.ingredients[r.name]?.image ?? null }])),
       proteinMap: Object.fromEntries(prot.map((r): [string, ProteinMapEntry] => [r.option, { mapsTo: r.maps_to, status: r.status, reason: r.reason }])),
-      brands: brands.map((b) => ({ category: b.category, brand: b.brand, variant: b.variant, note: b.note, confirmed: b.confirmed })),
+      brands: brands.map((b) => ({ category: b.category, brand: b.brand, variant: b.variant, note: b.note, confirmed: b.confirmed, image: brandImage(b) })),
       menus,
     };
   } catch {

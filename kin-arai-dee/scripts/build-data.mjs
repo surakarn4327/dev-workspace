@@ -26,6 +26,17 @@ const brands = brandRows
   .map((r) => ({ category: r.category, brand: r.brand, variant: r.variant, note: noteFor(r)?.note ?? '', confirmed: noteFor(r)?.confirmed_by_label === 'yes' }));
 const regions = Object.fromEntries(regionRows.map((r) => [r.name, r.region]));
 
+// Photos (each with creator + licence + source page): ingredients from Commons, branded products from Open Food Facts.
+const readJson = (f) => (fs.existsSync(`docs/${f}`) ? JSON.parse(fs.readFileSync(`docs/${f}`, 'utf8')) : {});
+for (const [name, img] of Object.entries(readJson('ingredient-image-urls.json'))) if (ingredients[name]) ingredients[name].image = img;
+const productImages = readJson('product-image-urls.json');
+for (const m of read('brand-images.csv')) {
+  const p = productImages[m.barcode];
+  if (!p?.url) continue;
+  const image = { url: p.url.replace('.400.jpg', '.200.jpg'), creator: p.creator, license: p.license, page: p.page };
+  for (const b of brands.filter((x) => x.category === m.category && x.brand === m.brand && (!m.variant_contains || x.variant.includes(m.variant_contains)))) b.image = image;
+}
+
 const names = [...new Set(menuRows.map((r) => r.menu))];
 const menus = names.map((name) => {
   const rows = menuRows.filter((r) => r.menu === name);

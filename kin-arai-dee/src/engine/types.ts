@@ -1,10 +1,18 @@
 export type Status = 'กินได้' | 'จำกัดปริมาณ' | 'ตามยี่ห้อ' | 'ต้องตรวจส่วนประกอบ' | 'ห้าม';
 
+export interface PhotoCredit {
+  url: string;
+  creator: string;
+  license: string;
+  page: string;
+}
+
 export interface IngredientInfo {
   status: Status;
   reason: string;
   substitute: string;
   source: string;
+  image?: PhotoCredit | null;
 }
 
 export interface ProteinMapEntry {
@@ -19,6 +27,7 @@ export interface Brand {
   variant: string;
   note: string;
   confirmed: boolean;
+  image?: PhotoCredit | null;
 }
 
 export interface MenuRow {
@@ -27,12 +36,7 @@ export interface MenuRow {
   note: string;
 }
 
-export interface MenuImage {
-  url: string;
-  creator: string;
-  license: string;
-  page: string;
-}
+export type MenuImage = PhotoCredit;
 
 export interface Menu {
   name: string;
@@ -62,7 +66,9 @@ export interface RowResult {
   use: string;
   reason?: string;
   swapTo?: string;
-  brands?: { brand: string; variants: string[]; notes: string[]; singleSource: boolean }[];
+  brands?: { brand: string; variants: string[]; notes: string[]; singleSource: boolean; image?: PhotoCredit | null }[];
+  /** Photo of the ingredient itself (never a brand photo). */
+  image?: PhotoCredit | null;
   protein?: boolean;
 }
 
