@@ -148,7 +148,7 @@ npm run build:data   # สร้าง src/data/data.json จาก CSV ใน d
 
 ## โครงสร้าง
 
-**สถานะจริง (2026-10-06):** แถวผลตรวจแสดงรูปวัตถุดิบ (101 ชนิด) และรูปสินค้า (11 กลุ่ม) พร้อมเครดิตในปุ่ม i ดู `docs/research-ingredient-images.md`
+**สถานะจริง (2026-10-06):** แถวเครื่องปรุงที่ต้องเลือกยี่ห้อแสดงรูปสินค้า (11 กลุ่ม) พร้อมเครดิตในปุ่ม i วัตถุดิบทั่วไปไม่แสดงรูป (ผู้ใช้สั่ง 2026-10-06) ดู `docs/research-ingredient-images.md`
 
 **สถานะเดิม (2026-10-05):** เวอร์ชันแรกอ่านข้อมูลจาก `src/data/data.json` (สร้างจาก CSV ด้วย `scripts/build-data.mjs`) เตรียม Supabase ไว้แล้ว (`supabase/schema.sql`, `scripts/seed-supabase.mjs`, `src/data/load.ts`) — ถ้ามี `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` ใน `.env.local` แอปอ่านจาก Supabase ไม่มีก็ใช้ข้อมูลที่ฝังไว้ (ยังไม่ได้ทดสอบกับ Supabase จริง)
 UI เป็น vanilla TS (`src/ui/app.ts`) ตามภาพตัวอย่างที่อนุมัติใน `design/mockup.html` — ห้ามเพิ่มปุ่ม/ข้อความที่ผู้ใช้ไม่ได้สั่ง

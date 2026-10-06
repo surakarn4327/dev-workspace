@@ -64,7 +64,7 @@ function buildRows(data: Data, menu: Menu, option: string | null): EvalRow[] {
 function evalRow(data: Data, r: EvalRow): RowResult {
   const optional = OPTIONAL_ROLES.includes(r.role) && !r.identity;
   const info = r.statusOverride ?? data.ingredients[r.lookup];
-  const base = { ingredient: r.ingredient, protein: r.protein || undefined, image: data.ingredients[r.lookup]?.image ?? data.ingredients[r.ingredient]?.image ?? null };
+  const base = { ingredient: r.ingredient, protein: r.protein || undefined };
   if (!info) {
     if (optional) return { ...base, kind: 'omit', use: 'ไม่ใส่' };
     return { ...base, kind: 'unknown', use: 'ไม่มีข้อมูลวัตถุดิบนี้', reason: 'ยังไม่มีข้อมูลวัตถุดิบนี้ในฐานข้อมูล' };

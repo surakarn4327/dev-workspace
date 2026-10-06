@@ -26,9 +26,9 @@ const brands = brandRows
   .map((r) => ({ category: r.category, brand: r.brand, variant: r.variant, note: noteFor(r)?.note ?? '', confirmed: noteFor(r)?.confirmed_by_label === 'yes' }));
 const regions = Object.fromEntries(regionRows.map((r) => [r.name, r.region]));
 
-// Photos (each with creator + licence + source page): ingredients from Commons, branded products from Open Food Facts.
+// Photos (creator + licence + source page): only seasonings that must be bought by brand get one (Open Food Facts).
+// Plain ingredients show no photo (docs/ingredient-image-urls.json is kept as research, not shipped).
 const readJson = (f) => (fs.existsSync(`docs/${f}`) ? JSON.parse(fs.readFileSync(`docs/${f}`, 'utf8')) : {});
-for (const [name, img] of Object.entries(readJson('ingredient-image-urls.json'))) if (ingredients[name]) ingredients[name].image = img;
 const productImages = readJson('product-image-urls.json');
 for (const m of read('brand-images.csv')) {
   const p = productImages[m.barcode];

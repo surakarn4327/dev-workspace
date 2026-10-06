@@ -82,7 +82,6 @@ function photoCredits(menu: Menu, protein: string | null): { label: string; img:
     out.push({ label, img });
   };
   for (const r of checkMenu(d, menu, protein).rows) {
-    add(r.ingredient, r.image);
     for (const b of r.brands ?? []) add(`${r.ingredient} ${b.brand}`, b.image);
   }
   return out;
@@ -147,7 +146,7 @@ function libraryView(): string {
 const photo = (img: PhotoCredit | null | undefined, cls = 'ph'): string => (img ? `<div class="${cls}" style="background-image:${cssUrl(img.url)}"></div>` : '');
 
 function rowHtml(r: RowResult, diet: boolean): string {
-  if (!diet) return `<div class="row">${photo(r.image)}<div class="n">${esc(r.ingredient)}</div></div>`;
+  if (!diet) return `<div class="row"><div class="n">${esc(r.ingredient)}</div></div>`;
   if (r.kind === 'brand') {
     const list = r.brands?.length
       ? `<ul>${r.brands.map((b) => `<li class="${b.image ? 'has-img' : ''}">${photo(b.image, 'bph')}<span>${esc(b.brand)}${[...b.variants, ...b.notes].length ? ` (${esc([...b.variants, ...b.notes].join(' / '))})` : ''}</span></li>`).join('')}</ul>`
@@ -163,7 +162,7 @@ function rowHtml(r: RowResult, diet: boolean): string {
     banned: ['ห้ามทาน', 'bad'],
   };
   const [label, cls] = tag[r.kind];
-  return `<div class="row">${photo(r.image)}<div><div class="n">${esc(r.ingredient)}</div>${r.kind === 'ok' || r.kind === 'limit' ? '' : `<div class="use">${esc(r.use)}</div>`}</div><span class="tag ${cls}">${label}</span></div>`;
+  return `<div class="row"><div><div class="n">${esc(r.ingredient)}</div>${r.kind === 'ok' || r.kind === 'limit' ? '' : `<div class="use">${esc(r.use)}</div>`}</div><span class="tag ${cls}">${label}</span></div>`;
 }
 
 // Anything that is not plainly edible comes first, then "eat sparingly", then edible.
