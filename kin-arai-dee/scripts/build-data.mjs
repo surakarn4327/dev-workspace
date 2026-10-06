@@ -24,6 +24,8 @@ const noteFor = (r) => noteRows.find((n) => n.category === r.category && n.brand
 const brands = brandRows
   .filter((r) => r.group === 'restricted')
   .map((r) => ({ category: r.category, brand: r.brand, variant: r.variant, note: noteFor(r)?.note ?? '', confirmed: noteFor(r)?.confirmed_by_label === 'yes' }));
+// Brands added after the Ramathibodi list (each with its own source in docs/brand-added.csv); always single-source.
+for (const r of fs.existsSync('docs/brand-added.csv') ? read('brand-added.csv') : []) brands.push({ category: r.category, brand: r.brand, variant: r.variant, note: '', confirmed: false });
 const regions = Object.fromEntries(regionRows.map((r) => [r.name, r.region]));
 
 // Photos (creator + licence + source page): only seasonings that must be bought by brand get one (Open Food Facts).
