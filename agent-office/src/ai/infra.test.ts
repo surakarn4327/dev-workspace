@@ -5,6 +5,7 @@ import type { InfraDeps } from './infra.ts';
 import type { HelperState } from './helper-monitor.ts';
 import type { GenerateRequest, ModelClient } from './model-client.ts';
 import type { Toolbox } from './toolbox.ts';
+import { IDLE_USAGE } from '../core/types.ts';
 import type { Infra } from '../core/types.ts';
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 5));
@@ -51,7 +52,7 @@ function fakeHelper(initial: HelperState = 'checking') {
 }
 
 test('with nothing connected the picture is the quiet default', () => {
-  assert.deepEqual(createInfra().snapshot(), { model: 0, tools: 0, quota: false, helper: 'unknown' });
+  assert.deepEqual(createInfra().snapshot(), { model: 0, tools: 0, quota: false, helper: 'unknown', usage: IDLE_USAGE });
 });
 
 test('model calls are counted while they run, and listeners hear the start and the end', async () => {

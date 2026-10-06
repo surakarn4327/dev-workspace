@@ -6,6 +6,7 @@ import { raw } from './i18n.ts';
 import type { Recording } from './recording.ts';
 import { ReplaySource } from './replay.ts';
 import { RoutedSource } from './routed-source.ts';
+import { IDLE_USAGE } from './types.ts';
 import type { ChatReply, OfficeEvent, OfficeSource } from './types.ts';
 
 const walk = (n: number): OfficeEvent => ({ type: 'agent.walk', agent: 'qa', to: 'pantry:0', speed: n });
@@ -153,7 +154,7 @@ function fakeLive() {
   const live: OfficeSource & { emit(e: OfficeEvent): void } = {
     subscribe: (fn) => {
       listeners.add(fn);
-      fn({ type: 'infra', infra: { model: 0, tools: 0, quota: false, helper: 'up' } });
+      fn({ type: 'infra', infra: { model: 0, tools: 0, quota: false, helper: 'up', usage: IDLE_USAGE } });
       return () => listeners.delete(fn);
     },
     isRunning: false,

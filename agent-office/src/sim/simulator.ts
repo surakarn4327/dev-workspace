@@ -114,6 +114,8 @@ export class MockOffice implements OfficeSource, DemoControls {
   /** Per-person lanes: hand-overs by or to the same person run one after another (nobody walks two ways at once). */
   private lanes = new Map<AgentId, Promise<void>>();
   private wake: (() => void) | null = null;
+  /** The daily quota has reset and the courier owes the lobby printer a fresh ream. */
+  private restockPending = false;
   private loc = {} as Record<AgentId, PlaceId>;
   private desired = {} as Record<AgentId, { activity: Activity; note?: Msg }>;
   private blocked = new Set<AgentId>();
@@ -253,6 +255,7 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.file = null;
     this.researchBrain = null;
     this.workBrain = null;
+    this.restockPending = false;
     this.team = { research: true, production: true };
     this.failLock = Promise.resolve();
     this.rejectNextReview = false;
@@ -272,6 +275,15 @@ export class MockOffice implements OfficeSource, DemoControls {
     if (this.infraFeed) this.emit({ type: 'infra', infra: this.infraFeed.snapshot() }); // a reset clears the picture, not the machinery
     void this.courierLoop(this.runId);
     if (this.ambient) void this.ambientLoop(this.runId);
+  }
+
+  /**
+   * The daily AI quota has reset: when the courier has nothing to carry, Zip takes a fresh ream of paper to the
+   * lobby printer. The pile of printed pages (and an empty tray) stays until the paper arrives.
+   */
+  restock(): void {
+    this.restockPending = true;
+    this.kick();
   }
 
   /** Stop everything for good (no loops restart). Used by tests so the process can exit. */
@@ -438,6 +450,11 @@ export class MockOffice implements OfficeSource, DemoControls {
     try {
       while (run === this.runId) {
         const item = this.queue[0];
+        if (!item && this.restockPending) {
+          this.restockPending = false;
+          await this.restockTrip();
+          continue;
+        }
         if (!item) {
           if (this.loc.courier !== 'desk:courier') {
             this.setAct('courier', 'idle');
@@ -463,6 +480,18 @@ export class MockOffice implements OfficeSource, DemoControls {
     } catch (err) {
       if (!(err instanceof Cancelled)) throw err;
     }
+  }
+
+  private async restockTrip(): Promise<void> {
+    this.setAct('courier', 'idle');
+    this.emit({ type: 'agent.carry', agent: 'courier', label: msg('doc.ream') });
+    await this.walk('courier', 'printer:0');
+    this.emit({ type: 'agent.say', agent: 'courier', text: msg('say.restock') });
+    this.setAct('courier', 'talking');
+    await this.sleep(900);
+    this.setAct('courier', 'idle');
+    this.emit({ type: 'paper.restocked' });
+    this.emit({ type: 'agent.carry', agent: 'courier', label: null });
   }
 
   // ---------- ambient office life ----------
@@ -585,7 +614,7 @@ export class MockOffice implements OfficeSource, DemoControls {
       } catch (err) {
         if (err instanceof Cancelled || !(err instanceof ModelError)) throw err;
         if (err.kind === 'cancelled') throw new Cancelled();
-        const reply = await this.ask(agent, msg(`ask.modelError.${err.kind}`), {
+        const reply = await this.ask(agent, this.modelErrorMsg(err), {
           choices: [choice('retry', 'choice.retry'), choice('cancel', 'choice.cancelJob')],
         });
         if (reply.choice === 'cancel') {
@@ -594,6 +623,12 @@ export class MockOffice implements OfficeSource, DemoControls {
         }
       }
     }
+  }
+
+  /** The question shown when a model call fails: the reason in words, with the HTTP code when Google gave one. */
+  private modelErrorMsg(err: ModelError): Msg {
+    console.warn('[agent-office] model call failed:', err.kind, err.status ?? '', err.message);
+    return msg(`ask.modelError.${err.kind}`, { code: err.status ? ` (HTTP ${err.status})` : '' });
   }
 
   private async thinkOnce<T>(agent: AgentId, brain: IntakeBrain, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -967,7 +1002,7 @@ export class MockOffice implements OfficeSource, DemoControls {
         await turn;
         try {
           if (run !== this.runId) throw new Cancelled();
-          const reply = await this.ask(agent, msg(`ask.modelError.${err.kind}`), {
+          const reply = await this.ask(agent, this.modelErrorMsg(err), {
             choices: [choice('retry', 'choice.retry'), choice('cancel', 'choice.cancelJob')],
           });
           if (reply.choice === 'cancel') {

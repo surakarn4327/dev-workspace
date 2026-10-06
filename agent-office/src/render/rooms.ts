@@ -1,5 +1,6 @@
 // Furniture and walls for the rooms of the building, drawn in the same 3/4 view as the desks.
 
+import type { HelperKind } from '../core/types.ts';
 import type { Rect } from '../core/world.ts';
 import { rect, shadow } from './furniture.ts';
 
@@ -178,6 +179,32 @@ export interface RackNet {
   traffic: number;
   /** The free AI quota is used up: the racks overheat. */
   hot: boolean;
+  /**
+   * Set on the one rack whose bottom unit is the link to the search helper: its first light is the helper's
+   * health, the other two scan while a web tool runs.
+   */
+  link?: { helper: HelperKind; /** 0..1: a tool call is (or just was) running. */ tools: number };
+}
+
+const GREEN = '#2fb36a';
+const GREEN_DIM = '#17402a';
+const AMBER = '#f2c14e';
+const AMBER_DIM = '#5a4410';
+const RED = '#e5484d';
+const RED_DIM = '#4a1a1c';
+const OFF = '#1a1e28';
+
+/** The three lights of the rack unit that links the office to the search helper. */
+export function linkLights(t: number, link: { helper: HelperKind; tools: number }): [string, string, string] {
+  const { helper, tools } = link;
+  const blink = (a: string, b: string, rate: number): string => (Math.floor(t * rate) % 2 ? a : b);
+  const health = helper === 'down' ? blink(RED, RED_DIM, 2) : helper === 'unknown' ? blink(AMBER, AMBER_DIM, 4) : helper === 'degraded' ? AMBER : GREEN;
+  if (helper === 'down') return [health, OFF, OFF];
+  if (tools > 0) {
+    const scan = Math.floor(t * 8) % 3; // a light runs along the unit while a web tool works
+    return [health, scan === 1 ? AMBER : AMBER_DIM, scan === 2 ? AMBER : AMBER_DIM];
+  }
+  return [health, GREEN_DIM, Math.floor(t / 1.2) % 2 === 0 ? GREEN : GREEN_DIM]; // idle heartbeat
 }
 
 /** A server rack whose LEDs blink faster the busier the office is, and flicker with every real model call. */
@@ -189,9 +216,15 @@ export function drawRack(g: CanvasRenderingContext2D, r: Rect, t: number, load: 
   rect(g, x + w - 1, y, 1, h, '#151a24');
   for (let i = 0; i < 5; i++) {
     const uy = y + 3 + i * 5;
-    rect(g, x + 1, uy, w - 2, 4, '#2d3446');
-    rect(g, x + 1, uy, w - 2, 1, '#3c455c');
+    const isLink = !!net.link && i === 4;
+    rect(g, x + 1, uy, w - 2, 4, isLink ? '#26344f' : '#2d3446'); // the link unit is a shade bluer
+    rect(g, x + 1, uy, w - 2, 1, isLink ? '#3d5278' : '#3c455c');
     rect(g, x + 10, uy + 2, 4, 1, '#151a24');
+    if (isLink && net.link) {
+      const lights = linkLights(t, net.link);
+      for (let k = 0; k < 3; k++) rect(g, x + 2 + k * 3, uy + 1, 2, 2, lights[k]);
+      continue;
+    }
     for (let k = 0; k < 3; k++) {
       const phase = Math.floor(t * (1.5 + load * 3.5 + net.traffic * 6) + i * 3 + k * 5 + seed * 7);
       const on = load > 0 || net.traffic > 0 ? phase % 3 !== 0 : phase % 11 === 0 || k === 0;

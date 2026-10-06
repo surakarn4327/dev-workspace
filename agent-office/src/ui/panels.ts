@@ -1,7 +1,7 @@
 // Side panels and the header tracker: inspector, courier queue, event feed, workflow steps.
 // Everything is rendered from keys at display time, so a language switch re-labels it all (feed included).
 
-import { onLangChange, t, tr } from '../core/i18n.ts';
+import { getLang, onLangChange, t, tr } from '../core/i18n.ts';
 import { DEPT_COLOR, ROSTER, blurbOf, modelOf, nameOf, roleOf } from '../core/roster.ts';
 import type { OfficeStore } from '../core/state.ts';
 import { describeEvent } from '../core/state.ts';
@@ -21,6 +21,15 @@ interface FeedItem {
 function clock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** "5 h 12 min (around 14:00)" until the quota resets. */
+export function deliveryIn(resetAt: number, now: number = Date.now()): string {
+  const minutes = Math.max(1, Math.round((resetAt - now) / 60_000));
+  const at = new Date(resetAt).toLocaleTimeString(getLang() === 'th' ? 'th-TH' : 'en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? t('usage.in.hm', { h, m, at }) : t('usage.in.m', { m, at });
 }
 
 export function mountPanels(store: OfficeStore, view: OfficeView): { onEvent: (e: OfficeEvent) => void; refresh: () => void } {
@@ -100,6 +109,17 @@ export function mountPanels(store: OfficeStore, view: OfficeView): { onEvent: (e
     };
     kv(t('inspector.doing'), st.note ? tr(st.note) : '—');
     kv(t('inspector.model'), modelOf(id));
+    // The day's use of the free AI quota, told as printing: each model call is a page from the lobby printer.
+    const { usage } = store.state.infra;
+    const printed = usage.byAgent[id] ?? 0;
+    if (id !== 'courier') kv(t('inspector.today'), printed > 0 ? t('usage.agent', { n: printed }) : t('usage.agent.none'));
+    else {
+      // Zip brings the paper, so Zip's card is where the whole office's use and the next delivery show.
+      kv(t('inspector.today'), t('usage.zip.total', { n: usage.calls, k: Math.round(usage.tokens / 1000) }));
+      const paper = store.state.paper;
+      const when = deliveryIn(usage.resetAt);
+      kv(t('inspector.paper'), paper.due ? t('usage.zip.due') : paper.empty ? t('usage.zip.empty', { when }) : t('usage.zip.next', { when }));
+    }
 
     const convo = h('ul', 'convo');
     const mine = store.state.log.filter((l) => l.from === id || l.to === id).slice(-8);

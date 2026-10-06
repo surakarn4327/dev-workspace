@@ -11,9 +11,12 @@ interface Particle {
   size: number;
   color: string;
   fade: boolean;
+  /** A drawn shape instead of a plain square. */
+  glyph?: 'z';
 }
 
 const CONFETTI = ['#e5484d', '#f2c14e', '#4a8fd9', '#2fb36a', '#d96c8c', '#ffffff'];
+const Z_PIXELS: readonly (readonly [number, number])[] = [[0, 0], [1, 0], [2, 0], [1, 1], [0, 2], [1, 2], [2, 2]];
 const CODE = ['#7cd6ff', '#9be08f', '#f2c14e'];
 
 function rand(a: number, b: number): number {
@@ -65,6 +68,11 @@ export class Particles {
       size: 2,
       color: Math.random() < 0.5 ? '#6b6f80' : '#9aa0b0',
     });
+  }
+
+  /** A tired yawn: a small "z" drifting up. */
+  yawn(x: number, y: number): void {
+    this.add({ x: x + rand(-2, 2), y, vx: rand(2, 5), vy: rand(-7, -4), life: rand(1.6, 2.1), size: 1, color: '#bcd0ff', glyph: 'z' });
   }
 
   /** Coffee steam curling up from a cup or the machine. */
@@ -122,7 +130,11 @@ export class Particles {
     for (const p of this.list) {
       g.globalAlpha = p.fade ? Math.min(1, (p.life / p.max) * 1.6) : 1;
       g.fillStyle = p.color;
-      g.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+      if (p.glyph === 'z') {
+        const x = Math.round(p.x);
+        const y = Math.round(p.y);
+        for (const [dx, dy] of Z_PIXELS) g.fillRect(x + dx, y + dy, 1, 1);
+      } else g.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
     }
     g.globalAlpha = 1;
   }

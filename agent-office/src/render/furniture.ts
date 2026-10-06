@@ -156,15 +156,51 @@ export function drawCooler(g: CanvasRenderingContext2D, r: Rect): void {
   rect(g, x, y + 19, w, 1, '#9fb0c4');
 }
 
-export function drawPrinter(g: CanvasRenderingContext2D, r: Rect, busy: boolean): void {
+/** Tallest the pile of printed pages gets, in pixels. */
+export const PILE_MAX = 12;
+
+/**
+ * How tall the pile of printed pages is. Each page is one model call. Until the app has seen the free quota run out
+ * it cannot know the daily limit, so a pixel stands for a handful of calls; once it knows, the pile reaches its full
+ * height at that many calls. Any use at all shows at least one pixel.
+ */
+export function pileHeight(printed: number, cap: number | null): number {
+  if (printed <= 0) return 0;
+  const px = cap && cap > 0 ? Math.round((printed / cap) * PILE_MAX) : Math.ceil(printed / 6);
+  return Math.max(1, Math.min(PILE_MAX, px));
+}
+
+/** What the lobby printer shows of the day's quota: a pile of printed pages, and an empty paper tray when it ran out. */
+export interface PaperLook {
+  pile: number;
+  empty: boolean;
+  /** Seconds, for the blinking light. */
+  t: number;
+}
+
+export function drawPrinter(g: CanvasRenderingContext2D, r: Rect, busy: boolean, paper: PaperLook = { pile: 0, empty: false, t: 0 }): void {
   const { x, y, w } = r;
   shadow(g, x + 1, y + r.h - 1, w, 2);
-  rect(g, x + 3, y, w - 6, 5, '#f4f1e8');
+  if (paper.empty) {
+    rect(g, x + 3, y + 3, w - 6, 2, '#2d3347'); // the tray is bare
+    rect(g, x + 3, y + 4, w - 6, 1, '#161a26');
+  } else {
+    rect(g, x + 3, y, w - 6, 5, '#f4f1e8');
+  }
   rect(g, x, y + 5, w, 10, '#9aa3b5');
   rect(g, x, y + 5, w, 1, '#c9d0dd');
   rect(g, x + 3, y + 8, w - 6, 3, '#2d3347');
-  rect(g, x + w - 5, y + 12, 2, 2, busy ? '#2fb36a' : '#4a5373');
+  const light = paper.empty ? (Math.floor(paper.t * 3) % 2 ? '#e5484d' : '#4a1a1c') : busy ? '#2fb36a' : '#4a5373';
+  rect(g, x + w - 5, y + 12, 2, 2, light);
   rect(g, x, y + 14, w, 2, '#6f7889');
+  if (paper.pile > 0) {
+    // the printed pages, stacked on the floor beside the printer
+    const px = x + w + 1;
+    const bottom = y + 15;
+    shadow(g, px, bottom, 7, 2);
+    for (let i = 0; i < paper.pile; i++) rect(g, px, bottom - 1 - i, 6, 1, i % 2 ? '#d9dce6' : '#f4f1e8');
+    rect(g, px, bottom - paper.pile, 6, 1, '#ffffff');
+  }
 }
 
 /** A tall filing cabinet that stands against the wall. */

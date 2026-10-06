@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { InfraFeed } from '../ai/infra.ts';
-import { IDLE_INFRA } from '../core/types.ts';
+import { IDLE_INFRA, IDLE_USAGE } from '../core/types.ts';
 import type { Infra, OfficeEvent } from '../core/types.ts';
 import { OfficeStore } from '../core/state.ts';
 import { MockOffice } from './simulator.ts';
@@ -25,7 +25,7 @@ function feed(initial: Infra): InfraFeed & { push(next: Infra): void; listeners(
   };
 }
 
-const busy: Infra = { model: 1, tools: 0, quota: false, helper: 'up' };
+const busy: Infra = { model: 1, tools: 0, quota: false, helper: 'up', usage: IDLE_USAGE };
 
 test('the store keeps the latest picture of the machinery and starts quiet', () => {
   const store = new OfficeStore();
@@ -43,8 +43,8 @@ test('a newcomer is told the current picture at once, and every change after tha
   const events: OfficeEvent[] = [];
   office.subscribe((e) => events.push(e));
   assert.deepEqual(events, [{ type: 'infra', infra: busy }]);
-  f.push({ model: 0, tools: 2, quota: true, helper: 'degraded' });
-  assert.deepEqual(events.at(-1), { type: 'infra', infra: { model: 0, tools: 2, quota: true, helper: 'degraded' } });
+  f.push({ model: 0, tools: 2, quota: true, helper: 'degraded', usage: IDLE_USAGE });
+  assert.deepEqual(events.at(-1), { type: 'infra', infra: { model: 0, tools: 2, quota: true, helper: 'degraded', usage: IDLE_USAGE } });
   office.dispose();
 });
 

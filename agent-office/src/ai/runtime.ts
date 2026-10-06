@@ -6,19 +6,22 @@ import { createInfra } from './infra.ts';
 import { RateLimiter } from './limiter.ts';
 import { createModels } from './models.ts';
 import { createToolbox } from './toolbox.ts';
+import { UsageMeter } from '../core/usage.ts';
 
 export function createRuntime() {
   const limiter = new RateLimiter();
   const rawToolbox = createToolbox();
   const helper = createHelperMonitor(rawToolbox);
-  const infra = createInfra({ limiter, helper });
+  const usage = new UsageMeter();
+  const infra = createInfra({ limiter, helper, usage });
   return {
     limiter,
     helper,
     infra,
+    usage,
     /** The toolbox agents use: every call is counted for the server room. (Health checks are not.) */
     toolbox: infra.meterToolbox(rawToolbox),
-    models: createModels(undefined, undefined, { limiter, meter: infra.meterClient }),
+    models: createModels(undefined, undefined, { limiter, meter: infra.meterClient, usage }),
   };
 }
 

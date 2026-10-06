@@ -31,7 +31,7 @@ const aiSettings = mountAiSettings();
 
 // The real machinery behind the agents: the AI model clients (paced by the rate limiter), the local helper that
 // searches the web and reads pages, and the meter that lets the server room show all of it.
-const { helper, infra, models, toolbox } = createRuntime();
+const { helper, infra, models, toolbox, usage } = createRuntime();
 const helperStatus = mountHelperStatus(helper);
 void helper.check();
 
@@ -45,6 +45,8 @@ const office = new MockOffice({
   work: () => chooseWork(models, { attachments }),
 });
 const live: OfficeSource = office;
+// The daily AI quota resets at midnight Pacific time: Zip then brings the lobby printer a fresh ream of paper.
+usage.onRollover(() => office.restock());
 // Once the job is over (or abandoned) the inspector goes back to showing the roster's models.
 live.subscribe((e) => {
   if (e.type === 'job.done' || e.type === 'sim.reset') setLiveModels(null);
@@ -65,6 +67,11 @@ const store = new OfficeStore();
 const canvas = el<HTMLCanvasElement>('#office');
 const view = new OfficeView(canvas, store);
 const panels = mountPanels(store, view);
+// A tab left open overnight must still notice the reset, and the countdown on Zip's card keeps moving.
+setInterval(() => {
+  usage.tick();
+  panels.refresh();
+}, 30_000);
 
 // Order matters: the store updates first, so the view and panels read fresh state.
 source.subscribe((e) => store.apply(e));

@@ -319,6 +319,8 @@ export function placePoint(place: PlaceId): Point {
       return snap({ x: 440, y: 84 });
     case 'archive':
       return snap({ x: 32, y: 188 });
+    case 'printer':
+      return snap({ x: 224, y: 168 });
     default:
       return snap({ x: 256, y: 176 }); // client, in the lobby
   }
@@ -329,7 +331,7 @@ export type Facing = 'down' | 'up' | 'left' | 'right';
 export function placeFacing(place: PlaceId): Facing {
   const kind = place.split(':')[0];
   if (kind === 'meet') return Number(place.split(':')[1]) < 3 ? 'down' : 'up';
-  if (kind === 'visit') return 'left';
+  if (kind === 'visit' || kind === 'printer') return 'left';
   if (kind === 'pantry' || kind === 'restroom' || kind === 'server' || kind === 'archive') return 'up';
   return 'down';
 }
@@ -455,5 +457,6 @@ export const ALL_PLACES: PlaceId[] = [
   'restroom:1',
   'server:0',
   'archive:0',
+  'printer:0',
   'client',
 ];

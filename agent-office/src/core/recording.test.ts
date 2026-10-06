@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { raw } from './i18n.ts';
 import { Recorder, metaOf } from './recording.ts';
 import type { Recording } from './recording.ts';
+import { IDLE_USAGE } from './types.ts';
 import type { Infra, OfficeEvent } from './types.ts';
 
 function rig(maxEvents?: number) {
@@ -21,7 +22,7 @@ function rig(maxEvents?: number) {
 
 const ask: OfficeEvent = { type: 'chat.ask', id: 'c1', from: 'owner', text: raw('What?') };
 const walk: OfficeEvent = { type: 'agent.walk', agent: 'qa', to: 'pantry:0', speed: 40 };
-const infra = (model: number): Infra => ({ model, tools: 0, quota: false, helper: 'up' });
+const infra = (model: number): Infra => ({ model, tools: 0, quota: false, helper: 'up', usage: IDLE_USAGE });
 
 test('idle life is not recorded: only the owner\'s first question opens a recording', () => {
   const r = rig();

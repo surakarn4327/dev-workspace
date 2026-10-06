@@ -28,7 +28,8 @@ import { clampAxis } from '../core/camera.ts';
 import { BOARD, CLOCK, HOLES, buildBackground } from './background.ts';
 import type { Dir, Pose } from './characters.ts';
 import { getSprite } from './characters.ts';
-import { drawCabinet, drawChair, drawCooler, drawDesk, drawPlant, drawPrinter, drawTable } from './furniture.ts';
+import { drawCabinet, drawChair, drawCooler, drawDesk, drawPlant, drawPrinter, drawTable, pileHeight } from './furniture.ts';
+import { YAWN_EVERY, tiredLevel } from '../core/usage.ts';
 import {
   drawCoffeeTable,
   drawCounter,
@@ -42,7 +43,6 @@ import {
 } from './rooms.ts';
 import type { BubbleSpec, IconName } from './icons.ts';
 import { drawBubble } from './icons.ts';
-import { drawServerWall, fanSpeed } from './infra.ts';
 import { Particles } from './particles.ts';
 
 const STEP = 1 / 60;
@@ -69,6 +69,8 @@ interface AgentView {
   queued: { place: PlaceId; speed: number } | null;
   phase: number;
   fx: number;
+  /** Seconds until the next yawn (when tired). */
+  yawnIn: number;
   flash: { icon: IconName; t: number } | null;
 }
 
@@ -116,8 +118,6 @@ export class OfficeView {
   // short call is still seen; the fan speed eases and its angle is integrated so a change of speed is smooth.
   private modelGlow = 0;
   private toolGlow = 0;
-  private fanTurnsPerSecond = 0.5;
-  private fanAngle = 0;
   private smokeIn = 0;
   private last = 0;
   private acc = 0;
@@ -282,6 +282,7 @@ export class OfficeView {
         queued: null,
         phase: Math.random() * 3,
         fx: 0,
+        yawnIn: 3 + Math.random() * 6,
         flash: null,
       };
     }
@@ -355,8 +356,6 @@ export class OfficeView {
     const { infra } = this.store.state;
     this.modelGlow = infra.model > 0 ? 1 : Math.max(0, this.modelGlow - dt / 0.9);
     this.toolGlow = infra.tools > 0 ? 1 : Math.max(0, this.toolGlow - dt / 0.9);
-    this.fanTurnsPerSecond += (fanSpeed(this.modelGlow, infra.quota) - this.fanTurnsPerSecond) * Math.min(1, dt * 3);
-    this.fanAngle += this.fanTurnsPerSecond * Math.PI * 2 * dt;
     if (infra.quota) {
       this.smokeIn -= dt;
       if (this.smokeIn <= 0) {
@@ -422,6 +421,16 @@ export class OfficeView {
       if (a.target === 'pantry:0') this.particles.steam(427, 128);
     } else {
       a.fx = 0.3;
+      // Worn out people yawn at their desks: how often follows the calls they made today (all of them once the quota ran out).
+      const { usage } = this.store.state.infra;
+      const level = tiredLevel(usage.byAgent[a.id] ?? 0, usage.exhausted);
+      if (level > 0 && !a.moving && !a.anim && (st.activity === 'idle' || st.activity === 'waiting') && a.id !== 'courier') {
+        a.yawnIn -= 0.3;
+        if (a.yawnIn <= 0) {
+          a.yawnIn = YAWN_EVERY[level] * (0.7 + Math.random() * 0.6);
+          this.particles.yawn(a.x + 4, a.y - 22);
+        }
+      }
     }
   }
 
@@ -533,6 +542,7 @@ export class OfficeView {
     const atMachine = AGENT_IDS.some((id) => this.agents[id].target === 'pantry:0' && !this.agents[id].moving);
     let stallN = 0;
     let rackN = 0;
+    const rackTotal = PROPS.filter((p) => p.kind === 'rack').length;
     let shelfN = 0;
     for (const p of PROPS) {
       const rc = p.rect;
@@ -548,7 +558,7 @@ export class OfficeView {
             case 'cooler':
               return drawCooler(g, rc);
             case 'printer':
-              return drawPrinter(g, rc, busy);
+              return drawPrinter(g, rc, busy, { pile: pileHeight(s.paper.printed, s.infra.usage.cap), empty: s.paper.empty, t: this.time });
             case 'cabinet':
               return drawCabinet(g, rc.x, rc.y);
             case 'sofa':
@@ -558,7 +568,12 @@ export class OfficeView {
             case 'stall':
               return drawStall(g, rc, inRestroom(stall === 0 ? 'restroom:0' : 'restroom:1'));
             case 'rack':
-              return drawRack(g, rc, this.time, load, error, rack, { traffic: this.modelGlow, hot: s.infra.quota });
+              return drawRack(g, rc, this.time, load, error, rack, {
+                traffic: this.modelGlow,
+                hot: s.infra.quota,
+                // the last rack's bottom unit is the link to the search helper
+                link: rack === rackTotal - 1 ? { helper: s.infra.helper, tools: this.toolGlow } : undefined,
+              });
             case 'shelf':
               // the right-hand unit fills first as jobs get filed; the left one overflows later
               return drawShelf(g, rc, shelf === 0 ? Math.min(16, 8 + Math.max(0, archived - 12)) : Math.min(16, 4 + Math.min(archived, 12)));
@@ -701,16 +716,6 @@ export class OfficeView {
     hand(((now.getHours() % 12) + now.getMinutes() / 60) * (Math.PI / 6), 2, '#1d1b2e');
     hand(now.getMinutes() * (Math.PI / 30), 3, '#1d1b2e');
     hand(now.getSeconds() * (Math.PI / 30), 3, '#e5484d');
-
-    // the server room wall shows the real machinery: fan, warning beacon and the link to the search helper
-    drawServerWall(g, {
-      t: this.time,
-      fanAngle: this.fanAngle,
-      modelGlow: this.modelGlow,
-      toolGlow: this.toolGlow,
-      hot: s.infra.quota,
-      helper: s.infra.helper,
-    });
 
     // door lights: the restroom shows when it is occupied, the server room shows the office's health
     for (const d of DOORS) {

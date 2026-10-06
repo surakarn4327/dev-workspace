@@ -120,13 +120,6 @@ function paintBackWall(g: Ctx, r: Range): void {
     }
   }
 
-  // server room: cooling vent and a warning sign
-  rect(g, 422, 8, 40, 24, '#1a1e28');
-  rect(g, 424, 10, 36, 20, '#2d3340');
-  for (let vy = 12; vy < 29; vy += 3) rect(g, 425, vy, 34, 1, '#151a24');
-  rect(g, 410, 14, 8, 8, '#f2c14e');
-  rect(g, 413, 16, 2, 3, '#1d1b2e');
-  rect(g, 413, 20, 2, 1, '#1d1b2e');
   // poster in the QA lab
   rect(g, 340, 12, 12, 18, '#2a2f4d');
   rect(g, 341, 13, 10, 16, '#f2d9a0');

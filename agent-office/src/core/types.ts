@@ -31,6 +31,7 @@ export type PlaceId =
   | `restroom:${0 | 1}`
   | 'server:0' // in front of the server racks
   | 'archive:0' // in front of the archive shelves
+  | 'printer:0' // beside the lobby printer (where paper is restocked)
   | 'client'; // lobby spot where the user is served
 
 export type Activity =
@@ -94,11 +95,33 @@ export interface Infra {
   /** The free AI quota is used up: calls wait. */
   quota: boolean;
   helper: HelperKind;
+  usage: UsageView;
 }
 
 export type HelperKind = 'unknown' | 'up' | 'degraded' | 'down';
 
-export const IDLE_INFRA: Infra = { model: 0, tools: 0, quota: false, helper: 'unknown' };
+/**
+ * How much of today's free AI quota this app has used, as the office shows it (the lobby printer's paper, how tired
+ * people look). Google does not say how much is left, so this counts only what this app asked for.
+ */
+export interface UsageView {
+  /** Model calls answered today. */
+  calls: number;
+  /** Tokens those calls used (what the model reported). */
+  tokens: number;
+  /** Calls per position today. */
+  byAgent: Partial<Record<AgentId, number>>;
+  /** The free quota ran out and has not come back yet. */
+  exhausted: boolean;
+  /** How many calls had been made the last time the quota ran out (null = it never has): the best guess at the daily limit. */
+  cap: number | null;
+  /** When the daily quota resets (ms since epoch). */
+  resetAt: number;
+}
+
+export const IDLE_USAGE: UsageView = { calls: 0, tokens: 0, byAgent: {}, exhausted: false, cap: null, resetAt: 0 };
+
+export const IDLE_INFRA: Infra = { model: 0, tools: 0, quota: false, helper: 'unknown', usage: IDLE_USAGE };
 
 // All words travel as `Msg` (dictionary key + params), never as ready-made sentences, so the UI
 // picks the language at display time. User-typed text is the one exception (`raw`, or `title`).
@@ -133,7 +156,10 @@ export type OfficeEvent =
   // the free AI quota is used up for the moment. The next chat.ask (or a chat.closed) replaces it.
   | { type: 'chat.thinking'; id: string; from: AgentId; wait?: 'quota' }
   // A snapshot of the machinery behind the agents (see Infra). Sent whenever any part of it changes.
-  | { type: 'infra'; infra: Infra };
+  | { type: 'infra'; infra: Infra }
+  // The courier has brought fresh paper to the lobby printer after the daily quota reset: the pile of printed pages
+  // is cleared and an empty tray is full again.
+  | { type: 'paper.restocked' };
 
 export type OfficeListener = (event: OfficeEvent) => void;
 

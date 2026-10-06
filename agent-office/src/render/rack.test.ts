@@ -1,11 +1,10 @@
-// The drawing is checked through a recording canvas: what colour went where, never a real screen.
+// The server racks show the real machinery. The drawing is checked through a recording canvas:
+// what colour went where, never a real screen.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { HelperKind } from '../core/types.ts';
-import { BEACON, FAN, GATEWAY, VENT, drawBeacon, drawFan, drawGateway, drawServerWall, fanSpeed } from './infra.ts';
-import type { WallLook } from './infra.ts';
-import { drawRack } from './rooms.ts';
+import { drawRack, linkLights } from './rooms.ts';
 
 interface Painted {
   x: number;
@@ -32,117 +31,10 @@ function canvas(): { g: CanvasRenderingContext2D; painted: Painted[] } {
   return { g, painted };
 }
 
-const look = (over: Partial<WallLook> = {}): WallLook => ({ t: 0, fanAngle: 0, modelGlow: 0, toolGlow: 0, hot: false, helper: 'up', ...over });
-
 const GREEN = '#2fb36a';
+const GREEN_DIM = '#17402a';
 const AMBER = '#f2c14e';
 const RED = '#e5484d';
-
-/** Colour of each of the gateway's eight lights, read back from what was painted. */
-function leds(over: Partial<WallLook>): string[] {
-  const { g, painted } = canvas();
-  drawGateway(g, look(over));
-  const lights = painted.filter((p) => p.w === 2 && p.h === 2 && p.y === GATEWAY.y + 3);
-  assert.equal(lights.length, 8);
-  return lights.map((p) => p.color);
-}
-
-test('the cooling fan turns faster while the model works and fastest when the quota is used up', () => {
-  assert.ok(fanSpeed(0, false) < fanSpeed(1, false));
-  assert.ok(fanSpeed(1, false) < fanSpeed(0, true));
-  assert.equal(fanSpeed(1, true), fanSpeed(0, true), 'overheating beats everything');
-});
-
-test('the fan blades are in different places at different angles, and stay inside the vent', () => {
-  const at = (angle: number): string => {
-    const { g, painted } = canvas();
-    drawFan(g, look({ fanAngle: angle }));
-    // the set of pixels, not the order they were drawn in
-    return JSON.stringify([...new Set(painted.filter((p) => p.w === 1 && p.h === 1).map((p) => `${p.x},${p.y}`))].sort());
-  };
-  assert.notEqual(at(0), at(0.3));
-  assert.equal(at(0), at(Math.PI / 2), 'four blades look the same every quarter turn');
-  const { g, painted } = canvas();
-  drawFan(g, look({ fanAngle: 1.1 }));
-  for (const p of painted) {
-    assert.ok(p.x >= VENT.x && p.x + p.w <= VENT.x + VENT.w && p.y >= VENT.y && p.y + p.h <= VENT.y + VENT.h, `(${p.x},${p.y}) is inside the vent`);
-  }
-  assert.ok(painted.some((p) => p.x === FAN.x - 9), 'the fan opening is drawn');
-});
-
-test('the vent glows red only when the quota is used up', () => {
-  const { g: cool, painted: coolPaint } = canvas();
-  drawFan(cool, look());
-  assert.equal(coolPaint.some((p) => p.color.startsWith('rgba(229,72,77')), false);
-  const { g: hot, painted: hotPaint } = canvas();
-  drawFan(hot, look({ hot: true }));
-  assert.equal(hotPaint.some((p) => p.color.startsWith('rgba(229,72,77') && p.w === VENT.w && p.h === VENT.h), true);
-});
-
-test('the beacon is a dark lamp when all is well and flashes red, with light at its sides, when the quota is used up', () => {
-  const lamp = (over: Partial<WallLook>): Painted[] => {
-    const { g, painted } = canvas();
-    drawBeacon(g, look(over));
-    return painted;
-  };
-  assert.deepEqual(lamp({ t: 0 }).filter((p) => p.w === BEACON.w).map((p) => p.color), ['#3a2124']);
-  assert.deepEqual(lamp({ t: 5 }).filter((p) => p.w === BEACON.w).map((p) => p.color), ['#3a2124'], 'never lit without a quota problem');
-  const on = lamp({ hot: true, t: 0 });
-  const off = lamp({ hot: true, t: 0.4 });
-  assert.ok(on.some((p) => p.w === BEACON.w && p.color === '#ff6b6b'));
-  assert.ok(off.some((p) => p.w === BEACON.w && p.color === '#7a2226'));
-  assert.ok(on.length > off.length, 'the side glow is only drawn while the lamp is on');
-});
-
-test('the gateway lights say whether the helper is up, degraded, down or still being looked for', () => {
-  assert.equal(leds({ helper: 'up' })[0], GREEN);
-  const degraded = leds({ helper: 'degraded' });
-  assert.deepEqual([degraded[0], degraded[1]], [GREEN, AMBER]);
-  assert.equal(leds({ helper: 'down', t: 0.6 })[0], RED);
-  assert.notEqual(leds({ helper: 'down', t: 0 })[0], RED, 'it blinks');
-  assert.ok(leds({ helper: 'down', t: 0 }).slice(1).every((c) => c === '#1a1e28'), 'the rest is dark');
-  assert.equal(leds({ helper: 'unknown', t: 0.3 })[0], AMBER);
-  assert.ok(!leds({ helper: 'unknown', t: 0.3 }).includes(GREEN));
-});
-
-test('a running tool makes an amber light run along the strip; without one it rests', () => {
-  const resting = leds({ helper: 'up', toolGlow: 0, t: 0.7 });
-  assert.equal(resting.filter((c) => c === AMBER).length, 0);
-  const seen = new Set<number>();
-  for (let step = 0; step < 24; step++) {
-    const lights = leds({ helper: 'up', toolGlow: 1, t: step / 12 });
-    const at = lights.indexOf(AMBER);
-    assert.ok(at >= 1 || at === 0 || at === -1);
-    if (at >= 0) seen.add(at);
-  }
-  assert.ok(seen.size >= 6, `the scan visits many lights (saw ${[...seen].join(',')})`);
-});
-
-test('the antenna shows signal arcs only while a tool runs and the helper is not down', () => {
-  const arcs = (over: Partial<WallLook>): number => {
-    const { g, painted } = canvas();
-    drawGateway(g, look(over));
-    return painted.filter((p) => p.color === AMBER && p.x < GATEWAY.x + 10).length;
-  };
-  assert.equal(arcs({ toolGlow: 0 }), 0);
-  assert.ok(arcs({ toolGlow: 1, t: 0 }) >= 2);
-  assert.equal(arcs({ toolGlow: 1, helper: 'down' }), 0);
-});
-
-test('the whole wall draws without trouble in every combination', () => {
-  const helpers: HelperKind[] = ['unknown', 'up', 'degraded', 'down'];
-  for (const helper of helpers) {
-    for (const hot of [false, true]) {
-      for (const glow of [0, 0.5, 1]) {
-        const { g, painted } = canvas();
-        assert.doesNotThrow(() => drawServerWall(g, look({ helper, hot, modelGlow: glow, toolGlow: glow, t: glow * 7, fanAngle: glow * 3 })));
-        assert.ok(painted.length > 20);
-      }
-    }
-  }
-});
-
-// ---------- the racks ----------
 
 const RACK = { x: 412, y: 48, w: 16, h: 30 };
 function rackColors(over: { traffic?: number; hot?: boolean; load?: number; error?: boolean; t?: number }): Set<string> {
@@ -153,7 +45,7 @@ function rackColors(over: { traffic?: number; hot?: boolean; load?: number; erro
 
 test('racks glow green when calm, add amber flicker with model traffic, and overheat amber-and-brown when the quota is used up', () => {
   const calm = rackColors({});
-  assert.ok(calm.has(GREEN) || calm.has('#17402a'));
+  assert.ok(calm.has(GREEN) || calm.has(GREEN_DIM));
   assert.ok(!calm.has(AMBER));
   let sawAmber = false;
   for (let t = 0; t < 2; t += 0.1) if (rackColors({ traffic: 1, t }).has(AMBER)) sawAmber = true;
@@ -162,7 +54,6 @@ test('racks glow green when calm, add amber flicker with model traffic, and over
     const hot = rackColors({ hot: true, t });
     assert.ok([...hot].every((c) => c === AMBER || c === '#7a4a12'), `overheating shows only amber tones at t=${t}`);
   }
-  assert.ok(rackColors({ hot: true, error: true, t: 0.25 }).has(RED) || rackColors({ hot: true, error: true, t: 0.5 }).has('#6b1d21') || true, 'an agent error still shows its own red');
 });
 
 test('model traffic speeds the rack lights up compared with a quiet rack', () => {
@@ -177,4 +68,44 @@ test('model traffic speeds the rack lights up compared with a quiet rack', () =>
   };
   const changes = (f: string[]): number => f.filter((v, i) => i > 0 && v !== f[i - 1]).length;
   assert.ok(changes(frames(1)) > changes(frames(0)), 'a busy rack flickers more');
+});
+
+// ---------- the link unit: the search helper's health and activity ----------
+
+test('the first light of the link unit is the helper\'s health: green up, amber degraded, blinking amber while unknown, blinking red when down', () => {
+  assert.equal(linkLights(0, { helper: 'up', tools: 0 })[0], GREEN);
+  assert.equal(linkLights(0, { helper: 'degraded', tools: 0 })[0], AMBER);
+  const seen = (helper: HelperKind): Set<string> => new Set([0, 0.3, 0.6, 0.9].map((t) => linkLights(t, { helper, tools: 0 })[0]));
+  assert.ok(seen('down').has(RED) && seen('down').size === 2, 'down blinks red');
+  assert.ok(seen('unknown').has(AMBER) && seen('unknown').size === 2, 'unknown blinks amber');
+});
+
+test('while a web tool runs, a light scans along the unit; at rest it only keeps a slow heartbeat; with the helper down the other lights are off', () => {
+  const at = (t: number) => linkLights(t, { helper: 'up', tools: 1 });
+  const bright = new Set<number>();
+  for (let step = 0; step < 24; step++) at(step / 8).forEach((c, k) => c === AMBER && bright.add(k));
+  assert.deepEqual([...bright].sort(), [1, 2], 'the scan visits both activity lights');
+  assert.ok(at(0)[1] !== linkLights(0, { helper: 'up', tools: 0 })[1] || at(0.13)[2] !== linkLights(0.13, { helper: 'up', tools: 0 })[2]);
+  const rest = new Set<string>();
+  for (let t = 0; t < 3; t += 0.2) linkLights(t, { helper: 'up', tools: 0 }).slice(1).forEach((c) => rest.add(c));
+  assert.ok(!rest.has(AMBER), 'no amber at rest');
+  const down = linkLights(0, { helper: 'down', tools: 1 });
+  assert.equal(down[1], down[2]);
+  assert.equal(down[1], '#1a1e28');
+});
+
+test('only the rack given a link shows it, in its bottom unit, and overheating or an agent error does not hide the helper\'s health', () => {
+  const unit = (net: Parameters<typeof drawRack>[6], opts: { error?: boolean } = {}): string[] => {
+    const { g, painted } = canvas();
+    drawRack(g, RACK, 0.5, 0, opts.error ?? false, 0, net);
+    // the bottom unit's three lights sit at y = rack.y + 3 + 4*5 + 1
+    return painted.filter((p) => p.w === 2 && p.h === 2 && p.y === RACK.y + 3 + 20 + 1).map((p) => p.color);
+  };
+  const plain = unit({ traffic: 0, hot: false });
+  const linked = unit({ traffic: 0, hot: false, link: { helper: 'down', tools: 0 } });
+  assert.equal(linked.length, 3);
+  assert.ok(linked.includes(RED) || linked.includes('#4a1a1c'), 'a down helper is red on the link unit');
+  assert.ok(!plain.includes(RED) && !plain.includes('#4a1a1c'));
+  const hotLinked = unit({ traffic: 0, hot: true, link: { helper: 'up', tools: 0 } }, { error: true });
+  assert.equal(hotLinked[0], GREEN, 'quota heat and agent errors do not repaint the helper light');
 });

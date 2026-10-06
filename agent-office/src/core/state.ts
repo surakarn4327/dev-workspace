@@ -1,7 +1,7 @@
 import { msg, t, tr } from './i18n.ts';
 import type { Msg } from './i18n.ts';
 import { ROSTER, nameOf } from './roster.ts';
-import type { Activity, AgentId, ChatChoice, Doc, Infra, OfficeEvent, PlaceId, Stage } from './types.ts';
+import type { Activity, AgentId, ChatChoice, Doc, Infra, OfficeEvent, PlaceId, Stage, UsageView } from './types.ts';
 import { AGENT_IDS, IDLE_INFRA } from './types.ts';
 
 export interface AgentState {
@@ -43,6 +43,11 @@ export interface OfficeState {
   archived: number;
   /** The machinery behind the agents: drawn by the server room. */
   infra: Infra;
+  /**
+   * The lobby printer: how many pages (model calls) it has printed today, whether its paper has run out, and whether
+   * the daily quota has reset so that the courier owes it fresh paper (until then the old pile and an empty tray stay).
+   */
+  paper: { printed: number; empty: boolean; due: boolean };
 }
 
 function freshAgents(): Record<AgentId, AgentState> {
@@ -64,6 +69,7 @@ export function freshState(): OfficeState {
     chat: null,
     archived: 0,
     infra: { ...IDLE_INFRA },
+    paper: { printed: 0, empty: false, due: false },
   };
 }
 
@@ -150,10 +156,23 @@ export class OfficeStore {
         if (s.chat?.id === e.id) s.chat = null;
         break;
       case 'infra':
-        s.infra = { ...e.infra };
+        s.infra = { ...IDLE_INFRA, ...e.infra }; // recordings made before the usage tally have no `usage`
+        this.followPaper(e.infra.usage ?? IDLE_INFRA.usage);
+        break;
+      case 'paper.restocked':
+        s.paper = { printed: s.infra.usage.calls, empty: s.infra.usage.exhausted, due: false };
         break;
     }
     for (const fn of this.listeners) fn();
+  }
+
+  /** The printer follows the day's tally; after a daily reset the pile and the empty tray wait for the courier. */
+  private followPaper(u: UsageView): void {
+    const p = this.state.paper;
+    if (u.calls < p.printed) p.due = true; // the tally started over: the old pile stays until fresh paper arrives
+    else p.printed = u.calls;
+    if (u.exhausted) p.empty = true;
+    else if (!p.due) p.empty = false; // an answer came back: there is paper again
   }
 
   private pushLog(line: LogLine): void {
@@ -185,6 +204,8 @@ export function describeEvent(e: OfficeEvent): string | null {
       return t('feed.handed', { label: e.doc.label, from: nameOf(e.doc.from), to: nameOf(e.doc.to) });
     case 'archive.filed':
       return t('feed.filed');
+    case 'paper.restocked':
+      return t('feed.restocked');
     case 'review.verdict':
       return e.verdict === 'pass'
         ? t('feed.pass', { round: e.round })

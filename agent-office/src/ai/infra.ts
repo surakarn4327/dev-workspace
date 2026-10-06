@@ -5,6 +5,7 @@
 
 import type { HelperKind, Infra } from '../core/types.ts';
 import { IDLE_INFRA } from '../core/types.ts';
+import type { UsageMeter } from '../core/usage.ts';
 import type { HelperMonitor, HelperState } from './helper-monitor.ts';
 import type { RateLimiter } from './limiter.ts';
 import type { GenerateRequest, GenerateResult, ModelClient } from './model-client.ts';
@@ -34,6 +35,8 @@ const HELPER_KIND: Record<HelperState, HelperKind> = {
 export interface InfraDeps {
   limiter?: Pick<RateLimiter, 'onStatus' | 'status'>;
   helper?: Pick<HelperMonitor, 'status' | 'onChange'>;
+  /** Today's tally of model calls and tokens (the lobby printer's paper). */
+  usage?: Pick<UsageMeter, 'view' | 'onChange'>;
 }
 
 export function createInfra(deps: InfraDeps = {}): InfraMeter {
@@ -47,6 +50,7 @@ export function createInfra(deps: InfraDeps = {}): InfraMeter {
     tools,
     quota: deps.limiter?.status.phase === 'quota-wait',
     helper: deps.helper ? HELPER_KIND[deps.helper.status.state] : IDLE_INFRA.helper,
+    usage: deps.usage ? deps.usage.view() : IDLE_INFRA.usage,
   });
 
   function changed(): void {
@@ -59,6 +63,7 @@ export function createInfra(deps: InfraDeps = {}): InfraMeter {
   last = JSON.stringify(snapshot());
   deps.limiter?.onStatus(changed);
   deps.helper?.onChange(changed);
+  deps.usage?.onChange(changed);
 
   async function counted<T>(bump: (by: number) => void, run: () => Promise<T>): Promise<T> {
     bump(1);

@@ -3,9 +3,11 @@
 // All positions share one rate limiter, because the free quota belongs to the user's key, not to a position.
 
 import { loadKey } from '../core/ai-settings.ts';
+import type { UsageMeter } from '../core/usage.ts';
 import type { AgentId } from '../core/types.ts';
 import { DEFAULT_GEMINI_MODEL, createGeminiClient } from './gemini.ts';
 import { RateLimiter, limitClient } from './limiter.ts';
+import { ModelError } from './model-client.ts';
 import type { ModelClient } from './model-client.ts';
 
 export const MODEL_FOR: Record<AgentId, string | null> = {
@@ -31,7 +33,7 @@ export interface Models {
 export function createModels(
   config: Record<AgentId, string | null> = MODEL_FOR,
   getKey: () => string | null = () => loadKey(),
-  opts: { fetchFn?: typeof fetch; limiter?: RateLimiter; meter?: (client: ModelClient) => ModelClient } = {},
+  opts: { fetchFn?: typeof fetch; limiter?: RateLimiter; meter?: (client: ModelClient) => ModelClient; usage?: Pick<UsageMeter, 'record' | 'markExhausted'> } = {},
 ): Models {
   const limiter = opts.limiter ?? new RateLimiter();
   const cache = new Map<string, ModelClient>();
@@ -47,7 +49,23 @@ export function createModels(
         client = limitClient(opts.meter ? opts.meter(raw) : raw, limiter);
         cache.set(model, client);
       }
-      return client;
+      const { usage } = opts;
+      if (!usage) return client;
+      const shared = client;
+      // Each call is credited to the position that made it. A rate-limit error that gets past the limiter means it gave
+      // up waiting (the daily quota is most likely used up), which the printer shows as out of paper.
+      return {
+        async generate(req) {
+          try {
+            const result = await shared.generate(req);
+            usage.record(agent, result.usage?.totalTokens ?? 0);
+            return result;
+          } catch (err) {
+            if (err instanceof ModelError && err.kind === 'rate-limit') usage.markExhausted();
+            throw err;
+          }
+        },
+      };
     },
   };
 }

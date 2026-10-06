@@ -105,3 +105,28 @@ test('switching language re-labels steps, the queue, the inspector and the alrea
   assert.ok(text('#feed').includes('QA rejected (round 1)'));
 });
 test.after(() => t.stop());
+
+test("the character card tells what the person printed today, and Zip's card tells when fresh paper comes", async () => {
+  const usage = { calls: 12, tokens: 8400, byAgent: { qa: 4 }, exhausted: false, cap: null, resetAt: Date.now() + (5 * 60 + 12) * 60_000 };
+  await send({ type: 'infra', infra: { model: 0, tools: 0, quota: false, helper: 'up', usage } });
+  view.selected = 'qa';
+  await send({ type: 'agent.activity', agent: 'qa', activity: 'idle' });
+  assert.match(text('#inspector'), /Today\s*Printed 4 pages/);
+  view.selected = 'prod-1';
+  await send({ type: 'agent.activity', agent: 'prod-1', activity: 'idle' });
+  assert.match(text('#inspector'), /Today\s*Nothing printed yet/);
+
+  view.selected = 'courier';
+  await send({ type: 'agent.activity', agent: 'courier', activity: 'idle' });
+  const zip = text('#inspector');
+  assert.match(zip, /12 pages today \(about 8k tokens\)/);
+  assert.match(zip, /Fresh paper arrives in 5 h 1[12] min \(around \d\d:\d\d\)/);
+
+  await send({ type: 'infra', infra: { model: 0, tools: 0, quota: false, helper: 'up', usage: { ...usage, exhausted: true } } });
+  assert.match(text('#inspector'), /Out of paper\. Fresh paper arrives in/);
+
+  setLang('th');
+  await sleep(60);
+  assert.match(text('#inspector'), /กระดาษหมด รีมใหม่จะมาในอีก 5 ชม\. 1[12] นาที \(ราว \d\d:\d\d น\.\)/);
+  setLang('en');
+});
