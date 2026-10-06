@@ -2,6 +2,7 @@
 // Output: docs/product-image-urls.json  (barcode -> { name, brand, url, creator, license, page })
 import fs from 'fs';
 
+// Only products the manual allows. Iodine-added products must never be listed here (the app only shows usable brands).
 const CODES = {
   '8851912050209': 'ง่วนเชียง ซอสหอยนางรม',
   '8857123982063': '101 พลัส ซอสหอยนางรม',
@@ -12,11 +13,9 @@ const CODES = {
   '8850206111022': 'เด็กสมบูรณ์ บ๊วยเจี่ย',
   '8851954103512': 'ภูเขาทอง ซอสพริกเผ็ดน้อย',
   '8851954113061': 'ศรีราชาพานิช ซอสพริก',
+  '8857118730686': 'Mega Chef น้ำปลาแท้', // ผู้ใช้ยืนยันว่าเป็นรุ่นที่ใช้ได้ (2026-10-06)
   '8850206110025': 'เด็กสมบูรณ์ น้ำจิ้มไก่',
   '8850250004035': 'ทาคูมิอายิ เทอริยากิ',
-  '8850206250776': 'เด็กสมบูรณ์ ซีอิ๊วขาวเห็ดหอม ลดโซเดียม 40%',
-  '8850206212026': 'เด็กสมบูรณ์ ซอสปรุงรสฝาเขียว',
-  '8851008000064': 'หอยหลอด น้ำปลาแท้',
 };
 const UA = { 'User-Agent': 'kin-arai-dee-build/0.1 (personal non-commercial project)' };
 const out = {};
