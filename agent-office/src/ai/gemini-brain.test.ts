@@ -250,3 +250,10 @@ test('the owner is told to ask about limits and must-include points before finis
   await brain.ownerTurn([ex('q', 'a')], 't');
   assert.match(o.requests[0].system ?? '', /hard limits/);
 });
+test('the owner is told the names of attached files, quoted as data, and only when there are some', async () => {
+  const { ownerPrompt } = await import('./prompts.ts');
+  assert.doesNotMatch(ownerPrompt({ remaining: 3, fallbackLang: 'en' }), /attached/);
+  const p = ownerPrompt({ remaining: 3, fallbackLang: 'en', attachedNames: ['sales.csv', 'a "b".txt'] });
+  assert.match(p, /attached these files/);
+  assert.ok(p.includes('"sales.csv", "a \\"b\\".txt"'));
+});

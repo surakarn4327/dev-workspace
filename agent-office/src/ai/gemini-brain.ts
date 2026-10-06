@@ -23,6 +23,8 @@ export interface GeminiBrainDeps {
   lang?: () => Lang;
   /** The shared rate limiter, so the office can show "waiting for quota". */
   limiter?: RateLimiter;
+  /** Names of the files the client attached, so the owner does not ask for what is already there. */
+  attachedNames?: () => readonly string[];
 }
 
 // Generous on purpose: Thai takes many tokens, and a model that thinks first spends part of the budget on that.
@@ -68,10 +70,12 @@ export class GeminiBrain implements IntakeBrain {
   private readonly maxQuestions: number;
   private readonly lang: () => Lang;
   private readonly limiter?: RateLimiter;
+  private readonly attachedNames: () => readonly string[];
   private currentBrief = '';
 
   constructor(deps: GeminiBrainDeps) {
     this.limiter = deps.limiter;
+    this.attachedNames = deps.attachedNames ?? (() => []);
     this.owner = deps.owner;
     this.secretary = deps.secretary;
     this.maxQuestions = deps.maxQuestions ?? MAX_QUESTIONS;
@@ -93,7 +97,7 @@ export class GeminiBrain implements IntakeBrain {
     for (const h of history) {
       turns.push({ role: 'model', text: tr(h.question) }, { role: 'user', text: h.text });
     }
-    const system = ownerPrompt({ remaining: this.maxQuestions - history.length, fallbackLang: this.lang() });
+    const system = ownerPrompt({ remaining: this.maxQuestions - history.length, fallbackLang: this.lang(), attachedNames: this.attachedNames() });
 
     let reply = (await complete(this.owner, { system, history: turns, maxOutputTokens: QUESTION_TOKENS, signal })).text.trim();
     if (!isReady(reply) && reply.length > MAX_QUESTION_CHARS) {

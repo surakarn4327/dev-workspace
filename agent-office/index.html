@@ -122,6 +122,18 @@
             </div>
             <p class="hint" data-i18n="helper.hint"></p>
           </section>
+          <section class="panel" data-i18n-aria="files.title">
+            <h2 data-i18n="files.title"></h2>
+            <ul id="files-list" class="replay-list"></ul>
+            <div class="ctl-row">
+              <button id="files-attach" class="btn" type="button" data-i18n="files.attach"></button>
+              <input id="files-input" class="hidden" type="file" multiple tabindex="-1" data-i18n-aria="files.attach" />
+            </div>
+            <p id="files-status" class="hint" aria-live="polite"></p>
+            <p class="hint" data-i18n="files.hint"></p>
+            <div class="ctl-row" id="files-downloads" role="group" data-i18n-aria="files.download"></div>
+            <p id="files-download-none" class="hint" data-i18n="files.download.none"></p>
+          </section>
           <section class="panel" data-i18n-aria="replay.title">
             <h2 data-i18n="replay.title"></h2>
             <ul id="replay-list" class="replay-list"></ul>

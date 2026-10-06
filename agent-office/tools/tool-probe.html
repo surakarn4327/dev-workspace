@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tool probe (dev only)</title>
+  <style>
+    body { font: 14px/1.5 Consolas, monospace; max-width: 860px; margin: 24px auto; padding: 0 16px; background: #14161c; color: #e6e6e6; }
+    h1 { font-size: 18px; }
+    button { font: inherit; background: #3b6fd0; color: #fff; border: 2px solid #7aa6f0; padding: 8px 14px; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    pre { background: #0d0f13; border: 1px solid #2a2f3a; padding: 10px; white-space: pre-wrap; word-break: break-word; }
+    .note { color: #9aa3b5; }
+  </style>
+</head>
+<body>
+  <h1>Tool probe (dev only)</h1>
+  <p class="note">
+    Asks Gemini a question that needs today's information and lets it use the web tools (search, news, read a
+    page) through the local helper. Uses the key saved in the Menu (never shown). Takes about 20 to 60 seconds.
+    Wait until the text no longer starts with "Running".
+  </p>
+  <button id="run">Run the tool test</button>
+  <pre id="out">Not run yet.</pre>
+
+  <script type="module">
+    import { createGeminiClient } from '/src/ai/gemini.ts';
+    import { runWithTools } from '/src/ai/tool-runner.ts';
+    import { unverifiedUrls } from '/src/ai/agent-tools.ts';
+    import { createToolbox } from '/src/ai/toolbox.ts';
+    import { DEFAULT_GEMINI_MODEL } from '/src/ai/gemini.ts';
+
+    const out = document.getElementById('out');
+    const btn = document.getElementById('run');
+    const key = (() => { try { return (localStorage.getItem('agent-office.gemini-key') || '').trim() || null; } catch { return null; } })();
+
+    btn.addEventListener('click', async () => {
+      if (!key) { out.textContent = 'No key is saved. Open the Menu in the office, paste your key under AI settings and save it, then come back.'; return; }
+      btn.disabled = true;
+      const lines = [`Running... (model ${DEFAULT_GEMINI_MODEL})`];
+      const show = () => { out.textContent = lines.join('\n'); };
+      show();
+      const toolbox = createToolbox();
+      try {
+        const health = await toolbox.health();
+        lines.push(`helper: ok, engines resting: ${health.engines.filter((e) => e.restingUntil).map((e) => e.name).join(',') || 'none'}`);
+      } catch (e) {
+        lines.push(`helper: NOT AVAILABLE (${e.kind ?? e.message}). The test still runs, without tools.`);
+      }
+      show();
+      const client = createGeminiClient({ model: DEFAULT_GEMINI_MODEL, getKey: () => key, timeoutMs: 90000 });
+      const started = performance.now();
+      try {
+        const r = await runWithTools(
+          client,
+          {
+            system: 'You are a careful researcher. Use the tools to check current facts before answering. Answer in Thai in at most 5 short lines. Cite the web addresses of the pages you actually read.',
+            history: [{ role: 'user', text: 'ราคาทองคำแท่งวันนี้ในประเทศไทยเท่าไร และมีข่าวอะไรที่ทำให้ราคาเปลี่ยน' }],
+            maxOutputTokens: 1500,
+          },
+          toolbox,
+          {
+            onProgress: (e) => {
+              lines.push(e.type === 'call' ? `  -> ${e.name} ${JSON.stringify(e.args).slice(0, 110)}` : `  <- ${e.name} ${e.ok ? 'ok' : 'FAILED ' + e.error} (read ${e.read}, seen ${e.seen})`);
+              show();
+            },
+          },
+        );
+        const bad = unverifiedUrls(r.text, r);
+        lines.push('', `done in ${Math.round((performance.now() - started) / 1000)} s: ${r.steps} model calls, ${r.toolCalls} tool calls, tools worked: ${r.toolsWorked}`);
+        lines.push(`pages read: ${r.read.map((s) => s.url).join(' | ') || '(none)'}`);
+        lines.push(`results seen: ${r.seen.length}`, `addresses cited but never opened or seen: ${bad.join(' | ') || '(none)'}`, '', 'ANSWER:', r.text);
+      } catch (e) {
+        lines.push('', `ERROR: ${e.kind ?? e.name}: ${String(e.message).slice(0, 300)}`);
+      }
+      out.textContent = lines.join('\n');
+      btn.disabled = false;
+    });
+  </script>
+</body>
+</html>

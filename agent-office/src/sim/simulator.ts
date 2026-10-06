@@ -5,9 +5,13 @@
 import { choice } from '../core/brain.ts';
 import type { BrainWait, Exchange, IntakeBrain } from '../core/brain.ts';
 import type { JobFile } from '../core/job-file.ts';
+import type { Finding, ResearchBrain, ResearchTool } from '../core/research.ts';
+import { MAX_REJECTIONS, withStamp } from '../core/work.ts';
+import type { Team, WorkBrain } from '../core/work.ts';
+import { clientLang } from '../ai/gemini-brain.ts';
 import type { InfraFeed } from '../ai/infra.ts';
 import { isAffirmative, isBareRevise } from '../core/intent.ts';
-import { msg, raw, tr } from '../core/i18n.ts';
+import { getLang, msg, raw, tr } from '../core/i18n.ts';
 import type { Msg } from '../core/i18n.ts';
 import { sameRoom, travelMs } from '../core/world.ts';
 import type {
@@ -37,6 +41,10 @@ export interface MockOptions {
   ambient?: boolean;
   /** Makes the brain (the owner's questions and the secretary's brief) for each job. Default: the canned script. */
   brain?: () => IntakeBrain;
+  /** Makes the research department's brain for each job (real researchers with web tools), or null for the canned script. */
+  research?: () => ResearchBrain | null;
+  /** Makes the brain for the owner's team choice, production and the reviewer for each job, or null for the canned script. */
+  work?: () => WorkBrain | null;
   /** How long a brain call may take before the chat box shows "thinking" (default 250 ms; scripted brains never reach it). */
   thinkDelayMs?: number;
   /** The real machinery behind the agents (model and tool calls, quota, helper). Re-emitted as infra events. */
@@ -60,6 +68,8 @@ interface QueueItem {
   resolve: () => void;
   reject: (e: unknown) => void;
 }
+
+const TOOL_NOTE: Record<ResearchTool, string> = { search: 'note.searching', news: 'note.searchingNews', read: 'note.reading' };
 
 const STAFF: AgentId[] = ['research-1', 'research-2', 'prod-1', 'prod-2'];
 const PODS: Record<Pod, { head: AgentId; staff: [AgentId, AgentId] }> = {
@@ -109,6 +119,16 @@ export class MockOffice implements OfficeSource, DemoControls {
   private blocked = new Set<AgentId>();
   private ambient: boolean;
   private makeBrain: () => IntakeBrain;
+  private makeResearch: () => ResearchBrain | null;
+  /** The research brain of the job in progress (null when research is the canned script). */
+  private researchBrain: ResearchBrain | null = null;
+  private makeWork: () => WorkBrain | null;
+  /** The work brain of the job in progress (null when production and review are the canned script). */
+  private workBrain: WorkBrain | null = null;
+  /** The departments picked for the job in progress. */
+  private team: Team = { research: true, production: true };
+  /** Failure questions from parallel researchers are asked one at a time. */
+  private failLock: Promise<void> = Promise.resolve();
   private thinkDelayMs: number;
   private infraFeed?: InfraFeed;
   private stopInfra: (() => void) | null = null;
@@ -126,6 +146,8 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.autoAnswer = opts.autoAnswer ?? false;
     this.ambient = opts.ambient ?? true;
     this.makeBrain = opts.brain ?? (() => new ScriptedBrain());
+    this.makeResearch = opts.research ?? (() => null);
+    this.makeWork = opts.work ?? (() => null);
     this.thinkDelayMs = opts.thinkDelayMs ?? 250;
     this.infraFeed = opts.infra;
     this.stopInfra = opts.infra?.subscribe((infra) => this.emit({ type: 'infra', infra })) ?? null;
@@ -229,6 +251,10 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.intake = false;
     this.abortCalls();
     this.file = null;
+    this.researchBrain = null;
+    this.workBrain = null;
+    this.team = { research: true, production: true };
+    this.failLock = Promise.resolve();
     this.rejectNextReview = false;
     for (const p of this.pending.values()) p.reject(new Cancelled());
     this.pending.clear();
@@ -617,6 +643,9 @@ export class MockOffice implements OfficeSource, DemoControls {
     // 1. Brief: the owner questions the user until the brain says there is enough. Nothing has started
     // until the user sends the first answer.
     const brain = this.makeBrain();
+    this.researchBrain = this.makeResearch();
+    this.workBrain = this.makeWork();
+    this.team = { research: true, production: true };
     const history: Exchange[] = [];
     let title = '';
     for (;;) {
@@ -676,29 +705,43 @@ export class MockOffice implements OfficeSource, DemoControls {
       }
     }
 
-    // 3. Owner meets the department heads (everyone is back from any break by now).
+    // 3. Owner meets the department heads (everyone is back from any break by now). With a real work brain the
+    // owner first decides which departments this job needs, and only those heads come to the meeting.
     await this.settleAway();
+    const work = this.workBrain;
+    if (work) {
+      this.setAct('owner', 'thinking', msg('note.pickTeam'));
+      this.team = await this.modelCall('owner', work, (signal) => work.chooseTeam(this.file?.approvedBrief ?? '', signal));
+      this.setAct('owner', 'idle');
+      if (this.file) this.file.team = this.team;
+    }
+    const { team } = this;
     this.stage(jobId, 'meeting');
-    await Promise.all([
-      this.walk('owner', 'meet:1'),
-      this.walk('research-head', 'meet:3'),
-      this.walk('prod-head', 'meet:5'),
-    ]);
-    await this.convo([
-      ['owner', msg('say.meetOwner', { title }), 'research-head'],
-      ['research-head', msg('say.meetResearch'), 'owner'],
-      ['prod-head', msg('say.meetProd'), 'owner'],
-      ['owner', msg('say.meetOwner2')],
-    ]);
-    await Promise.all([
-      this.walk('owner', 'desk:owner'),
-      this.walk('research-head', 'desk:research-head'),
-      this.walk('prod-head', 'desk:prod-head'),
-    ]);
+    const heads: AgentId[] = [...(team.research ? (['research-head'] as const) : []), ...(team.production ? (['prod-head'] as const) : [])];
+    const slot: Partial<Record<AgentId, PlaceId>> = { 'research-head': 'meet:3', 'prod-head': 'meet:5' };
+    await Promise.all([this.walk('owner', 'meet:1'), ...heads.map((h) => this.walk(h, slot[h] as PlaceId))]);
+    if (!work) {
+      await this.convo([
+        ['owner', msg('say.meetOwner', { title }), 'research-head'],
+        ['research-head', msg('say.meetResearch'), 'owner'],
+        ['prod-head', msg('say.meetProd'), 'owner'],
+        ['owner', msg('say.meetOwner2')],
+      ]);
+    } else {
+      const picked = team.research && team.production ? 'say.teamBoth' : team.research ? 'say.teamResearch' : 'say.teamProduction';
+      await this.convo([
+        ['owner', msg('say.meetOwnerNew', { title }), heads[0]],
+        ['owner', msg(picked), heads[0]],
+        ...(team.research ? ([['research-head', msg('say.meetResearch'), 'owner']] as [AgentId, Msg, AgentId?][]) : []),
+        ...(team.production ? ([['prod-head', msg(team.research ? 'say.meetProd' : 'say.meetProdSolo'), 'owner']] as [AgentId, Msg, AgentId?][]) : []),
+        ['owner', msg('say.meetOwner2')],
+      ]);
+    }
+    await Promise.all([this.walk('owner', 'desk:owner'), ...heads.map((h) => this.walk(h, `desk:${h}`))]);
 
-    // 4. Each head briefs their team.
+    // 4. Each chosen head briefs their team.
     this.stage(jobId, 'team');
-    await Promise.all([this.huddle('research'), this.huddle('production')]);
+    await Promise.all([...(team.research ? [this.huddle('research')] : []), ...(team.production ? [this.huddle('production')] : [])]);
 
     // 5. The team works; Production waits for Research's report.
     this.stage(jobId, 'work');
@@ -750,95 +793,269 @@ export class MockOffice implements OfficeSource, DemoControls {
   }
 
   private async workPhase(): Promise<void> {
+    const { team } = this;
     const { head: rHead, staff: rStaff } = PODS.research;
     const { head: pHead, staff: pStaff } = PODS.production;
+    /** Where the research report goes: to Production, or straight to the reviewer when Production is not on the job. */
+    const reportTo: AgentId = team.production ? pHead : 'qa';
 
-    const research = (async () => {
-      for (const a of rStaff) this.setAct(a, 'typing', msg('note.gathering'));
-      await this.sleep(4600);
-      await Promise.all(
-        rStaff.map((a) => {
-          this.setAct(a, 'idle');
-          return this.handoff(a, rHead, msg('doc.findings'));
-        }),
-      );
-      this.emit({ type: 'doc.consumed', agent: rHead });
-      this.emit({ type: 'doc.consumed', agent: rHead });
-      this.setAct(rHead, 'reviewing', msg('note.readFindings'));
-      await this.sleep(2200);
-      this.setAct(rHead, 'typing', msg('note.writeReport'));
-      await this.sleep(2400);
-      this.setAct(rHead, 'idle');
-      await this.handoff(rHead, pHead, msg('doc.researchReport'));
-      this.emit({ type: 'doc.consumed', agent: pHead });
-    })();
+    const research: Promise<void> = !team.research
+      ? Promise.resolve()
+      : this.researchBrain
+        ? this.realResearch(this.researchBrain, reportTo)
+        : (async () => {
+            for (const a of rStaff) this.setAct(a, 'typing', msg('note.gathering'));
+            await this.sleep(4600);
+            await Promise.all(
+              rStaff.map((a) => {
+                this.setAct(a, 'idle');
+                return this.handoff(a, rHead, msg('doc.findings'));
+              }),
+            );
+            this.emit({ type: 'doc.consumed', agent: rHead });
+            this.emit({ type: 'doc.consumed', agent: rHead });
+            this.setAct(rHead, 'reviewing', msg('note.readFindings'));
+            await this.sleep(2200);
+            this.setAct(rHead, 'typing', msg('note.writeReport'));
+            await this.sleep(2400);
+            this.setAct(rHead, 'idle');
+            await this.handoff(rHead, reportTo, msg('doc.researchReport'));
+            if (reportTo === pHead) this.emit({ type: 'doc.consumed', agent: pHead });
+          })();
 
-    const production = (async () => {
-      for (const a of pStaff) this.setAct(a, 'typing', msg('note.outline'));
-      await this.sleep(4200);
-      // While Research finishes, the producers go and get a coffee.
-      const coffee = Promise.all(
-        pStaff.map(async (a, i) => {
-          this.setAct(a, 'idle');
-          await this.walk(a, `pantry:${i as 0 | 1}`);
-          this.setAct(a, 'break', msg('note.coffeeWait'));
-        }),
-      );
-      await research;
-      await coffee;
-      const back = Promise.all(pStaff.map((a) => this.walk(a, `desk:${a}`)));
-      this.setAct(pHead, 'thinking', msg('note.planMerge'));
-      await this.sleep(1600);
-      this.setAct(pHead, 'idle');
-      await back;
-      await Promise.all(pStaff.map((a) => this.handoff(pHead, a, msg('doc.briefResearch'))));
-      for (const a of pStaff) {
-        this.emit({ type: 'doc.consumed', agent: a });
-        this.setAct(a, 'typing', msg('note.merging'));
-      }
-      await this.sleep(4600);
-      await Promise.all(
-        pStaff.map((a) => {
-          this.setAct(a, 'idle');
-          return this.handoff(a, pHead, msg('doc.draftPart'));
-        }),
-      );
-      this.emit({ type: 'doc.consumed', agent: pHead });
-      this.emit({ type: 'doc.consumed', agent: pHead });
-      this.setAct(pHead, 'typing', msg('note.assembling'));
-      await this.sleep(2800);
-      this.setAct(pHead, 'idle');
-    })();
+    const production: Promise<void> = !team.production
+      ? Promise.resolve()
+      : (async () => {
+          if (team.research) {
+            for (const a of pStaff) this.setAct(a, 'typing', msg('note.outline'));
+            await this.sleep(4200);
+            // While Research finishes, the producers go and get a coffee.
+            const coffee = Promise.all(
+              pStaff.map(async (a, i) => {
+                this.setAct(a, 'idle');
+                await this.walk(a, `pantry:${i as 0 | 1}`);
+                this.setAct(a, 'break', msg('note.coffeeWait'));
+              }),
+            );
+            await research;
+            await coffee;
+            const back = Promise.all(pStaff.map((a) => this.walk(a, `desk:${a}`)));
+            this.setAct(pHead, 'thinking', msg('note.planMerge'));
+            await this.sleep(1600);
+            this.setAct(pHead, 'idle');
+            await back;
+          }
+          if (this.workBrain) return this.realWriting(this.workBrain);
+          await Promise.all(pStaff.map((a) => this.handoff(pHead, a, msg('doc.briefResearch'))));
+          for (const a of pStaff) {
+            this.emit({ type: 'doc.consumed', agent: a });
+            this.setAct(a, 'typing', msg('note.merging'));
+          }
+          await this.sleep(4600);
+          await Promise.all(
+            pStaff.map((a) => {
+              this.setAct(a, 'idle');
+              return this.handoff(a, pHead, msg('doc.draftPart'));
+            }),
+          );
+          this.emit({ type: 'doc.consumed', agent: pHead });
+          this.emit({ type: 'doc.consumed', agent: pHead });
+          this.setAct(pHead, 'typing', msg('note.assembling'));
+          await this.sleep(2800);
+          this.setAct(pHead, 'idle');
+        })();
 
     await Promise.all([research, production]);
   }
 
+  /**
+   * Production on real models: the head splits the writing, both writers write their part from the brief and
+   * the research, the head joins the parts into version 1 of the result kept in the job file.
+   */
+  private async realWriting(work: WorkBrain): Promise<void> {
+    const { head, staff } = PODS.production;
+    const brief = this.file?.approvedBrief ?? '';
+    const research = this.file?.research ?? null;
+
+    this.setAct(head, 'thinking', msg('note.planWriting'));
+    const assignments = await this.modelCall(head, work, (signal) => work.planWriting(brief, research, signal));
+    this.setAct(head, 'idle');
+    await Promise.all(staff.map((a) => this.handoff(head, a, msg('doc.assignment'))));
+    for (const a of staff) this.emit({ type: 'doc.consumed', agent: a });
+
+    const parts = await Promise.all(
+      staff.map(async (a, i) => {
+        this.setAct(a, 'typing', msg('note.drafting'));
+        const text = await this.modelCall(a, work, (signal) => work.draft(a, assignments[i], brief, research, signal));
+        this.setAct(a, 'idle');
+        await this.handoff(a, head, msg('doc.draftPart'));
+        this.emit({ type: 'doc.consumed', agent: head });
+        return text;
+      }),
+    );
+
+    this.setAct(head, 'typing', msg('note.assembling'));
+    const body = await this.modelCall(head, work, (signal) => work.assemble(brief, parts, research, signal));
+    this.setAct(head, 'idle');
+    if (this.file) this.file.deliverable = { body, version: 1, unresolved: null };
+  }
+
+  /**
+   * The research department on real models: the head plans, both researchers work their half with web tools
+   * (showing what they are doing), the head merges the write-ups into the report kept in the job file.
+   * Cancelling or resetting abandons it; a model failure asks the user to retry or cancel.
+   */
+  private async realResearch(brain: ResearchBrain, reportTo: AgentId): Promise<void> {
+    const { head, staff } = PODS.research;
+    const brief = this.file?.approvedBrief ?? '';
+
+    this.setAct(head, 'thinking', msg('note.planResearch'));
+    const assignments = await this.modelCall(head, brain, (signal) => brain.plan(brief, signal));
+    this.setAct(head, 'idle');
+    await Promise.all(staff.map((a) => this.handoff(head, a, msg('doc.assignment'))));
+    for (const a of staff) this.emit({ type: 'doc.consumed', agent: a });
+
+    const findings: Finding[] = await Promise.all(
+      staff.map(async (a, i) => {
+        this.setAct(a, 'typing', msg('note.gathering'));
+        const finding = await this.modelCall(a, brain, (signal) =>
+          brain.investigate(a, assignments[i], brief, signal, (p) => {
+            if (p.type === 'tool') this.setAct(a, p.tool === 'read' ? 'reviewing' : 'typing', msg(TOOL_NOTE[p.tool]));
+            else this.setAct(a, 'typing', msg('note.writingUp'));
+          }),
+        );
+        this.setAct(a, 'idle');
+        await this.handoff(a, head, msg('doc.findings'));
+        this.emit({ type: 'doc.consumed', agent: head });
+        return finding;
+      }),
+    );
+
+    this.setAct(head, 'typing', msg('note.mergingFindings'));
+    const result = await this.modelCall(head, brain, (signal) => brain.report(brief, findings, signal));
+    if (this.file) {
+      this.file.research = result;
+      // With no Production on the job the research is the result itself.
+      if (reportTo === 'qa') this.file.deliverable = { body: result.body, version: 1, unresolved: null };
+    }
+    this.setAct(head, 'idle');
+    await this.handoff(head, reportTo, msg('doc.researchReport'));
+    if (reportTo !== 'qa') this.emit({ type: 'doc.consumed', agent: reportTo });
+  }
+
+  /**
+   * One research model call. While it waits for the free quota the person shows it; if the model fails the
+   * user is asked (one question at a time, even with two researchers failing together) to retry or cancel.
+   */
+  private async modelCall<T>(agent: AgentId, brain: { watchWait?(listener: (wait: BrainWait) => void): () => void }, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const run = this.runId;
+    for (;;) {
+      const before = this.desired[agent];
+      const unwatch = brain.watchWait?.((wait) => {
+        if (run !== this.runId) return;
+        if (wait === 'quota') this.setAct(agent, 'waiting', msg('note.quotaWait'));
+        else this.setAct(agent, before.activity, before.note);
+      });
+      try {
+        return await work(this.abort.signal);
+      } catch (err) {
+        if (err instanceof Cancelled || !(err instanceof ModelError)) throw err;
+        if (err.kind === 'cancelled') throw new Cancelled();
+        const turn = this.failLock;
+        let release!: () => void;
+        this.failLock = new Promise<void>((r) => (release = r));
+        await turn;
+        try {
+          if (run !== this.runId) throw new Cancelled();
+          const reply = await this.ask(agent, msg(`ask.modelError.${err.kind}`), {
+            choices: [choice('retry', 'choice.retry'), choice('cancel', 'choice.cancelJob')],
+          });
+          if (reply.choice === 'cancel') {
+            this.reset();
+            throw new Cancelled();
+          }
+        } finally {
+          release();
+        }
+      } finally {
+        unwatch?.();
+      }
+    }
+  }
+
+  /** The pod that wrote the result: Production, or Research when Production was not on the job. */
+  private leadPod(): { head: AgentId; staff: [AgentId, AgentId] } {
+    return this.team.production ? PODS.production : PODS.research;
+  }
+
   private async reviewPhase(): Promise<void> {
-    const { head: pHead, staff: pStaff } = PODS.production;
-    await this.handoff(pHead, 'qa', msg('doc.deliverable', { version: 1 }));
+    const { head: lead, staff: leadStaff } = this.leadPod();
+    // With Production on the job its head hands QA the result; otherwise the research report already went to QA.
+    if (this.team.production) await this.handoff(lead, 'qa', msg('doc.deliverable', { version: 1 }));
     this.emit({ type: 'doc.consumed', agent: 'qa' });
+    const work = this.workBrain;
 
     for (let round = 1; ; round++) {
       this.setAct('qa', 'reviewing', msg('note.checking'));
-      await this.sleep(3800);
-      const reject = this.rejectNextReview && round < 3;
-      this.rejectNextReview = false;
+      let reject: boolean;
+      let reason: Msg = msg('reason.noSources');
+      let notes = '';
+      if (work && this.file?.deliverable) {
+        this.rejectNextReview = false; // the demo knob is for the script; a real reviewer decides for itself
+        const d = this.file.deliverable;
+        const verdict = await this.modelCall('qa', work, (signal) => work.review(this.file?.approvedBrief ?? '', d.body, this.file?.research ?? null, signal));
+        reject = !verdict.pass;
+        reason = raw(verdict.reason || verdict.issues[0] || '');
+        notes = [verdict.reason, ...verdict.issues].filter(Boolean).join('\n');
+      } else {
+        await this.sleep(3800);
+        reject = this.rejectNextReview && round < 3;
+        this.rejectNextReview = false;
+      }
       if (!reject) {
         this.setAct('qa', 'idle');
-        this.emit({ type: 'review.verdict', verdict: 'pass', reason: msg('reason.matches'), round });
+        this.emit({ type: 'review.verdict', verdict: 'pass', reason: work ? raw(tr(msg('reason.matches'))) : msg('reason.matches'), round });
         this.emit({ type: 'agent.say', agent: 'qa', text: msg('say.qaPass'), to: 'secretary' });
         await this.handoff('qa', 'secretary', msg('doc.approved'));
         this.emit({ type: 'doc.consumed', agent: 'secretary' });
         return;
       }
-      const reason = msg('reason.noSources');
       this.setAct('qa', 'idle');
       this.emit({ type: 'review.verdict', verdict: 'reject', reason, round });
-      this.emit({ type: 'agent.say', agent: 'qa', text: msg('say.qaReject', { reason }), to: pHead });
-      await this.handoff('qa', pHead, msg('doc.reviewNotes'));
-      this.emit({ type: 'doc.consumed', agent: pHead });
-      await this.rework(pHead, pStaff[0], round + 1);
+      if (work && this.file?.deliverable && round > MAX_REJECTIONS) {
+        // Sent back as often as allowed: the result goes to the client with the objection stated, never hidden.
+        this.file.deliverable.unresolved = tr(reason);
+        this.emit({ type: 'agent.say', agent: 'qa', text: msg('say.qaGaveUp'), to: 'secretary' });
+        await this.handoff('qa', 'secretary', msg('doc.deliverable', { version: this.file.deliverable.version }));
+        this.emit({ type: 'doc.consumed', agent: 'secretary' });
+        return;
+      }
+      this.emit({ type: 'agent.say', agent: 'qa', text: msg('say.qaReject', { reason }), to: lead });
+      await this.handoff('qa', lead, msg('doc.reviewNotes'));
+      this.emit({ type: 'doc.consumed', agent: lead });
+      if (work) await this.realRework(work, lead, leadStaff[0], round + 1, notes);
+      else await this.rework(lead, leadStaff[0], round + 1);
     }
+  }
+
+  /** The same loop with a real model: the head reads the notes, a team member fixes the whole result, QA gets it back. */
+  private async realRework(work: WorkBrain, head: AgentId, worker: AgentId, nextVersion: number, notes: string): Promise<void> {
+    this.setAct(head, 'thinking', msg('note.readNotes'));
+    await this.sleep(600);
+    this.setAct(head, 'idle');
+    await this.handoff(head, worker, msg('doc.fixList'));
+    this.emit({ type: 'doc.consumed', agent: worker });
+    this.setAct(worker, 'typing', msg('note.fixing'));
+    const file = this.file;
+    const body = await this.modelCall(worker, work, (signal) =>
+      work.revise(worker, file?.approvedBrief ?? '', file?.deliverable?.body ?? '', notes, file?.research ?? null, signal),
+    );
+    this.setAct(worker, 'idle');
+    if (file) file.deliverable = { body, version: nextVersion, unresolved: null };
+    await this.handoff(worker, head, msg('doc.fixedDraft'));
+    this.emit({ type: 'doc.consumed', agent: head });
+    await this.handoff(head, 'qa', msg('doc.deliverable', { version: nextVersion }));
+    this.emit({ type: 'doc.consumed', agent: 'qa' });
   }
 
   /** Head hands a fix list to one producer, who fixes it and returns it to QA via the head. */
@@ -860,6 +1077,13 @@ export class MockOffice implements OfficeSource, DemoControls {
     this.emit({ type: 'doc.consumed', agent: 'qa' });
   }
 
+  /** The result as the client sees it: the body plus what the code knows about how far to trust it. */
+  private deliveredText(): string {
+    const d = this.file?.deliverable;
+    if (!d) return '';
+    return withStamp(d, this.file?.research, clientLang([this.file?.approvedBrief ?? ''], getLang()));
+  }
+
   private async deliveryPhase(jobId: string, title: string): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       this.setAct('secretary', 'typing', msg('note.packaging'));
@@ -867,7 +1091,9 @@ export class MockOffice implements OfficeSource, DemoControls {
       this.setAct('secretary', 'idle');
       this.emit({ type: 'agent.carry', agent: 'secretary', label: msg('doc.deliverableShort') });
       await this.walk('secretary', 'client');
-      const reply = await this.ask('secretary', msg('ask.deliver', { title }), {
+      const d = this.file?.deliverable;
+      const delivered = this.workBrain && d ? msg('ask.deliver.text', { title, text: raw(this.deliveredText()) }) : msg('ask.deliver', { title });
+      const reply = await this.ask('secretary', delivered, {
         choices: [choice('accept', 'choice.accept'), choice('request-changes', 'choice.requestChanges')],
         placeholder: msg('ask.deliver.ph'),
       });
@@ -888,12 +1114,29 @@ export class MockOffice implements OfficeSource, DemoControls {
         ? (await this.ask('secretary', msg('ask.changeWhat'), { placeholder: msg('ask.changeWhat.ph') })).msg
         : reply.msg;
       const shown = change.key === 'text' ? raw(shorten(String(change.params?.text ?? ''), 60)) : change;
-      this.emit({ type: 'agent.say', agent: 'secretary', text: msg('say.changeNoted', { change: shown }), to: 'prod-head' });
+      const { head: lead, staff: leadStaff } = this.leadPod();
+      this.emit({ type: 'agent.say', agent: 'secretary', text: msg('say.changeNoted', { change: shown }), to: lead });
       this.emit({ type: 'agent.carry', agent: 'secretary', label: null });
       await this.walk('secretary', 'desk:secretary');
-      await this.handoff('secretary', 'prod-head', msg('doc.changeRequest'));
-      this.emit({ type: 'doc.consumed', agent: 'prod-head' });
-      await this.rework('prod-head', 'prod-2', attempt + 1);
+      await this.handoff('secretary', lead, msg('doc.changeRequest'));
+      this.emit({ type: 'doc.consumed', agent: lead });
+      const work = this.workBrain;
+      if (work && this.file?.deliverable) {
+        // A real fix, then a real second look: the reviewer's honest verdict is shown, and any objection stays on the result.
+        const version = this.file.deliverable.version + 1;
+        await this.realRework(work, lead, leadStaff[leadStaff.length - 1], version, tr(change));
+        const body = this.file.deliverable.body;
+        this.setAct('qa', 'reviewing', msg('note.rechecking'));
+        const verdict = await this.modelCall('qa', work, (signal) => work.review(this.file?.approvedBrief ?? '', body, this.file?.research ?? null, signal));
+        this.setAct('qa', 'idle');
+        const reason = raw(verdict.reason || verdict.issues[0] || '');
+        this.emit({ type: 'review.verdict', verdict: verdict.pass ? 'pass' : 'reject', reason, round: version });
+        if (this.file.deliverable) this.file.deliverable.unresolved = verdict.pass ? null : tr(reason);
+        await this.handoff('qa', 'secretary', msg('doc.approved'));
+        this.emit({ type: 'doc.consumed', agent: 'secretary' });
+        continue;
+      }
+      await this.rework(lead, leadStaff[leadStaff.length - 1], attempt + 1);
       this.setAct('qa', 'reviewing', msg('note.rechecking'));
       await this.sleep(2600);
       this.setAct('qa', 'idle');

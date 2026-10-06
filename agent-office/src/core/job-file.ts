@@ -4,6 +4,8 @@
 
 import type { Exchange } from './brain.ts';
 import type { Msg } from './i18n.ts';
+import type { ResearchResult } from './research.ts';
+import type { Deliverable, Team } from './work.ts';
 
 export interface JobFile {
   id: string;
@@ -17,4 +19,10 @@ export interface JobFile {
   approvedBrief: string | null;
   /** What the user asked to change, in order. */
   changes: string[];
+  /** The research department's report with its sources and honesty stamp. Null until it is written (or when research ran as the demo script). */
+  research?: ResearchResult | null;
+  /** Which departments the owner picked (only with a real work brain; otherwise both ran as the demo script). */
+  team?: Team | null;
+  /** The result being worked on / delivered. Null until Production (or Research alone) has written version 1. */
+  deliverable?: Deliverable | null;
 }

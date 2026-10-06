@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { modelOf, setLiveModels } from '../core/roster.ts';
 import type { AgentId } from '../core/types.ts';
 import { ScriptedBrain } from '../sim/scripted-brain.ts';
-import { chooseBrain } from './brain-factory.ts';
+import { chooseBrain, chooseWork } from './brain-factory.ts';
+import { GeminiWork } from './gemini-work.ts';
 import { GeminiBrain } from './gemini-brain.ts';
 import { MODEL_FOR, createModels } from './models.ts';
 
@@ -19,7 +20,8 @@ test('with a key saved the owner and secretary are played by Gemini', () => {
   assert.ok(brain instanceof GeminiBrain);
   assert.equal(seen.live?.owner, MODEL_FOR.owner);
   assert.equal(seen.live?.secretary, MODEL_FOR.secretary);
-  assert.equal(seen.live?.qa, undefined, 'the other positions still run the script');
+  assert.equal(seen.live?.qa, MODEL_FOR.qa, 'production and the reviewer run on models too');
+  assert.equal(seen.live?.courier, undefined, 'the courier is plain code');
 });
 
 test('without a key the demo script plays and no model is reported', () => {
@@ -47,4 +49,9 @@ test('the inspector shows the live model while a job uses one, and the roster mo
   assert.notEqual(modelOf('qa'), 'gemini-flash-latest');
   setLiveModels(null);
   assert.equal(modelOf('owner'), rosterModel);
+});
+
+test('the work brain follows the key the same way: Gemini with a key, the demo script (null) without', () => {
+  assert.equal(chooseWork(models, { keySaved: () => false }), null);
+  assert.ok(chooseWork(models, { keySaved: () => true }) instanceof GeminiWork);
 });

@@ -1,7 +1,8 @@
 import './style.css';
 import { OfficeStore } from './core/state.ts';
 import { initLang, onLangChange, t } from './core/i18n.ts';
-import { chooseBrain } from './ai/brain-factory.ts';
+import { chooseBrain, chooseResearch, chooseWork } from './ai/brain-factory.ts';
+import { AttachmentStore } from './core/attachments.ts';
 import { createRuntime } from './ai/runtime.ts';
 import { ROSTER, roleOf, setLiveModels } from './core/roster.ts';
 import { Recorder } from './core/recording.ts';
@@ -15,6 +16,7 @@ import { el } from './ui/dom.ts';
 import { mountCamera } from './ui/camera-controls.ts';
 import { showDemoControls } from './ui/demo-controls.ts';
 import { mountDialog } from './ui/dialog.ts';
+import { mountFilesPanel } from './ui/files-panel.ts';
 import { mountAiSettings } from './ui/ai-settings.ts';
 import { mountHelperStatus } from './ui/helper-status.ts';
 import { applyStatic, mountLanguageSwitch } from './ui/i18n-dom.ts';
@@ -29,13 +31,20 @@ const aiSettings = mountAiSettings();
 
 // The real machinery behind the agents: the AI model clients (paced by the rate limiter), the local helper that
 // searches the web and reads pages, and the meter that lets the server room show all of it.
-const { helper, infra, models } = createRuntime();
+const { helper, infra, models, toolbox } = createRuntime();
 const helperStatus = mountHelperStatus(helper);
 void helper.check();
 
 // The page only knows the OfficeSource interface. The office plays the choreography; for each job it asks
 // chooseBrain who speaks for the owner and the secretary: Gemini if a key is saved, the demo script if not.
-const live: OfficeSource = new MockOffice({ infra, brain: () => chooseBrain(models, { onChosen: setLiveModels }) });
+const attachments = new AttachmentStore();
+const office = new MockOffice({
+  infra,
+  brain: () => chooseBrain(models, { onChosen: setLiveModels, attachments }),
+  research: () => chooseResearch(models, toolbox, { attachments }),
+  work: () => chooseWork(models, { attachments }),
+});
+const live: OfficeSource = office;
 // Once the job is over (or abandoned) the inspector goes back to showing the roster's models.
 live.subscribe((e) => {
   if (e.type === 'job.done' || e.type === 'sim.reset') setLiveModels(null);
@@ -62,6 +71,10 @@ source.subscribe((e) => store.apply(e));
 source.subscribe((e) => view.onEvent(e));
 source.subscribe((e) => panels.onEvent(e));
 mountDialog(store, source);
+const filesPanel = mountFilesPanel({ store: attachments, job: () => office.jobFile });
+source.subscribe((e) => {
+  if (e.type === 'job.stage' || e.type === 'job.done' || e.type === 'sim.reset') filesPanel.refresh();
+});
 replayPanel = mountReplayPanel({ routed, store: recordings, stage: el('#stage-area') });
 view.start();
 

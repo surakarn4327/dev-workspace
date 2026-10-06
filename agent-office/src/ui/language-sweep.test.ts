@@ -47,7 +47,7 @@ const LATIN_OK = new Set<string>([
   ...Object.values(ROSTER).flatMap((d) => d.name.replace(/\./g, ' ').split(/\s+/)),
   'QA', 'AGENT', 'OFFICE', 'English', 'mock', 'script', 'Silver', 'Poppy', 'Works', 'CC', 'BY', 'WASD', 'Dr', TYPED,
   // product names in the AI settings panel
-  'API', 'Gemini', 'Google', 'AI', 'Studio',
+  'API', 'PDF', 'Gemini', 'Google', 'AI', 'Studio',
   // the commands the user types to start the search helper
   'npm', 'run', 'dev', 'helper',
 ].filter(Boolean));

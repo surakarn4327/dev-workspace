@@ -874,3 +874,13 @@ html[lang='th'] :is(.dlg-text, .hint, .blurb, .convo li, .feed li, .queue li, .k
   min-height: 3.75em;
   max-height: 11.15em;
 }
+/* ---------- attached files ---------- */
+
+.file-name {
+  display: block;
+  min-width: 0;
+  padding: 4px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
