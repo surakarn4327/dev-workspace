@@ -4,10 +4,71 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>wire-up</title>
+    <title>Wire-Up | Virtual electronics lab</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <header id="topbar">
+        <div class="brand">WIRE<span>-</span>UP</div>
+        <div class="group">
+          <button id="btn-new" title="Clear the lab">New</button>
+          <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
+          <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
+        </div>
+        <div class="group">
+          <button id="btn-wire" title="Wire mode (W): drag anywhere to draw a wire">Wire</button>
+          <button id="btn-fit" title="Fit everything in view (F)">Fit</button>
+          <button id="btn-pixel" title="Pixel look on / off">Pixel</button>
+          <button id="btn-pause" title="Freeze the simulation">Pause</button>
+        </div>
+        <div class="group">
+          <button id="btn-export" title="Download this lab as a file">Export</button>
+          <button id="btn-import" title="Load a lab file">Import</button>
+          <input id="file-import" type="file" accept="application/json,.json" hidden />
+        </div>
+        <div class="spacer"></div>
+        <span id="save-state">autosave on</span>
+        <button id="btn-help">Help</button>
+      </header>
+      <aside id="toolbox">
+        <div id="tool-tabs" class="tabs"></div>
+        <div id="tool-items"></div>
+      </aside>
+      <main id="stage">
+        <canvas id="canvas"></canvas>
+        <button id="toggle-left" class="edge-toggle left" title="Show / hide the toolbox ([)">&lsaquo;</button>
+        <button id="toggle-right" class="edge-toggle right" title="Show / hide the inspector (])">&rsaquo;</button>
+        <div id="toasts"></div>
+      </main>
+      <aside id="side">
+        <div id="side-tabs" class="tabs">
+          <button data-tab="inspect" class="active">Inspector</button>
+          <button data-tab="lessons">Missions</button>
+        </div>
+        <section id="panel-inspect"></section>
+        <section id="panel-lessons" hidden></section>
+      </aside>
+      <footer id="status">
+        <span id="status-text">Drag parts from the left onto the board. Drag from any hole or pin to pull a wire.</span>
+        <span id="status-right"></span>
+      </footer>
+      <dialog id="help">
+        <h2>How to use Wire-Up</h2>
+        <ul>
+          <li><b>Add parts:</b> drag from the toolbox, or click an item to drop it in the middle of the view.</li>
+          <li><b>Wire:</b> drag from a breadboard hole or a part leg to another one. Wire mode (W) lets you start anywhere.</li>
+          <li><b>Move:</b> drag a part. Drag a wire end to re-plug it. Drag battery leads and meter probe tips onto the circuit.</li>
+          <li><b>Pan / zoom:</b> drag empty space or hold Space, mouse wheel to zoom.</li>
+          <li><b>Side panels:</b> the arrow tabs at the screen edges (or <b>[</b> and <b>]</b>) hide the toolbox and the inspector.</li>
+          <li><b>Wires</b> follow the grid in right angles and route around each other. Drag from a hole even if a wire passes over it; click the wire to select it.</li>
+          <li><b>Rotate:</b> R. <b>Delete:</b> Del. <b>Undo / redo:</b> Ctrl+Z / Ctrl+Y. <b>Fit view:</b> F.</li>
+          <li><b>Tweak values:</b> select a part and use the inspector, or Shift + mouse wheel over a part.</li>
+          <li><b>Click</b> switches to flip them, hold the mouse on a push button to press it, click the meter dial to change mode.</li>
+          <li>Parts burn when you push them past their rating. Select a burnt part and press Replace.</li>
+        </ul>
+        <form method="dialog"><button>Close</button></form>
+      </dialog>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
