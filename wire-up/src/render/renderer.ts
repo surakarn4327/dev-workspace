@@ -19,6 +19,10 @@ export interface View {
 export interface Overlay {
   selectedPart: string | null
   selectedWire: string | null
+  /** Multi-selection (several parts and wires at once), empty sets when none. */
+  group: { parts: Set<string>; wires: Set<string> }
+  /** Selection rectangle being dragged, in world coordinates. */
+  box: { x0: number; y0: number; x1: number; y1: number } | null
   hoverPart: string | null
   /** Part the pointer has rested on long enough to show its labels. */
   labelPart: string | null
@@ -170,7 +174,7 @@ export class Renderer {
     const front = sel && layerOf(sel.type) > 0 ? sel : undefined
     const stack = stackOrder(world.parts).filter((p) => p !== front)
     for (const part of stack) if (layerOf(part.type) < 4) this.drawPart(part, sim, now, 1)
-    for (const w of world.wires) this.drawWire(w, w.id === ov.selectedWire)
+    for (const w of world.wires) this.drawWire(w, w.id === ov.selectedWire || ov.group.wires.has(w.id))
     for (const part of stack) if (layerOf(part.type) >= 4) this.drawPart(part, sim, now, 1)
     if (front) this.drawPart(front, sim, now, 1)
 
@@ -205,6 +209,20 @@ export class Renderer {
     if (selWire) this.drawBendHandles(selWire)
     const sel = ov.selectedPart ? world.getPart(ov.selectedPart) : undefined
     if (sel) this.drawSelection(sel, now)
+    for (const id of ov.group.parts) {
+      const gp = world.getPart(id)
+      if (gp) this.drawSelection(gp, now)
+    }
+    if (ov.box) {
+      const b = ov.box
+      c.fillStyle = 'rgba(0,229,255,0.10)'
+      c.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0)
+      c.strokeStyle = COL.cyan
+      c.lineWidth = 1.5
+      c.setLineDash([6, 4])
+      c.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0)
+      c.setLineDash([])
+    }
     const hov = ov.hoverPart && ov.hoverPart !== ov.selectedPart ? world.getPart(ov.hoverPart) : undefined
     if (hov) this.drawPinLabels(hov)
     if (sel) this.drawPinLabels(sel)

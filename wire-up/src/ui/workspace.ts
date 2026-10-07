@@ -1,7 +1,9 @@
 // The interactive canvas: pan/zoom, drag parts, draw wires, keyboard shortcuts, main loop.
 
-import { applyFollow, planFollow } from '../board/follow.ts'
+import { applyFollow, planFollow, planGroup } from '../board/follow.ts'
 import type { FollowPlan } from '../board/follow.ts'
+import { clipWidth, copyOut, itemsInBox, normBox, pasteIn } from '../board/group.ts'
+import type { Clip } from '../board/group.ts'
 import { hitTest } from '../board/hit.ts'
 import type { Hit } from '../board/hit.ts'
 import { routeVia } from '../board/router.ts'
@@ -12,6 +14,7 @@ import { G, snap, unrotVec, WIRE_COLORS } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
 import { holeNear } from '../parts/breadboard.ts'
 import { defOf, newPart, pinWorld, rotatePart } from '../parts/index.ts'
+import { keyName } from './keys.ts'
 import { Renderer } from '../render/renderer.ts'
 import type { Overlay, View } from '../render/renderer.ts'
 
@@ -22,6 +25,22 @@ type Mode =
   | { t: 'dragEnd'; wire: Wire; end: 'a' | 'b'; plugOld: boolean; base: WireShape }
   | { t: 'bend'; wire: Wire; index: number; via0: Vec[] }
   | { t: 'newWire'; a: Vec; b: Vec; via: Vec[]; clickWire?: string }
+  | { t: 'box'; a: Vec; b: Vec; sx: number; sy: number; add: boolean; moved: boolean }
+  | { t: 'group'; grab: Vec; sx: number; sy: number; moved: boolean; plan: FollowPlan; clickPart: string | null; clickWire: string | null }
+
+const ARROWS: Record<string, [number, number] | undefined> = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+}
+
+/** Pointer travel (screen px) before a press turns into a drag. */
+const DRAG_PX = 4
+
+function emptyGroup(): { parts: Set<string>; wires: Set<string> } {
+  return { parts: new Set(), wires: new Set() }
+}
 
 /** How long the pointer must rest on a part before its value labels appear. */
 const HOVER_LABEL_MS = 1000
@@ -36,6 +55,8 @@ export class Workspace {
   view: View = { camX: -60, camY: -60, zoom: 1 }
   selectedPart: string | null = null
   selectedWire: string | null = null
+  /** Several parts/wires selected at once. Only used for 2 or more items; a single item is `selectedPart`/`selectedWire`. */
+  group = emptyGroup()
   wireMode = false
   /** Called when selection or any user edit happens. */
   onSelect: () => void = () => {}
@@ -53,6 +74,8 @@ export class Workspace {
   private last = performance.now()
   private time = 0
   private paused = false
+  private clip: Clip | null = null
+  private pasteCount = 0
 
   readonly canvas: HTMLCanvasElement
   readonly world: World
@@ -96,6 +119,8 @@ export class Workspace {
     return {
       selectedPart: this.selectedPart,
       selectedWire: this.selectedWire,
+      group: this.group,
+      box: m && m.t === 'box' && m.moved ? normBox(m.a, m.b) : null,
       hoverPart: this.hoverPart,
       labelPart: this.hoverPart && performance.now() - this.hoverSince >= HOVER_LABEL_MS ? this.hoverPart : null,
       hoverPoint: this.hoverPoint,
@@ -127,10 +152,51 @@ export class Workspace {
   }
 
   select(part: string | null, wire: string | null = null): void {
-    if (this.selectedPart === part && this.selectedWire === wire) return
+    const hadGroup = this.groupSize() > 0
+    if (!hadGroup && this.selectedPart === part && this.selectedWire === wire) return
+    this.group = emptyGroup()
     this.selectedPart = part
     this.selectedWire = wire
     this.onSelect()
+  }
+
+  groupSize(): number {
+    return this.group.parts.size + this.group.wires.size
+  }
+
+  /** Select exactly these items: none clears, one becomes the ordinary single selection, more form a group. */
+  setSelection(parts: Set<string>, wires: Set<string>): void {
+    const n = parts.size + wires.size
+    if (n === 0) this.select(null)
+    else if (n === 1) this.select(parts.size === 1 ? [...parts][0] : null, wires.size === 1 ? [...wires][0] : null)
+    else {
+      this.selectedPart = null
+      this.selectedWire = null
+      this.group = { parts, wires }
+      this.onSelect()
+    }
+  }
+
+  /** Everything currently selected, whether a single item or a group. */
+  private selection(): { parts: Set<string>; wires: Set<string> } {
+    if (this.groupSize() > 0) return { parts: new Set(this.group.parts), wires: new Set(this.group.wires) }
+    return {
+      parts: new Set(this.selectedPart ? [this.selectedPart] : []),
+      wires: new Set(this.selectedWire ? [this.selectedWire] : []),
+    }
+  }
+
+  private toggle(item: { part?: string; wire?: string }): void {
+    const s = this.selection()
+    const set = item.part ? s.parts : s.wires
+    const id = (item.part ?? item.wire)!
+    if (set.has(id)) set.delete(id)
+    else set.add(id)
+    this.setSelection(s.parts, s.wires)
+  }
+
+  selectAll(): void {
+    this.setSelection(new Set(this.world.parts.map((p) => p.id)), new Set(this.world.wires.map((w) => w.id)))
   }
 
   centerOfView(): Vec {
@@ -196,14 +262,53 @@ export class Workspace {
   }
 
   deleteSelected(): void {
-    if (this.selectedPart) this.world.removePart(this.selectedPart)
-    else if (this.selectedWire) this.world.removeWire(this.selectedWire)
-    else return
-    this.selectedPart = null
-    this.selectedWire = null
+    const s = this.selection()
+    if (s.parts.size + s.wires.size === 0) return
+    for (const id of s.parts) this.world.removePart(id)
+    for (const id of s.wires) this.world.removeWire(id)
+    this.select(null)
     this.world.commit()
     this.onSelect()
     this.onEdit()
+  }
+
+  /** Move everything selected by whole grid steps (arrow keys). */
+  moveSelected(gx: number, gy: number): void {
+    const s = this.selection()
+    if (s.parts.size + s.wires.size === 0) return
+    const plan = planGroup(this.world, s.parts, s.wires)
+    applyFollow(this.world, plan, gx * G, gy * G)
+    this.world.commit()
+    this.onEdit()
+  }
+
+  copySelected(): boolean {
+    const s = this.selection()
+    if (s.parts.size + s.wires.size === 0) return false
+    this.clip = copyOut(this.world, s.parts, s.wires)
+    this.pasteCount = 0
+    return true
+  }
+
+  /**
+   * Paste the clipboard two grid steps down-right of where it was (and a bit further each time it is pasted again).
+   * A copy that includes a breadboard goes beside the original instead, so the two boards never share holes.
+   */
+  paste(): void {
+    if (!this.clip) return
+    this.pasteCount++
+    const hasBoard = this.clip.parts.some((p) => p.type.startsWith('breadboard'))
+    const dx = hasBoard ? this.pasteCount * (clipWidth(this.clip) + 2 * G) : this.pasteCount * 2 * G
+    const dy = hasBoard ? 0 : dx
+    const made = pasteIn(this.world, this.clip, dx, dy)
+    this.world.commit()
+    this.setSelection(made.parts, made.wires)
+    this.onEdit()
+  }
+
+  duplicateSelected(): void {
+    if (!this.copySelected()) return
+    this.paste()
   }
 
   rotateSelected(): void {
@@ -272,6 +377,31 @@ export class Workspace {
     }
     if (e.button !== 0) return
     const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire, false, this.selectedPart)
+    const ctrl = e.ctrlKey || e.metaKey
+
+    // Ctrl+click adds to / removes from the selection
+    if (ctrl) {
+      if (hit.kind === 'wire') return this.toggle({ wire: hit.wire.id })
+      if (hit.kind === 'part' || hit.kind === 'board' || hit.kind === 'pin' || hit.kind === 'lead') return this.toggle({ part: hit.part.id })
+    }
+    // pressing something that belongs to a multi-selection drags the whole selection
+    if (this.groupSize() > 0 && !ctrl && (hit.kind === 'part' || hit.kind === 'board' || hit.kind === 'wire')) {
+      const part = hit.kind === 'wire' ? null : hit.part.id
+      const wire = hit.kind === 'wire' ? hit.wire.id : null
+      if ((part && this.group.parts.has(part)) || (wire && this.group.wires.has(wire))) {
+        this.mode = {
+          t: 'group',
+          grab: w,
+          sx: e.clientX,
+          sy: e.clientY,
+          moved: false,
+          plan: planGroup(this.world, this.group.parts, this.group.wires),
+          clickPart: part,
+          clickWire: wire,
+        }
+        return
+      }
+    }
 
     if (hit.kind === 'lead') {
       this.select(hit.part.id)
@@ -341,8 +471,8 @@ export class Workspace {
         return
       }
       default:
-        this.select(null)
-        this.mode = { t: 'pan', sx: e.clientX, sy: e.clientY, camX: this.view.camX, camY: this.view.camY }
+        // empty canvas: drag a selection box (Ctrl keeps the current selection and adds to it)
+        this.mode = { t: 'box', a: w, b: w, sx: e.clientX, sy: e.clientY, add: ctrl, moved: false }
     }
   }
 
@@ -358,8 +488,20 @@ export class Workspace {
         this.view.camX = m.camX - (e.clientX - m.sx) / this.view.zoom
         this.view.camY = m.camY - (e.clientY - m.sy) / this.view.zoom
         break
+      case 'box':
+        if (!m.moved && Math.hypot(e.clientX - m.sx, e.clientY - m.sy) < DRAG_PX) return
+        m.moved = true
+        m.b = w
+        break
+      case 'group': {
+        if (!m.moved && Math.hypot(e.clientX - m.sx, e.clientY - m.sy) < DRAG_PX) return
+        m.moved = true
+        applyFollow(this.world, m.plan, snap(w.x - m.grab.x), snap(w.y - m.grab.y))
+        this.world.touch()
+        break
+      }
       case 'part': {
-        if (!m.moved && Math.hypot(e.clientX - m.sx, e.clientY - m.sy) < 4) return
+        if (!m.moved && Math.hypot(e.clientX - m.sx, e.clientY - m.sy) < DRAG_PX) return
         if (m.pressing) return
         m.moved = true
         const nx = snap(m.x0 + (w.x - m.grab.x))
@@ -456,6 +598,27 @@ export class Workspace {
           this.select(null, m.clickWire)
         }
         break
+      case 'box': {
+        if (!m.moved) {
+          if (!m.add) this.select(null) // a plain click on empty canvas just deselects
+          break
+        }
+        const found = itemsInBox(this.world, normBox(m.a, m.b))
+        if (m.add) {
+          const cur = this.selection()
+          for (const id of found.parts) cur.parts.add(id)
+          for (const id of found.wires) cur.wires.add(id)
+          this.setSelection(cur.parts, cur.wires)
+        } else this.setSelection(found.parts, found.wires)
+        break
+      }
+      case 'group':
+        if (m.moved) {
+          this.world.commit()
+          this.onEdit()
+        } else if (m.clickPart) this.select(m.clickPart) // a click (no drag) on one member narrows the selection to it
+        else if (m.clickWire) this.select(null, m.clickWire)
+        break
       case 'pan':
         break
     }
@@ -519,7 +682,8 @@ export class Workspace {
         text = 'Breadboard: drag to move.'
         break
       default:
-        cursor = this.wireMode ? 'crosshair' : 'grab'
+        cursor = 'crosshair'
+        text = 'Drag to select several parts. Middle or right button (or Space) drags the view. Ctrl adds to the selection.'
     }
     if (this.hoverPart !== prevHover) this.hoverSince = performance.now()
     this.canvas.style.cursor = cursor
@@ -568,7 +732,22 @@ export class Workspace {
       return
     }
     if (!down) return
-    const k = e.key.toLowerCase()
+    const k = keyName(e)
+    const mod = e.ctrlKey || e.metaKey
+    if (mod && !e.shiftKey && !e.altKey && (k === 'a' || k === 'c' || k === 'v' || k === 'd')) {
+      e.preventDefault()
+      if (k === 'a') this.selectAll()
+      else if (k === 'c') this.copySelected()
+      else if (k === 'v') this.paste()
+      else this.duplicateSelected()
+      return
+    }
+    const arrow = ARROWS[e.key]
+    if (arrow && !mod && !e.altKey) {
+      e.preventDefault()
+      this.moveSelected(arrow[0], arrow[1])
+      return
+    }
     if (k === 'delete' || k === 'backspace') {
       this.deleteSelected()
       e.preventDefault()

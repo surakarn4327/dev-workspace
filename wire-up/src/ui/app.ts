@@ -6,6 +6,7 @@ import { History } from '../save/history.ts'
 import { Inspector } from './inspector.ts'
 import { LessonPanel } from './lessonPanel.ts'
 import { buildToolbox } from './toolbox.ts'
+import { keyName } from './keys.ts'
 import { Workspace } from './workspace.ts'
 
 function $<T extends HTMLElement>(id: string): T {
@@ -171,13 +172,14 @@ export class App {
   private keys(e: KeyboardEvent): void {
     const t = e.target as HTMLElement | null
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return
-    if (e.key === '[') this.togglePanel('left')
-    else if (e.key === ']') this.togglePanel('right')
-    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    const k = keyName(e)
+    if (k === '[') this.togglePanel('left')
+    else if (k === ']') this.togglePanel('right')
+    else if ((e.ctrlKey || e.metaKey) && k === 'z') {
       e.preventDefault()
       if (e.shiftKey) this.redo()
       else this.undo()
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+    } else if ((e.ctrlKey || e.metaKey) && k === 'y') {
       e.preventDefault()
       this.redo()
     }

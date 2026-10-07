@@ -55,7 +55,8 @@ npm run test                 # vitest: solver, วงจรบน breadboard, �
 src/
 ├── sim/         ← solver MNA (solver.ts), โมเดล/พิกัดชิ้นส่วน (models.ts) — ไม่แตะ DOM
 ├── board/       ← world (ข้อมูล+validate ไฟล์), connectivity (จุดซ้อนกัน = ต่อกัน → วงจร),
-│                  simulation (solve + สะสมความเครียด/ไหม้), hit (ทดสอบการคลิก)
+│                  simulation (solve + สะสมความเครียด/ไหม้), hit (ทดสอบการคลิก),
+│                  follow (ของที่ตามเมื่อลาก/ย้ายกลุ่ม), group (กรอบเลือก, copy/paste กลุ่ม)
 ├── parts/       ← นิยามชิ้นส่วนละ 1 PartDef: pins, build (→ element solver), evaluate (→ stress), draw, fields
 ├── render/      ← renderer (กล้อง/สาย/ควัน), draw.ts (พาเลตนีออน, ตัวอักษร pixel), scene.ts
 ├── ui/          ← workspace (เมาส์/คีย์บอร์ด/loop), toolbox, inspector, lessonPanel, app (ประกอบทุกอย่าง)

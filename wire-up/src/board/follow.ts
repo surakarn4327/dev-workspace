@@ -22,6 +22,8 @@ export interface FollowPlan {
   moving: Set<string>
   parts: Map<string, PartSnap>
   wires: Wire[]
+  /** Ids of wires that move as a whole (selected wires of a group drag). */
+  whole: Set<string>
 }
 
 function clonePoint(v: Vec): Vec {
@@ -55,7 +57,42 @@ export function planFollow(world: World, dragged: PartInstance): FollowPlan {
   }
   const parts = new Map<string, PartSnap>()
   for (const p of [...carried, ...partial]) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
-  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape) }
+  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole: new Set() }
+}
+
+/**
+ * Like `planFollow`, for a whole selection: every selected part moves bodily (a selected breadboard also carries what
+ * stands on it), selected wires move as they are, and other wires plugged into any of it follow with their ends.
+ */
+export function planGroup(world: World, partIds: Set<string>, wireIds: Set<string>): FollowPlan {
+  const carried: PartInstance[] = []
+  const partial: PartInstance[] = []
+  const moving = new Set<string>()
+  for (const id of partIds) {
+    const p = world.getPart(id)
+    if (p) carried.push(p)
+  }
+  for (const board of [...carried].filter((p) => p.type.startsWith('breadboard'))) {
+    const holes = new Set(boardHoles(board).map((h) => pointKey(h.pos)))
+    for (const k of holes) moving.add(k)
+    for (const p of world.parts) {
+      if (p.type.startsWith('breadboard') || carried.includes(p) || partial.includes(p)) continue
+      if (!pinWorld(p).some((v) => holes.has(pointKey(v)))) continue
+      if (defOf(p.type).freeLeads) partial.push(p)
+      else carried.push(p)
+    }
+  }
+  for (const p of carried) if (!p.type.startsWith('breadboard')) for (const v of pinWorld(p)) moving.add(pointKey(v))
+  const whole = new Set<string>()
+  for (const id of wireIds) {
+    const w = world.getWire(id)
+    if (!w) continue
+    whole.add(id)
+    for (const v of [w.a, w.b, ...w.via, ...(w.taps ?? [])]) moving.add(pointKey(v))
+  }
+  const parts = new Map<string, PartSnap>()
+  for (const p of [...carried, ...partial]) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
+  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole }
 }
 
 function same(a: Vec, b: Vec): boolean {
@@ -106,6 +143,14 @@ export function applyFollow(world: World, plan: FollowPlan, dx: number, dy: numb
   for (const base of plan.wires) {
     const w = world.getWire(base.id)
     if (!w) continue
+    if (plan.whole.has(base.id)) {
+      const shift = (v: Vec): Vec => ({ x: v.x + dx, y: v.y + dy })
+      w.a = shift(base.a)
+      w.b = shift(base.b)
+      w.via = base.via.map(shift)
+      w.taps = base.taps && base.taps.length > 0 ? base.taps.map(shift) : undefined
+      continue
+    }
     const next = followWire(base, plan.moving, dx, dy)
     w.a = next.a
     w.b = next.b

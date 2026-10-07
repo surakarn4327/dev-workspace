@@ -94,6 +94,18 @@ export class Inspector {
       }
       this.root.appendChild(sw)
       this.root.appendChild(this.btn('Delete wire', () => ws.deleteSelected()))
+    } else if (ws.groupSize() > 0) {
+      const np = ws.group.parts.size
+      const nw = ws.group.wires.size
+      const h = document.createElement('div')
+      const what = [np > 0 ? `${np} part${np === 1 ? '' : 's'}` : '', nw > 0 ? `${nw} wire${nw === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')
+      h.innerHTML = `<h3>${what} selected</h3><div class="sub">Drag any of them to move the lot. Arrow keys nudge one grid step. Ctrl+click adds or removes one. Ctrl+C / Ctrl+V copy and paste, Ctrl+D duplicates, Delete removes.</div>`
+      this.root.appendChild(h)
+      const row = document.createElement('div')
+      row.className = 'row'
+      row.appendChild(this.btn('Duplicate (Ctrl+D)', () => ws.duplicateSelected()))
+      row.appendChild(this.btn('Delete', () => ws.deleteSelected()))
+      this.root.appendChild(row)
     } else {
       this.root.innerHTML = '<h3>Nothing selected</h3><div class="sub">Click a part to see its live voltage, current and settings. Drag parts in from the toolbox on the left.</div>'
     }
