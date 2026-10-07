@@ -36,6 +36,8 @@ export interface Wire {
   b: Vec
   /** Bend points between a and b. The wire runs along the grid: a -> via... -> b. */
   via: Vec[]
+  /** Corners that were once plugged ends: still electrically joined to the wire (a wire pulled out from a pin keeps its hold on it). */
+  taps?: Vec[]
   color: string
 }
 
@@ -44,7 +46,9 @@ export function wirePath(w: Wire): Vec[] {
 }
 
 function cloneWire(w: Wire): Wire {
-  return { id: w.id, a: cloneVec(w.a), b: cloneVec(w.b), via: w.via.map(cloneVec), color: w.color }
+  const out: Wire = { id: w.id, a: cloneVec(w.a), b: cloneVec(w.b), via: w.via.map(cloneVec), color: w.color }
+  if (w.taps && w.taps.length > 0) out.taps = w.taps.map(cloneVec)
+  return out
 }
 
 export const WIRE_COLORS = ['#ff4a4a', '#2f6fe0', '#2ea043', '#f2d21b', '#f08a1c', '#f2f2f2', '#0b0b0b', '#8a45d6']
@@ -97,6 +101,9 @@ function clonePart(p: PartInstance): PartInstance {
     state: { ...p.state },
   }
 }
+
+/** Parts whose legs hang below the body and have an adjustable length. */
+export const HANGING_LEG_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc'])
 
 export class World {
   parts: PartInstance[] = []
@@ -164,6 +171,17 @@ export class World {
     this.parts = data.parts.map(clonePart)
     // momentary controls (push buttons) never come back held down
     for (const p of this.parts) if ('pressed' in p.params) p.params.pressed = false
+    // leg length: the axial parts (resistor, diode) now store `legs` (pin spacing - 2); the hanging-leg parts keep
+    // their old short legs (0) unless they carry a value
+    for (const p of this.parts) {
+      if (typeof p.params.legs === 'number') continue
+      if (p.type === 'resistor' || p.type === 'diode') {
+        p.params.legs = (typeof p.params.spread === 'number' ? p.params.spread : 4) - 2
+        delete p.params.spread
+      } else if (HANGING_LEG_PARTS.has(p.type)) {
+        p.params.legs = 0
+      }
+    }
     this.wires = data.wires.map(cloneWire)
     this.counter = data.counter
     this.version++
@@ -230,6 +248,8 @@ export function validateWorldData(raw: unknown, knownTypes: Set<string>): WorldD
       via,
       color: typeof w.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(w.color) ? w.color : WIRE_COLORS[0],
     })
+    const taps = Array.isArray(w.taps) && w.taps.every(isVec) ? (w.taps as Vec[]).map(cloneVec) : []
+    if (taps.length > 0) wires[wires.length - 1].taps = taps
   }
   return { version: 1, counter: d.counter, parts, wires }
 }

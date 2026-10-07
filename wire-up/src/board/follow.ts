@@ -1,0 +1,115 @@
+// What travels along when a part is dragged: wire ends plugged into its pins follow it, and moving a breadboard
+// carries everything sitting on it (parts with a pin in a hole, wire ends in holes, probe tips in holes).
+
+import { boardHoles } from '../parts/breadboard.ts'
+import { defOf, pinWorld } from '../parts/index.ts'
+import { tidy } from './wireEdit.ts'
+import { pointKey } from './world.ts'
+import type { PartInstance, Vec, Wire, World } from './world.ts'
+
+interface PartSnap {
+  x: number
+  y: number
+  leads: Vec[] | null
+}
+
+export interface FollowPlan {
+  /** Parts that move bodily with the dragged one (parts standing on a dragged breadboard). */
+  carried: PartInstance[]
+  /** Probe-style parts that stay put: only the lead tips lying on the dragged breadboard travel. */
+  partial: PartInstance[]
+  /** Keys of the points that travel, as they were before the drag started. */
+  moving: Set<string>
+  parts: Map<string, PartSnap>
+  wires: Wire[]
+}
+
+function clonePoint(v: Vec): Vec {
+  return { x: v.x, y: v.y }
+}
+
+function cloneWireShape(w: Wire): Wire {
+  const out: Wire = { id: w.id, a: clonePoint(w.a), b: clonePoint(w.b), via: w.via.map(clonePoint), color: w.color }
+  if (w.taps) out.taps = w.taps.map(clonePoint)
+  return out
+}
+
+/** Work out, before a drag starts, which parts and wire points will travel with `dragged`. */
+export function planFollow(world: World, dragged: PartInstance): FollowPlan {
+  const moving = new Set<string>()
+  const carried: PartInstance[] = []
+  const partial: PartInstance[] = []
+  if (dragged.type.startsWith('breadboard')) {
+    const holes = new Set(boardHoles(dragged).map((h) => pointKey(h.pos)))
+    for (const p of world.parts) {
+      if (p === dragged || p.type.startsWith('breadboard')) continue
+      const onBoard = pinWorld(p).some((v) => holes.has(pointKey(v)))
+      if (!onBoard) continue
+      if (defOf(p.type).freeLeads) partial.push(p)
+      else carried.push(p)
+    }
+    for (const k of holes) moving.add(k)
+    for (const p of carried) for (const v of pinWorld(p)) moving.add(pointKey(v))
+  } else {
+    for (const v of pinWorld(dragged)) moving.add(pointKey(v))
+  }
+  const parts = new Map<string, PartSnap>()
+  for (const p of [...carried, ...partial]) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
+  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape) }
+}
+
+function same(a: Vec, b: Vec): boolean {
+  return a.x === b.x && a.y === b.y
+}
+
+/** The wire as it was, with its travelling ends and plugs moved by (dx, dy) and its corners repaired to right angles. */
+function followWire(w: Wire, moving: Set<string>, dx: number, dy: number): Pick<Wire, 'a' | 'b' | 'via' | 'taps'> {
+  const taps = w.taps ?? []
+  const pts = [w.a, ...w.via, w.b]
+  const last = pts.length - 1
+  const flags = pts.map((v, i) => (i === 0 || i === last || taps.some((t) => same(t, v))) && moving.has(pointKey(v)))
+  const shift = (v: Vec): Vec => ({ x: v.x + dx, y: v.y + dy })
+  if (!flags.some(Boolean)) return { a: clonePoint(w.a), b: clonePoint(w.b), via: w.via.map(clonePoint), taps: taps.map(clonePoint) }
+  if (flags[0] && flags[last]) {
+    // both ends travel: the whole wire moves as it is
+    return { a: shift(w.a), b: shift(w.b), via: w.via.map(shift), taps: taps.filter((t) => w.via.some((v) => same(v, t))).map(shift) }
+  }
+  const q = pts.map((v, i) => (flags[i] ? shift(v) : clonePoint(v)))
+  const out: Vec[] = [q[0]]
+  for (let i = 0; i < last; i++) {
+    if (q[i].x !== q[i + 1].x && q[i].y !== q[i + 1].y) {
+      // a stretch that is no longer straight keeps leaving its fixed end in the direction it used to run
+      const vertical = pts[i].x === pts[i + 1].x
+      out.push(vertical ? { x: q[i].x, y: q[i + 1].y } : { x: q[i + 1].x, y: q[i].y })
+    }
+    out.push(q[i + 1])
+  }
+  const newTaps = taps.map((t) => (moving.has(pointKey(t)) ? shift(t) : clonePoint(t)))
+  const via = tidy(out, newTaps)
+  // a tap that no longer sits on a corner (it landed on an end or was folded away) has nothing left to hold
+  return { a: q[0], b: q[last], via, taps: newTaps.filter((t) => via.some((v) => same(v, t))) }
+}
+
+/** Put everything in `plan` where it belongs when the dragged part has moved by (dx, dy) from where it started. */
+export function applyFollow(world: World, plan: FollowPlan, dx: number, dy: number): void {
+  for (const p of plan.carried) {
+    const s = plan.parts.get(p.id)
+    if (!s) continue
+    p.x = s.x + dx
+    p.y = s.y + dy
+    if (s.leads) p.leads = s.leads.map((l) => ({ x: l.x + dx, y: l.y + dy }))
+  }
+  for (const p of plan.partial) {
+    const s = plan.parts.get(p.id)
+    if (s?.leads) p.leads = s.leads.map((l) => (plan.moving.has(pointKey(l)) ? { x: l.x + dx, y: l.y + dy } : clonePoint(l)))
+  }
+  for (const base of plan.wires) {
+    const w = world.getWire(base.id)
+    if (!w) continue
+    const next = followWire(base, plan.moving, dx, dy)
+    w.a = next.a
+    w.b = next.b
+    w.via = next.via
+    w.taps = next.taps && next.taps.length > 0 ? next.taps : undefined
+  }
+}

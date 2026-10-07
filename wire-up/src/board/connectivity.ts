@@ -64,6 +64,11 @@ export function buildNetlist(world: World): Netlist {
     usedKeys.add(pointKey(w.a))
     usedKeys.add(pointKey(w.b))
     uf.union(pointKey(w.a), pointKey(w.b))
+    // corners that were plugged ends stay joined: a wire pulled out of a pin or hole keeps its hold there
+    for (const t of w.taps ?? []) {
+      usedKeys.add(pointKey(t))
+      uf.union(pointKey(t), pointKey(w.a))
+    }
   }
 
   const pinKeys = new Map<string, string[]>()
@@ -82,7 +87,7 @@ export function buildNetlist(world: World): Netlist {
   let groundRoot: string | undefined
   const sourceNegRoots: string[] = []
   for (const part of world.parts) {
-    if ((part.type === 'battery' || part.type === 'supply') && !part.state.failed) {
+    if ((part.type.startsWith('battery') || part.type === 'supply') && !part.state.failed) {
       const keys = pinKeys.get(part.id)
       if (!keys) continue
       const root = uf.find(keys[1])

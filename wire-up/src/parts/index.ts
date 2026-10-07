@@ -3,21 +3,25 @@ import type { PartInstance, Rot, Vec } from '../board/world.ts'
 import { breadboardFull, breadboardMini } from './breadboard.ts'
 import { meter } from './instruments.ts'
 import { ldr, ntc, potentiometer, resistor } from './passives.ts'
-import { battery, supply } from './power.ts'
+import { battery, battery15, battery3, battery45, supply } from './power.ts'
 import { bc547, bc557, diode, led } from './semis.ts'
-import { pushButton, slideSwitch } from './switches.ts'
+import { pushButton, rockerSwitch, slideSwitch } from './switches.ts'
 import type { Category, PartDef } from './types.ts'
 
 export const ALL_PARTS: PartDef[] = [
   breadboardFull,
   breadboardMini,
   battery,
+  battery15,
+  battery3,
+  battery45,
   supply,
   resistor,
   led,
   diode,
   bc547,
   bc557,
+  rockerSwitch,
   slideSwitch,
   pushButton,
   potentiometer,
@@ -76,4 +80,25 @@ export function rotatePart(p: PartInstance): void {
   const def = defOf(p.type)
   if (def.fixedRot) return
   p.rot = ((p.rot + 1) % 4) as Rot
+}
+
+// ---------------------------------------------------------------- stacking order
+
+const LOW_PARTS = new Set(['resistor', 'diode', 'switch', 'slide-switch', 'button'])
+const TALL_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc'])
+
+/**
+ * Draw layer of a part: 0 breadboard, 1 flat parts, 2 tall parts, 4 bench tools and batteries.
+ * Wires are drawn between layers 2 and 4; ties keep placement order. Hit testing uses the same order.
+ */
+export function layerOf(type: string): number {
+  if (type.startsWith('breadboard')) return 0
+  if (LOW_PARTS.has(type)) return 1
+  if (TALL_PARTS.has(type)) return 2
+  return 4
+}
+
+/** Parts from bottom to top: by layer, then by the order they were placed. */
+export function stackOrder(parts: PartInstance[]): PartInstance[] {
+  return parts.map((p, i) => ({ p, i })).sort((a, b) => layerOf(a.p.type) - layerOf(b.p.type) || a.i - b.i).map((e) => e.p)
 }

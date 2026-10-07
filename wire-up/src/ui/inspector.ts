@@ -76,7 +76,7 @@ export class Inspector {
       this.update()
     } else if (wire) {
       const h = document.createElement('div')
-      h.innerHTML = '<h3>Wire</h3><div class="sub">Drag its middle to move it, drag an end to re-plug it.</div>'
+      h.innerHTML = '<h3>Wire</h3><div class="sub">Drag an end to stretch it, drag a corner or the middle handle to reshape it.</div>'
       this.root.appendChild(h)
       const sw = document.createElement('div')
       sw.className = 'swatches'

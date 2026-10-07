@@ -2,7 +2,7 @@
 
 import type { Simulation } from '../board/simulation.ts'
 import { routeVia } from '../board/router.ts'
-import { G } from '../board/world.ts'
+import { G, HANGING_LEG_PARTS } from '../board/world.ts'
 import type { PartInstance, Vec, World } from '../board/world.ts'
 import { boardHoles } from '../parts/breadboard.ts'
 import { newPart, pinWorld } from '../parts/index.ts'
@@ -50,6 +50,14 @@ export class SceneBuilder {
   place(type: string, x: number, y: number, params: Record<string, number | string | boolean> = {}): PartInstance {
     const p = newPart(this.world.nextId('p'), type, x, y)
     Object.assign(p.params, params)
+    // missions and tests keep the original geometry: spread:n becomes legs = n - 2, and parts without a leg
+    // length keep their old short legs
+    if (type === 'resistor' || type === 'diode') {
+      if (typeof p.params.spread === 'number') {
+        p.params.legs = p.params.spread - 2
+        delete p.params.spread
+      } else if (typeof params.legs !== 'number') p.params.legs = 2
+    } else if (HANGING_LEG_PARTS.has(type) && typeof params.legs !== 'number') p.params.legs = 0
     if (type.startsWith('breadboard')) this.world.parts.unshift(p)
     else this.world.parts.push(p)
     return p
@@ -62,6 +70,15 @@ export class SceneBuilder {
 
   wire(a: Vec, b: Vec, color = '#ff4a4a'): void {
     this.world.addWire(a, b, color, routeVia(a, b, this.world.wires))
+  }
+
+  /** Wire a two-pin part's pins to two points, replacing any wires already on those pins (test and mission helper). */
+  connect(part: PartInstance, a: Vec, b: Vec): void {
+    const pins = pinWorld(part)
+    const onPin = (v: Vec) => pins.some((p) => p.x === v.x && p.y === v.y)
+    this.world.wires = this.world.wires.filter((w) => !onPin(w.a) && !onPin(w.b))
+    this.wire(pins[0], a)
+    this.wire(pins[1], b, '#2f6fe0')
   }
 }
 
@@ -107,8 +124,8 @@ export const LESSONS: Lesson[] = [
           c.parts('led').some((l) => c.onBoard(l) && c.parts('resistor').some((r) => c.nodes(r).some((n) => c.nodes(l).includes(n)))),
       },
       {
-        text: 'Connect the battery: red lead (+) and black lead (-) so the LED glows.',
-        hint: 'The longer LED leg (anode, marked +) must face the battery +. Drag the lead tips onto holes. Current path: + -> resistor -> LED -> -.',
+        text: 'Wire the battery: its left terminal (+) and right terminal (-) so the LED glows.',
+        hint: 'The longer LED leg (anode, marked +) must face the battery +. Drag from a battery terminal to a hole to pull a wire. Current path: + -> resistor -> LED -> -.',
         check: (c) => lit(c),
       },
     ],
@@ -250,7 +267,7 @@ export const LESSONS: Lesson[] = [
     steps: [
       {
         text: 'Connect the battery + to the resistor and the battery - so the LED glows.',
-        hint: 'Red lead to column 5 (the resistor left end). Black lead to any hole of the top blue (-) rail; the blue wire already links the LED cathode to that rail.',
+        hint: 'Left terminal (+) to column 5 (the resistor left end). Right terminal (-) to any hole of the top blue (-) rail; the blue wire already links the LED cathode to that rail.',
         check: (c) => lit(c),
       },
       {

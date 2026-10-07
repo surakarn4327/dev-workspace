@@ -28,15 +28,17 @@ function drawMeterPixel(c: CanvasRenderingContext2D, p: PartInstance, live: Part
   drawSprite(c, meterSprite(), 0, 0)
   const r = meterReading(mode, live)
   const blown = mode === 'A' && p.state.failed
-  drawText(c, blown ? 'FUSE' : r.text, 104, 24, { color: blown ? COL.red : COL.green, align: 'right', scale: 2 })
-  drawText(c, mode === 'V' ? 'DC VOLTS' : mode === 'A' ? 'DC AMPS' : 'OHMS', 16, 15, { color: '#7fd8a0' })
+  // dark digits on the pale LCD glass
+  drawText(c, blown ? 'FUSE' : r.text, 104, 24, { color: blown ? '#a01020' : '#16301c', align: 'right', scale: 2 })
+  drawText(c, mode === 'V' ? 'DC VOLTS' : mode === 'A' ? 'DC AMPS' : 'OHMS', 16, 15, { color: '#3d5a40' })
   const idx = Math.max(MODES.indexOf(mode as (typeof MODES)[number]), 0)
   const ang = (-60 + 60 * idx - 90) * (Math.PI / 180)
-  pxLine(c, 0, 0, 30, 56, 30 + Math.cos(ang) * 11, 56 + Math.sin(ang) * 11, COL.cyan)
-  pxRect(c, 0, 0, 29, 55, 2, 2, COL.cyan)
-  ;['V', 'A', '\u03A9'].forEach((l, k) => {
+  // white pointer line on the black knob
+  pxLine(c, 0, 0, 30, 56, 30 + Math.cos(ang) * 10, 56 + Math.sin(ang) * 10, '#f4f4f8')
+  pxRect(c, 0, 0, 29, 55, 2, 2, '#f4f4f8')
+  ;['V', 'A', 'Ω'].forEach((l, k) => {
     const a = (-60 + 60 * k - 90) * (Math.PI / 180)
-    drawText(c, l, 60 + Math.cos(a) * 31, 112 + Math.sin(a) * 31 - 4, { color: k === idx ? COL.cyan : '#8e8aa8', align: 'center' })
+    drawText(c, l, 60 + Math.cos(a) * 31, 112 + Math.sin(a) * 31 - 4, { color: k === idx ? '#ffffff' : '#8a8a98', align: 'center' })
   })
   drawText(c, 'click dial', 60, 156, { color: '#3a2600', align: 'center' })
 }

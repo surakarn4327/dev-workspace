@@ -1,7 +1,9 @@
 import { COL, drawText, leg, mix, radialGlow, rrect } from '../render/draw.ts'
 import { BJT, DIODE, eng, LED_COLORS, LED_I_MAX, LED_I_RATED, LED_N, LED_RS, LED_VR_MAX, ledIs } from '../sim/models.ts'
+import { drawSprite, pxLine } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
-import { eid, str, stress, U } from './common.ts'
+import { diodeSprite, ledSprite, to92Sprite } from './art.ts'
+import { eid, legDrop, legGrid, LEG_FIELD, spreadOf, str, stress, U } from './common.ts'
 import type { PartDef } from './types.ts'
 
 // ---------------------------------------------------------------- LED
@@ -12,12 +14,12 @@ export const led: PartDef = {
   category: 'semiconductor',
   blurb: 'Lights up when current flows anode to cathode. Needs a resistor!',
   pinLabels: ['A', 'K'],
-  defaults: () => ({ color: 'red' }),
-  pins: () => [
-    { x: 0, y: 0 },
-    { x: 1, y: 0 },
+  defaults: () => ({ color: 'red', legs: 1 }),
+  pins: (p) => [
+    { x: 0, y: legGrid(p) },
+    { x: 1, y: legGrid(p) },
   ],
-  bounds: () => ({ x: -12, y: -24, w: 44, h: 48 }),
+  bounds: (p) => ({ x: -16, y: -66, w: 52, h: 76 + legDrop(p) }),
   build(p, ctx) {
     if (p.state.failed) return
     const col = LED_COLORS[str(p, 'color', 'red')] ?? LED_COLORS.red
@@ -43,6 +45,23 @@ export const led: PartDef = {
   draw(c, p, live) {
     const col = LED_COLORS[str(p, 'color', 'red')] ?? LED_COLORS.red
     const b = live.b ?? 0
+    if (scene.pixel) {
+      for (const x of [0, 20]) {
+        c.fillStyle = COL.metal
+        c.fillRect(x - 2, -12, 2, 16 + legDrop(p))
+        c.fillStyle = COL.metalDark
+        c.fillRect(x, -12, 2, 16 + legDrop(p))
+      }
+      drawSprite(c, ledSprite(col.body, false), -14, -62)
+      if (b > 0) {
+        c.globalAlpha = Math.min(1, b)
+        drawSprite(c, ledSprite(col.body, true), -14, -62)
+        c.globalAlpha = 1
+      }
+      radialGlow(c, 10, -42, 36 + 90 * b, col.glow, 0.85 * b)
+      drawText(c, '+', -3, 6 + legDrop(p), { color: COL.dim })
+      return
+    }
     leg(c, 0, 0, 0, -6)
     leg(c, 20, 0, 20, 4)
     // flange + dome (top view)
@@ -69,6 +88,7 @@ export const led: PartDef = {
     c.fill()
     radialGlow(c, 10, -4, 36 + 90 * b, col.glow, 0.85 * b)
     drawText(c, '+', -3, 6, { color: COL.dim })
+    if (legDrop(p) > 0) for (const x of [0, 20]) leg(c, x, 4, x, legDrop(p))
   },
   fields: () => [
     {
@@ -77,6 +97,7 @@ export const led: PartDef = {
       label: 'Colour',
       options: Object.entries(LED_COLORS).map(([k, v]) => ({ value: k, label: v.name })),
     },
+    LEG_FIELD,
   ],
   summary: (p) => `${(LED_COLORS[str(p, 'color', 'red')] ?? LED_COLORS.red).name} LED, max ${LED_I_MAX * 1000} mA`,
 }
@@ -89,12 +110,12 @@ export const diode: PartDef = {
   category: 'semiconductor',
   blurb: 'One-way valve for current. Band marks the cathode.',
   pinLabels: ['A', 'K'],
-  defaults: () => ({}),
-  pins: () => [
+  defaults: () => ({ legs: 1 }),
+  pins: (p) => [
     { x: 0, y: 0 },
-    { x: 4, y: 0 },
+    { x: spreadOf(p), y: 0 },
   ],
-  bounds: () => ({ x: -12, y: -14, w: 104, h: 28 }),
+  bounds: (p) => ({ x: -12, y: -14, w: spreadOf(p) * U + 24, h: 28 }),
   build(p, ctx) {
     if (p.state.failed) return
     const mid = ctx.newNode()
@@ -113,6 +134,22 @@ export const diode: PartDef = {
     }
   },
   draw(c, p) {
+    if (scene.pixel) {
+      const sp = spreadOf(p) * U
+      const cx = sp / 2
+      drawSprite(c, diodeSprite(), cx - 22, -10)
+      for (const [x0, x1] of [
+        [0, cx - 24],
+        [cx + 24, sp],
+      ]) {
+        c.fillStyle = COL.metal
+        c.fillRect(x0, -2, x1 - x0, 2)
+        c.fillStyle = COL.metalDark
+        c.fillRect(x0, 0, x1 - x0, 2)
+      }
+      if (scene.labeled.has(p.id)) drawText(c, '1N4007', cx, 15, { align: 'center', size: 11, box: true })
+      return
+    }
     leg(c, 0, 0, 20, 0)
     leg(c, 60, 0, 80, 0)
     c.fillStyle = '#1b1b20'
@@ -126,7 +163,7 @@ export const diode: PartDef = {
     c.fillRect(54, -10, 2, 20)
     if (scene.labeled.has(p.id)) drawText(c, '1N4007', 40, 14, { align: 'center', size: 11, box: true })
   },
-  fields: () => [],
+  fields: () => [LEG_FIELD],
   summary: () => `1N4007, ${DIODE.iMax} A, ${DIODE.vrMax} V`,
 }
 
@@ -142,13 +179,13 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
       ? 'NPN switch/amplifier. A small base current controls a big collector current.'
       : 'PNP: conducts when the base is pulled LOW relative to the emitter.',
     pinLabels: ['C', 'B', 'E'],
-    defaults: () => ({}),
-    pins: () => [
-      { x: 0, y: 0 },
-      { x: 1, y: 0 },
-      { x: 2, y: 0 },
+    defaults: () => ({ legs: 1 }),
+    pins: (p) => [
+      { x: 0, y: legGrid(p) },
+      { x: 1, y: legGrid(p) },
+      { x: 2, y: legGrid(p) },
     ],
-    bounds: () => ({ x: -12, y: -34, w: 64, h: 44 }),
+    bounds: (p) => ({ x: -12, y: -48, w: 64, h: 58 + legDrop(p) }),
     build(p, ctx) {
       if (p.state.failed) return
       ctx.add({ kind: 'Q', id: ctx.id('q'), c: ctx.pins[0], b: ctx.pins[1], e: ctx.pins[2], pol, is: BJT.is, bf: BJT.bf, br: BJT.br })
@@ -177,7 +214,34 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
       }
     },
     draw(c, p, live) {
+      if (scene.pixel) {
+        // middle leg straight; outer legs go up from the pins, then slant in under the body (art-pixel diagonals)
+        for (let k = 0; k < 3; k++) {
+          c.fillStyle = COL.metal
+          c.fillRect(k * U - 2, k === 1 ? -10 : 0, 2, (k === 1 ? 14 : 4) + legDrop(p))
+          c.fillStyle = COL.metalDark
+          c.fillRect(k * U, k === 1 ? -10 : 0, 2, (k === 1 ? 14 : 4) + legDrop(p))
+        }
+        for (const [x, tx] of [
+          [0, 5],
+          [40, 15],
+        ]) {
+          pxLine(c, 0, 0, x / 2 - 1, 0, tx - 1, -7, COL.metal)
+          pxLine(c, 0, 0, x / 2, 0, tx, -7, COL.metalDark)
+        }
+        drawSprite(c, to92Sprite(), 0, -44)
+        drawText(c, label, 20, -24, { color: '#8e8aa8', align: 'center' })
+        const lit = Math.abs(live.ic ?? 0) > 1e-4
+        radialGlow(c, 20, -26, 30, lit ? '#39ff88' : '#000000', lit ? Math.min(Math.abs(live.ic ?? 0) / 0.05, 0.4) : 0)
+        if (scene.labeled.has(p.id)) {
+          drawText(c, 'C', 0, 5 + legDrop(p), { align: 'center', size: 10, box: true })
+          drawText(c, 'B', 20, 5 + legDrop(p), { align: 'center', size: 10, box: true })
+          drawText(c, 'E', 40, 5 + legDrop(p), { align: 'center', size: 10, box: true })
+        }
+        return
+      }
       for (let k = 0; k < 3; k++) leg(c, k * U, 0, k * U, -8)
+      if (legDrop(p) > 0) for (let k = 0; k < 3; k++) leg(c, k * U, 4, k * U, legDrop(p))
       // TO-92: curved top, flat bottom
       c.fillStyle = '#17171c'
       c.beginPath()
@@ -203,7 +267,7 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
       drawText(c, 'B', 20, 5, { align: 'center', size: 10, box: true })
       drawText(c, 'E', 40, 5, { align: 'center', size: 10, box: true })
     },
-    fields: () => [],
+    fields: () => [LEG_FIELD],
     summary: () => `${label}, ${BJT.icMax * 1000} mA, ${BJT.vceMax} V, hFE ${BJT.bf}`,
   }
 }

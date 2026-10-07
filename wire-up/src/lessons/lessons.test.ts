@@ -32,7 +32,7 @@ describe('missions can be completed', () => {
     s.b.place('led', s.b.hole(9, 5).x, s.b.hole(9, 5).y, { color: 'red' })
     s.run()
     expect(s.results()).toEqual([true, true, false])
-    s.get('battery').leads = [s.b.hole(5, 4), s.b.hole(10, 4)]
+    s.b.connect(s.get('battery'), s.b.hole(5, 4), s.b.hole(10, 4))
     s.world.commit()
     s.run()
     expect(s.results()).toEqual([true, true, true])
@@ -43,13 +43,13 @@ describe('missions can be completed', () => {
     const led = s.get('led')
     led.x = s.b.hole(7, 5).x
     led.y = s.b.hole(7, 5).y
-    s.get('battery').leads = [s.b.hole(7, 4), s.b.hole(8, 4)]
+    s.b.connect(s.get('battery'), s.b.hole(7, 4), s.b.hole(8, 4))
     s.world.commit()
     s.run(1.5)
     expect(led.state.failed).toBe(true)
     expect(s.results()[0]).toBe(true)
     s.sim.replace(led.id)
-    s.get('battery').leads = [s.b.hole(3, 4), s.b.hole(8, 4)]
+    s.b.connect(s.get('battery'), s.b.hole(3, 4), s.b.hole(8, 4))
     s.b.place('resistor', s.b.hole(3, 6).x, s.b.hole(3, 6).y, { value: 470, spread: 4 })
     s.world.commit()
     s.run()
@@ -66,7 +66,7 @@ describe('missions can be completed', () => {
     r.params.value = 1000
     led.x = s.b.hole(7, 5).x
     led.y = s.b.hole(7, 5).y
-    s.get('battery').leads = [s.b.hole(3, 4), s.b.hole(8, 4)]
+    s.b.connect(s.get('battery'), s.b.hole(3, 4), s.b.hole(8, 4))
     s.world.commit()
     s.run()
     expect(s.results()[0]).toBe(true)
@@ -89,7 +89,7 @@ describe('missions can be completed', () => {
     const led = s.get('led')
     led.x = s.b.hole(9, 6).x
     led.y = s.b.hole(9, 6).y
-    s.get('battery').leads = [s.b.hole(3, 4), s.b.hole(10, 4)]
+    s.b.connect(s.get('battery'), s.b.hole(3, 4), s.b.hole(10, 4))
     s.world.commit()
     s.run()
     expect(s.results()).toEqual([true, false])
@@ -106,9 +106,9 @@ describe('missions can be completed', () => {
     r1.y = s.b.hole(3, 6).y
     r2.x = s.b.hole(7, 5).x
     r2.y = s.b.hole(7, 5).y
-    r2.params.spread = 4
-    r1.params.spread = 4
-    s.get('battery').leads = [s.b.hole(3, 4), s.b.hole(11, 4)]
+    r2.params.legs = 2
+    r1.params.legs = 2
+    s.b.connect(s.get('battery'), s.b.hole(3, 4), s.b.hole(11, 4))
     s.get('meter').leads = [s.b.hole(7, 4), s.b.hole(11, 3)]
     s.world.commit()
     s.run()
@@ -117,7 +117,7 @@ describe('missions can be completed', () => {
 
   it('6. current in series', () => {
     const s = start('ammeter')
-    s.get('battery').leads = [s.b.hole(5, 5), s.b.hole(15, 1)]
+    s.b.connect(s.get('battery'), s.b.hole(5, 5), s.b.hole(15, 1))
     s.world.commit()
     s.run()
     expect(s.results()).toEqual([true, false])
@@ -133,7 +133,7 @@ describe('missions can be completed', () => {
   it('6b. the ammeter across the battery blows the fuse (the trap in the story)', () => {
     const s = start('ammeter')
     s.get('meter').leads = [s.b.hole(1, 0), s.b.hole(1, 1)]
-    s.get('battery').leads = [s.b.hole(2, 0), s.b.hole(2, 1)]
+    s.b.connect(s.get('battery'), s.b.hole(2, 0), s.b.hole(2, 1))
     s.world.commit()
     s.run(0.5)
     expect(s.get('meter').state.failed).toBe(true)
@@ -155,7 +155,7 @@ describe('missions can be completed', () => {
     btn.x = s.b.hole(15, 3).x
     btn.y = s.b.hole(15, 3).y
     s.b.wire(s.b.hole(18, 4), s.b.hole(18, 0))
-    s.get('battery').leads = [s.b.hole(1, 0), s.b.hole(1, 1)]
+    s.b.connect(s.get('battery'), s.b.hole(1, 0), s.b.hole(1, 1))
     s.world.commit()
     s.run()
     const r = s.results()
@@ -176,7 +176,7 @@ describe('missions can be completed', () => {
     const r = s.get('resistor')
     r.x = s.b.hole(5, 5).x
     r.y = s.b.hole(5, 5).y
-    s.get('battery').leads = [s.b.hole(3, 4), s.b.hole(9, 4)]
+    s.b.connect(s.get('battery'), s.b.hole(3, 4), s.b.hole(9, 4))
     s.get('meter').leads = [s.b.hole(5, 4), s.b.hole(9, 3)]
     s.world.commit()
     s.run()
@@ -198,7 +198,7 @@ describe('missions can be completed', () => {
     const d = s.get('diode')
     d.x = s.b.hole(8, 6).x
     d.y = s.b.hole(8, 6).y
-    s.get('battery').leads = [s.b.hole(3, 4), s.b.hole(12, 4)]
+    s.b.connect(s.get('battery'), s.b.hole(3, 4), s.b.hole(12, 4))
     s.world.commit()
     s.run()
     expect(s.results()).toEqual([true, false])

@@ -1,5 +1,8 @@
-import { COL, drawText, leg, rrect } from '../render/draw.ts'
+import { COL, drawText, leg, radialGlow, rrect } from '../render/draw.ts'
 import { eng } from '../sim/models.ts'
+import { drawSprite, pxLine, pxRect } from '../render/pixel.ts'
+import { scene } from '../render/scene.ts'
+import { ROCKER_I, ROCKER_O, rockerSwitchSprite, slideSwitchSprite, tactSprite } from './art.ts'
 import { eid, flag, stress } from './common.ts'
 import type { PartDef } from './types.ts'
 
@@ -11,9 +14,9 @@ function contactStress(i: number): ReturnType<typeof stress> {
   return stress(Math.abs(i) / SWITCH_I_MAX, () => `Contacts carried ${eng(Math.abs(i), 'A')} (rated ${SWITCH_I_MAX} A) and welded shut. The switch is now stuck closed.`)
 }
 
-export const slideSwitch: PartDef = {
+export const rockerSwitch: PartDef = {
   type: 'switch',
-  name: 'Slide switch',
+  name: 'Rocker switch',
   category: 'switch',
   blurb: 'Click it to flip. ON connects the two legs.',
   pinLabels: ['1', '2'],
@@ -22,7 +25,7 @@ export const slideSwitch: PartDef = {
     { x: 0, y: 0 },
     { x: 2, y: 0 },
   ],
-  bounds: () => ({ x: -12, y: -18, w: 64, h: 36 }),
+  bounds: () => ({ x: -6, y: -34, w: 52, h: 82 }),
   build(p, ctx) {
     const closed = p.state.failed || flag(p, 'on')
     ctx.add({ kind: 'R', id: ctx.id('s'), a: ctx.pins[0], b: ctx.pins[1], r: closed ? CLOSED : OPEN })
@@ -34,6 +37,25 @@ export const slideSwitch: PartDef = {
   },
   draw(c, p) {
     const on = p.state.failed || flag(p, 'on')
+    if (scene.pixel) {
+      drawSprite(c, rockerSwitchSprite(on), -2, -30)
+      // O mark (top) and I mark (bottom): the active one glows, the other stays a dim print
+      const GREEN = '#39ff88'
+      const RED = '#ff3b4a'
+      const dim = '#5d5d6a'
+      const markO = on ? dim : RED
+      const markI = on ? GREEN : dim
+      for (let dy = -6; dy <= 5; dy++) {
+        for (let dx = -6; dx <= 5; dx++) {
+          const d = Math.hypot(dx + 0.5, dy + 0.5)
+          if (d >= 2.7 && d < 4.4) pxRect(c, -2, -30, ROCKER_O.x + dx, ROCKER_O.y + dy, 1, 1, markO)
+        }
+      }
+      pxRect(c, -2, -30, ROCKER_I.x - 1, ROCKER_I.y - 3, 2, 7, markI)
+      radialGlow(c, 20, -14, 38, RED, on ? 0 : 0.55)
+      radialGlow(c, 20, 12, 38, GREEN, on ? 0.55 : 0)
+      return
+    }
     leg(c, 0, 0, 0, -6)
     leg(c, 40, 0, 40, -6)
     c.fillStyle = '#c4c9d1'
@@ -60,6 +82,32 @@ export const slideSwitch: PartDef = {
     if (p.state.failed) return false
     p.params.on = !flag(p, 'on')
     return true
+  },
+}
+
+/** The small steel slide switch: a white lever rides in a slot, left = OFF, right = ON. */
+export const slideSwitch: PartDef = {
+  ...rockerSwitch,
+  type: 'slide-switch',
+  name: 'Slide switch',
+  bounds: () => ({ x: -12, y: -18, w: 64, h: 36 }),
+  draw(c, p, live, time) {
+    if (!scene.pixel) {
+      rockerSwitch.draw(c, p, live, time)
+      return
+    }
+    const on = p.state.failed || flag(p, 'on')
+    drawSprite(c, slideSwitchSprite(), -8, -17)
+    // white lever riding in the slot: dark outline, lit top and left, shaded right and bottom, two grip ridges
+    const hx = on ? 16 : 4
+    pxRect(c, -8, -17, hx - 1, 3, 10, 9, '#101015')
+    pxRect(c, -8, -17, hx, 4, 8, 7, '#e6e6ee')
+    pxRect(c, -8, -17, hx, 4, 8, 1, '#ffffff')
+    pxRect(c, -8, -17, hx, 4, 1, 7, '#ffffff')
+    pxRect(c, -8, -17, hx + 7, 4, 1, 7, '#a8a8b4')
+    pxRect(c, -8, -17, hx, 10, 8, 1, '#9a9aa8')
+    pxRect(c, -8, -17, hx + 3, 5, 1, 5, '#b8b8c4')
+    pxRect(c, -8, -17, hx + 5, 5, 1, 5, '#b8b8c4')
   },
 }
 
@@ -90,6 +138,20 @@ export const pushButton: PartDef = {
   },
   draw(c, p) {
     const down = p.state.failed || flag(p, 'pressed')
+    if (scene.pixel) {
+      // corner legs slant from the pins into the steel shell (art-pixel diagonals, 2 px wide)
+      for (const [px, py, tx, ty] of [
+        [0, 0, 4, 4],
+        [0, 30, 4, 26],
+        [30, 0, 26, 4],
+        [30, 30, 26, 26],
+      ]) {
+        pxLine(c, 0, 0, px - 1, py, tx - 1, ty, COL.metal)
+        pxLine(c, 0, 0, px, py, tx, ty, COL.metalDark)
+      }
+      drawSprite(c, tactSprite(down), 4, 4)
+      return
+    }
     const corners = [
       [0, 0],
       [0, 60],
@@ -117,6 +179,8 @@ export const pushButton: PartDef = {
   },
   fields: () => [],
   summary: (p) => (p.state.failed ? 'welded shut' : flag(p, 'pressed') ? 'pressed' : 'released'),
+  // only the round cap presses the button; the steel shell around it is a handle for dragging
+  pressZone: (local) => Math.hypot(local.x - 30, local.y - 30) <= 18,
   press(p, down) {
     if (p.state.failed) return false
     p.params.pressed = down

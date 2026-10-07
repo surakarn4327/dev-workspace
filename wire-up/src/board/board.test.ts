@@ -15,7 +15,7 @@ function ledLoop(withResistor: boolean): World {
   const b = new SceneBuilder(w)
   b.board()
   const bat = b.place('battery', -320, 80, { volts: 9 })
-  bat.leads = [hole(5, 5), hole(10, 5)]
+  b.connect(bat, hole(5, 5), hole(10, 5))
   if (withResistor) b.place('resistor', hole(5, 6).x, hole(5, 6).y, { value: 470, spread: 4 })
   else b.wire(hole(5, 6), hole(9, 6))
   b.place('led', hole(9, 6).x, hole(9, 6).y, { color: 'red' })
@@ -40,7 +40,7 @@ describe('breadboard connectivity', () => {
     const bat = b.place('battery', -320, 80, { volts: 9 })
     b.place('resistor', 0, 0, { value: 470, spread: 4 })
     b.place('led', 160, 100, { color: 'green' })
-    bat.leads = [{ x: 0, y: 0 }, { x: 180, y: 100 }]
+    b.connect(bat, { x: 0, y: 0 }, { x: 180, y: 100 })
     b.wire({ x: 80, y: 0 }, { x: 160, y: 100 })
     const sim = new Simulation(w)
     sim.step(0.016)
@@ -68,7 +68,7 @@ describe('breadboard connectivity', () => {
     const b = new SceneBuilder(w)
     b.board()
     const bat = b.place('battery', -320, 80, { volts: 9 })
-    bat.leads = [hole(5, 5), hole(9, 5)]
+    b.connect(bat, hole(5, 5), hole(9, 5))
     b.place('resistor', hole(5, 6).x, hole(5, 6).y, { value: 10, spread: 4 })
     const sim = new Simulation(w)
     for (let k = 0; k < 200; k++) sim.step(0.016)
@@ -81,9 +81,9 @@ describe('breadboard connectivity', () => {
     const b = new SceneBuilder(w)
     b.board()
     const bat = b.place('battery', -320, 80, { volts: 9 })
-    bat.leads = [hole(5, 1), hole(5, 2)]
+    b.connect(bat, hole(5, 1), hole(5, 2))
     // battery + to rail row 0? use rails: + rail row 0, - rail row 1
-    bat.leads = [hole(1, 0), hole(1, 1)]
+    b.connect(bat, hole(1, 0), hole(1, 1))
     b.place('resistor', hole(5, 3).x, hole(5, 3).y, { value: 10000, spread: 4 })
     b.place('resistor', hole(9, 3).x, hole(9, 3).y, { value: 5000, spread: 4 })
     b.wire(hole(5, 4), hole(5, 0)) // R1 left -> + rail
@@ -102,7 +102,7 @@ describe('breadboard connectivity', () => {
     const b = new SceneBuilder(w)
     b.board()
     const bat = b.place('battery', -320, 80, { volts: 9 })
-    bat.leads = [hole(1, 0), hole(1, 1)]
+    b.connect(bat, hole(1, 0), hole(1, 1))
     const m = b.place('meter', 640, 40, { mode: 'A' })
     m.leads = [hole(3, 0), hole(3, 1)]
     const sim = new Simulation(w)

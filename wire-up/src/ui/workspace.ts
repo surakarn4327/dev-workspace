@@ -1,23 +1,26 @@
 // The interactive canvas: pan/zoom, drag parts, draw wires, keyboard shortcuts, main loop.
 
+import { applyFollow, planFollow } from '../board/follow.ts'
+import type { FollowPlan } from '../board/follow.ts'
 import { hitTest } from '../board/hit.ts'
 import type { Hit } from '../board/hit.ts'
 import { routeVia } from '../board/router.ts'
 import { Simulation } from '../board/simulation.ts'
-import { moveBend } from '../board/wireEdit.ts'
+import { dragEnd, moveBend, tidy, wireOverlaps } from '../board/wireEdit.ts'
+import type { WireShape } from '../board/wireEdit.ts'
 import { G, snap, unrotVec, WIRE_COLORS } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
-import { defOf, newPart, rotatePart } from '../parts/index.ts'
+import { holeNear } from '../parts/breadboard.ts'
+import { defOf, newPart, pinWorld, rotatePart } from '../parts/index.ts'
 import { Renderer } from '../render/renderer.ts'
 import type { Overlay, View } from '../render/renderer.ts'
 
 type Mode =
   | { t: 'pan'; sx: number; sy: number; camX: number; camY: number }
-  | { t: 'part'; part: PartInstance; grab: Vec; x0: number; y0: number; leads0: Vec[] | null; moved: boolean; local: Vec; sx: number; sy: number; pressing: boolean }
+  | { t: 'part'; part: PartInstance; grab: Vec; x0: number; y0: number; leads0: Vec[] | null; moved: boolean; local: Vec; sx: number; sy: number; pressing: boolean; follow: FollowPlan }
   | { t: 'lead'; part: PartInstance; index: number }
-  | { t: 'wireEnd'; wire: Wire; end: 'a' | 'b' }
+  | { t: 'dragEnd'; wire: Wire; end: 'a' | 'b'; plugOld: boolean; base: WireShape }
   | { t: 'bend'; wire: Wire; index: number; via0: Vec[] }
-  | { t: 'wire'; wire: Wire; grab: Vec; a0: Vec; b0: Vec; via0: Vec[]; moved: boolean }
   | { t: 'newWire'; a: Vec; b: Vec; via: Vec[]; clickWire?: string }
 
 /** How long the pointer must rest on a part before its value labels appear. */
@@ -109,8 +112,14 @@ export class Workspace {
     return this.renderer.toWorld(this.view, e.clientX - r.left, e.clientY - r.top)
   }
 
-  private othersOf(w: Wire): Wire[] {
-    return this.world.wires.filter((x) => x !== w)
+  /** Is this wire end plugged into a pin, a breadboard hole or the end of another wire? */
+  private isPlugged(pt: Vec, wire: Wire): boolean {
+    for (const part of this.world.parts) {
+      if (part.type.startsWith('breadboard')) {
+        if (holeNear(part, pt, 1)) return true
+      } else if (pinWorld(part).some((q) => q.x === pt.x && q.y === pt.y)) return true
+    }
+    return this.world.wires.some((o) => o !== wire && [o.a, o.b, ...(o.taps ?? [])].some((q) => q.x === pt.x && q.y === pt.y))
   }
 
   private snapPt(p: Vec): Vec {
@@ -262,7 +271,7 @@ export class Workspace {
       return
     }
     if (e.button !== 0) return
-    const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire)
+    const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire, false, this.selectedPart)
 
     if (hit.kind === 'lead') {
       this.select(hit.part.id)
@@ -270,11 +279,17 @@ export class Workspace {
       return
     }
     if (hit.kind === 'wireEnd') {
-      this.mode = { t: 'wireEnd', wire: hit.wire, end: hit.end }
+      // an end never moves: dragging it grows the wire out from it (the old end stays put as a corner, and keeps its
+      // hold if it was plugged in). Everything earlier in the wire stays where it was.
+      const wire = hit.wire
+      const base: WireShape = { a: { ...wire.a }, b: { ...wire.b }, via: wire.via.map((v) => ({ ...v })), taps: (wire.taps ?? []).map((v) => ({ ...v })) }
+      this.mode = { t: 'dragEnd', wire, end: hit.end, plugOld: this.isPlugged(hit.point, wire), base }
       return
     }
     if (hit.kind === 'bend') {
-      this.mode = { t: 'bend', wire: hit.wire, index: hit.index, via0: hit.wire.via.map((v) => ({ ...v })) }
+      // a straight wire has no corner yet: the middle handle adds one at its position, then drags it
+      if (hit.index === -1) hit.wire.via = [{ ...hit.point }]
+      this.mode = { t: 'bend', wire: hit.wire, index: Math.max(hit.index, 0), via0: hit.wire.via.map((v) => ({ ...v })) }
       return
     }
     if (this.wireMode && hit.kind !== 'wire') {
@@ -296,7 +311,7 @@ export class Workspace {
           return
         }
         this.select(null, hit.wire.id)
-        this.mode = { t: 'wire', wire: hit.wire, grab: w, a0: { ...hit.wire.a }, b0: { ...hit.wire.b }, via0: hit.wire.via.map((v) => ({ ...v })), moved: false }
+        // a wire cannot be dragged around: a click only selects it (reshape it from its ends and corners)
         return
       }
       case 'part':
@@ -305,7 +320,7 @@ export class Workspace {
         this.select(part.id)
         let pressing = false
         const def = defOf(part.type)
-        if (def.press && hit.kind === 'part') {
+        if (def.press && hit.kind === 'part' && (!def.pressZone || def.pressZone(hit.local))) {
           pressing = def.press(part, true)
           if (pressing) this.world.touch()
         }
@@ -321,6 +336,7 @@ export class Workspace {
           sx: e.clientX,
           sy: e.clientY,
           pressing,
+          follow: planFollow(this.world, part),
         }
         return
       }
@@ -353,6 +369,7 @@ export class Workspace {
         m.part.x = nx
         m.part.y = ny
         if (m.leads0 && m.part.leads) m.part.leads = m.leads0.map((l) => ({ x: l.x + dx, y: l.y + dy }))
+        applyFollow(this.world, m.follow, dx, dy) // wires on its pins, and everything on a breadboard, go along
         this.world.touch()
         break
       }
@@ -365,26 +382,24 @@ export class Workspace {
       }
       case 'bend': {
         const s = this.snapPt(w)
-        m.wire.via = moveBend(m.wire.a, m.via0, m.wire.b, m.index, s)
+        const next = moveBend(m.wire.a, m.via0, m.wire.b, m.index, s, m.wire.taps ?? [])
+        // a shape that would run the wire over itself is not taken (the wire stays as it last was)
+        if (!wireOverlaps(m.wire.a, next, m.wire.b) || wireOverlaps(m.wire.a, m.wire.via, m.wire.b)) m.wire.via = next
         this.hoverPoint = s
         this.world.touch()
         break
       }
-      case 'wireEnd': {
+      case 'dragEnd': {
         const s = this.snapPt(w)
-        m.wire[m.end] = s
-        m.wire.via = routeVia(m.wire.a, m.wire.b, this.othersOf(m.wire))
+        const plug = m.end === 'b' ? m.base.b : m.base.a
+        const use = s.x === plug.x && s.y === plug.y ? m.base : dragEnd(m.base, m.end, s, m.plugOld)
+        if (!wireOverlaps(use.a, use.via, use.b) || wireOverlaps(m.wire.a, m.wire.via, m.wire.b)) {
+          m.wire.a = use.a
+          m.wire.b = use.b
+          m.wire.via = use.via
+          m.wire.taps = use.taps.length > 0 ? use.taps : undefined
+        }
         this.hoverPoint = s
-        this.world.touch()
-        break
-      }
-      case 'wire': {
-        const dx = snap(w.x - m.grab.x)
-        const dy = snap(w.y - m.grab.y)
-        if (dx !== 0 || dy !== 0) m.moved = true
-        m.wire.a = { x: m.a0.x + dx, y: m.a0.y + dy }
-        m.wire.b = { x: m.b0.x + dx, y: m.b0.y + dy }
-        m.wire.via = m.via0.map((v) => ({ x: v.x + dx, y: v.y + dy }))
         this.world.touch()
         break
       }
@@ -423,16 +438,12 @@ export class Workspace {
         break
       }
       case 'lead':
-      case 'wireEnd':
+      case 'dragEnd':
       case 'bend':
+        // a corner dropped back onto the straight line (or a bare click on the middle handle) is not a corner
+        if (m.t === 'bend' || m.t === 'dragEnd') m.wire.via = tidy([m.wire.a, ...m.wire.via, m.wire.b], m.wire.taps ?? [])
         this.world.commit()
         this.onEdit()
-        break
-      case 'wire':
-        if (m.moved) {
-          this.world.commit()
-          this.onEdit()
-        }
         break
       case 'newWire':
         if (m.a.x !== m.b.x || m.a.y !== m.b.y) {
@@ -452,7 +463,7 @@ export class Workspace {
   }
 
   private hover(w: Vec): void {
-    const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire)
+    const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire, false, this.selectedPart)
     this.hoverPoint = null
     const prevHover = this.hoverPart
     this.hoverPart = null
@@ -474,12 +485,12 @@ export class Workspace {
       case 'wireEnd':
         this.hoverPoint = hit.point
         cursor = 'grab'
-        text = `Wire end, drag to move. ${point(hit.point)}`
+        text = `Wire end stays plugged in. Drag it to pull the wire out into a corner. ${point(hit.point)}`
         break
       case 'bend':
         this.hoverPoint = hit.point
         cursor = 'grab'
-        text = 'Wire corner: drag to reshape the wire.'
+        text = hit.index === -1 ? 'Drag the middle of the wire to bend it.' : 'Wire corner: drag to reshape the wire.'
         break
       case 'pin':
         this.hoverPoint = hit.point
@@ -493,8 +504,8 @@ export class Workspace {
         text = `Breadboard hole: drag to wire. ${point(hit.point)}`
         break
       case 'wire':
-        cursor = 'move'
-        text = 'Wire: click to select, drag to move, Delete to remove.'
+        cursor = 'pointer'
+        text = 'Wire: click to select, Delete to remove. Selected: drag an end to stretch it, drag a corner to reshape it.'
         break
       case 'part': {
         this.hoverPart = hit.part.id
@@ -519,7 +530,7 @@ export class Workspace {
     e.preventDefault()
     const w = this.world2(e)
     if (e.shiftKey) {
-      const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire)
+      const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire, false, this.selectedPart)
       if (hit.kind === 'part' || hit.kind === 'pin') {
         const part = hit.part
         const def = defOf(part.type)
@@ -584,6 +595,6 @@ export class Workspace {
   }
 
   hitAt(w: Vec): Hit {
-    return hitTest(this.world, w, this.view.zoom, this.selectedWire)
+    return hitTest(this.world, w, this.view.zoom, this.selectedWire, false, this.selectedPart)
   }
 }

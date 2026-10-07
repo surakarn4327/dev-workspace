@@ -3,8 +3,10 @@
 import type { Simulation } from '../board/simulation.ts'
 import { G, pointKey, rotVec, wirePath } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
-import { defOf, pinWorld } from '../parts/index.ts'
-import { COL, drawText, radialGlow, rrect } from './draw.ts'
+import { defOf, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
+import { COL, drawText, mix, radialGlow, rrect } from './draw.ts'
+import { straightMid } from '../board/wireEdit.ts'
+import { pixelCable, pixelProbeHead } from './pixelwire.ts'
 import { scene } from './scene.ts'
 
 export interface View {
@@ -163,8 +165,14 @@ export class Renderer {
   /** Things that are part of the circuit itself: parts, wires, leads, smoke. */
   private drawContent(world: World, sim: Simulation, ov: Overlay, now: number): void {
     const c = this.ctx
-    for (const part of world.parts) this.drawPart(part, sim, now, 1)
+    // stacking: breadboard, flat parts, tall parts, then wires, then batteries and bench tools; the selected part (not the board) goes on top
+    const sel = ov.selectedPart ? world.getPart(ov.selectedPart) : undefined
+    const front = sel && layerOf(sel.type) > 0 ? sel : undefined
+    const stack = stackOrder(world.parts).filter((p) => p !== front)
+    for (const part of stack) if (layerOf(part.type) < 4) this.drawPart(part, sim, now, 1)
     for (const w of world.wires) this.drawWire(w, w.id === ov.selectedWire)
+    for (const part of stack) if (layerOf(part.type) >= 4) this.drawPart(part, sim, now, 1)
+    if (front) this.drawPart(front, sim, now, 1)
 
     for (const part of world.parts) {
       const def = defOf(part.type)
@@ -277,11 +285,27 @@ export class Renderer {
   private drawBendHandles(w: Wire): void {
     const c = this.ctx
     for (const v of w.via) {
+      if (w.taps?.some((t) => t.x === v.x && t.y === v.y)) continue // a plug is not a handle
       c.fillStyle = COL.bg
       c.strokeStyle = COL.cyan
       c.lineWidth = 2
       c.fillRect(v.x - 5, v.y - 5, 10, 10)
       c.strokeRect(v.x - 5, v.y - 5, 10, 10)
+    }
+    // a wire with no corner gets a round handle in the middle: drag it to bend the wire
+    if (w.via.length === 0) {
+      const mid = straightMid(w.a, w.b)
+      if (mid) {
+        c.fillStyle = COL.bg
+        c.strokeStyle = COL.cyan
+        c.lineWidth = 2
+        c.beginPath()
+        c.arc(mid.x, mid.y, 6, 0, Math.PI * 2)
+        c.fill()
+        c.stroke()
+        c.fillStyle = COL.cyan
+        c.fillRect(mid.x - 1.5, mid.y - 1.5, 3, 3)
+      }
     }
   }
 
@@ -305,6 +329,22 @@ export class Renderer {
       c.stroke()
       c.shadowBlur = 0
     }
+    if (this.pixelMode) {
+      c.shadowBlur = 0
+      pixelCable(c, path, w.color, true, w.taps ?? [])
+      if (selected) {
+        for (const e of [w.a, w.b]) {
+          c.strokeStyle = COL.cyan
+          c.lineWidth = 1.5
+          c.beginPath()
+          c.arc(e.x, e.y, 8, 0, Math.PI * 2)
+          c.stroke()
+        }
+      }
+      c.lineCap = 'butt'
+      c.lineJoin = 'miter'
+      return
+    }
     c.strokeStyle = 'rgba(0,0,0,0.55)'
     c.lineWidth = 6
     this.tracePath(path, 1.5)
@@ -317,7 +357,7 @@ export class Renderer {
     c.lineWidth = 1
     this.tracePath(path, -1)
     c.stroke()
-    for (const e of [w.a, w.b]) {
+    for (const e of [w.a, w.b, ...(w.taps ?? [])]) {
       c.fillStyle = COL.metal
       c.beginPath()
       c.arc(e.x, e.y, 3.6, 0, Math.PI * 2)
@@ -353,20 +393,41 @@ export class Renderer {
       const c2 = { x: tip.x, y: tip.y - dir * k }
       const col = def.leadColors?.[i] ?? '#888'
       c.lineCap = 'round'
-      c.strokeStyle = 'rgba(0,0,0,0.6)'
-      c.lineWidth = 6
-      c.beginPath()
-      c.moveTo(A.x, A.y)
-      c.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, tip.x, tip.y)
-      c.stroke()
-      c.strokeStyle = col
-      c.lineWidth = 3.6
-      c.stroke()
+      if (this.pixelMode) {
+        // same look as the jumper wires (shadow, dark outline, lit top-left, shaded bottom-right) but smooth
+        const stroke = (dx: number, dy: number, width: number, color: string) => {
+          c.strokeStyle = color
+          c.lineWidth = width
+          c.beginPath()
+          c.moveTo(A.x + dx, A.y + dy)
+          c.bezierCurveTo(c1.x + dx, c1.y + dy, c2.x + dx, c2.y + dy, tip.x + dx, tip.y + dy)
+          c.stroke()
+        }
+        stroke(2, 2, 8, 'rgba(0,0,0,0.38)')
+        stroke(0, 0, 8, mix(col, '#000000', 0.78))
+        stroke(0, 0, 6, mix(col, '#000000', 0.35))
+        stroke(-0.5, -0.5, 4.5, col)
+        stroke(-1, -1, 1.6, mix(col, '#ffffff', 0.4))
+      } else {
+        c.strokeStyle = 'rgba(0,0,0,0.6)'
+        c.lineWidth = 6
+        c.beginPath()
+        c.moveTo(A.x, A.y)
+        c.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, tip.x, tip.y)
+        c.stroke()
+        c.strokeStyle = col
+        c.lineWidth = 3.6
+        c.stroke()
+      }
       const ang = Math.atan2(tip.y - c2.y, tip.x - c2.x)
       c.save()
       c.translate(tip.x, tip.y)
       c.rotate(ang)
-      if (def.leadTip === 'probe') {
+      if (def.leadTip === 'probe' && this.pixelMode) {
+        c.restore()
+        pixelProbeHead(c, tip, tip.y - c2.y > 0 ? -1 : 1, col)
+        c.save()
+      } else if (def.leadTip === 'probe') {
         c.fillStyle = col
         rrect(c, -34, -5.5, 28, 11, 3)
         c.fill()

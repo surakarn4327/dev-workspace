@@ -69,6 +69,8 @@ export interface PartDef {
   click?(p: PartInstance, local: Vec): boolean
   /** Momentary parts: mouse down / up on the body. Return true if state changed. */
   press?(p: PartInstance, down: boolean): boolean
+  /** Limits `press` to part of the body (local coords); a mouse down elsewhere on the part drags it. */
+  pressZone?(local: Vec): boolean
   /** Parameter changed by the mouse wheel while hovering the part. */
   wheelKey?: string
   /** Colors of flexible leads. */

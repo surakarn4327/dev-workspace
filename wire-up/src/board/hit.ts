@@ -1,7 +1,8 @@
 // Pointer hit testing in world coordinates.
 
-import { defOf, pinWorld } from '../parts/index.ts'
+import { defOf, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
 import { holeNear } from '../parts/breadboard.ts'
+import { straightMid } from './wireEdit.ts'
 import { unrotVec, wirePath } from './world.ts'
 import type { PartInstance, Vec, Wire, World } from './world.ts'
 
@@ -29,7 +30,7 @@ function segDist(p: Vec, a: Vec, b: Vec): number {
   return dist(p, { x: a.x + t * dx, y: a.y + t * dy })
 }
 
-export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string | null, skipWires = false): Hit {
+export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string | null, skipWires = false, frontId: string | null = null): Hit {
   const tol = Math.min(Math.max(7, 8 / zoom), 12)
 
   // flexible lead tips (probes, battery leads) sit on top of everything
@@ -44,7 +45,14 @@ export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string
   const sel = selectedWire ? world.getWire(selectedWire) : undefined
   if (sel) {
     for (const end of ['a', 'b'] as const) if (dist(sel[end], p) <= tol + 2) return { kind: 'wireEnd', wire: sel, end, point: sel[end] }
-    for (let i = 0; i < sel.via.length; i++) if (dist(sel.via[i], p) <= tol + 2) return { kind: 'bend', wire: sel, index: i, point: sel.via[i] }
+    for (let i = 0; i < sel.via.length; i++) {
+      if (sel.taps?.some((t) => t.x === sel.via[i].x && t.y === sel.via[i].y)) continue // a plug is not a handle
+      if (dist(sel.via[i], p) <= tol + 2) return { kind: 'bend', wire: sel, index: i, point: sel.via[i] }
+    }
+    if (sel.via.length === 0) {
+      const mid = straightMid(sel.a, sel.b)
+      if (mid && dist(mid, p) <= tol + 2) return { kind: 'bend', wire: sel, index: -1, point: mid }
+    }
   }
 
   let bestPin: Hit | null = null
@@ -70,8 +78,11 @@ export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string
     }
   }
 
-  for (let k = world.parts.length - 1; k >= 0; k--) {
-    const part = world.parts[k]
+  // parts: the selected one first, then from the top of the stacking order down (same order as drawing)
+  const stacked = stackOrder(world.parts).reverse()
+  const frontPart = frontId ? world.getPart(frontId) : undefined
+  if (frontPart && layerOf(frontPart.type) > 0) stacked.unshift(frontPart)
+  for (const part of stacked) {
     const def = defOf(part.type)
     if (part.type.startsWith('breadboard')) continue
     const local = unrotVec({ x: p.x - part.x, y: p.y - part.y }, part.rot)

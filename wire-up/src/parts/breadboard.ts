@@ -1,7 +1,9 @@
 import { G, pointKey } from '../board/world.ts'
 import type { PartInstance, Vec } from '../board/world.ts'
 import { COL, drawText, rrect } from '../render/draw.ts'
+import { drawSprite, PX, pxRect } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
+import { BB_HOLE, breadboardSprite } from './art.ts'
 import { num } from './common.ts'
 import type { PartDef } from './types.ts'
 
@@ -35,7 +37,8 @@ export function boardHoles(p: PartInstance): Hole[] {
   return out
 }
 
-const HOLE_ROWS = new Set([...RAIL_TOP, ...ROWS_TOP, ...ROWS_BOTTOM, ...RAIL_BOTTOM])
+const HOLE_ROW_LIST = [...RAIL_TOP, ...ROWS_TOP, ...ROWS_BOTTOM, ...RAIL_BOTTOM]
+const HOLE_ROWS = new Set(HOLE_ROW_LIST)
 
 /** Hole position near a world point, if any (arithmetic, no scan). */
 export function holeNear(p: PartInstance, w: Vec, tol: number): Vec | null {
@@ -63,6 +66,34 @@ function board(type: string, name: string, cols: number): PartDef {
       const cols = boardCols(p)
       const w = (cols + 1) * G
       const h = BOARD_H * G
+      if (scene.pixel) {
+        drawSprite(c, breadboardSprite(cols, HOLE_ROW_LIST), -G, -G)
+        const ink = '#6b6652'
+        drawText(c, '+', -G + 6, 0 * G - 4, { color: '#d83a3a' })
+        drawText(c, '-', -G + 6, 1 * G - 4, { color: '#2f63d8' })
+        drawText(c, '+', -G + 6, 16 * G - 4, { color: '#d83a3a' })
+        drawText(c, '-', -G + 6, 17 * G - 4, { color: '#2f63d8' })
+        for (let i = 0; i < cols; i++) {
+          if ((i + 1) % 5 === 0 || i === 0) {
+            drawText(c, String(i + 1), i * G, 2.2 * G - 9, { color: ink, align: 'center' })
+            drawText(c, String(i + 1), i * G, 15.0 * G - 9 + 10, { color: ink, align: 'center' })
+          }
+        }
+        const letters = ['J', 'I', 'H', 'G', 'F', 'E', 'D', 'C', 'B', 'A']
+        const rowList = [...ROWS_TOP, ...ROWS_BOTTOM]
+        rowList.forEach((r, k) => drawText(c, letters[k], -G + 6, r * G - 4, { color: ink }))
+        // holes with a part leg in them: a metal plug
+        for (const hole of boardHoles(p)) {
+          if (!scene.used.has(pointKey(hole.pos))) continue
+          const ax = (hole.pos.x - p.x + G) / PX - BB_HOLE / 2
+          const ay = (hole.pos.y - p.y + G) / PX - BB_HOLE / 2
+          pxRect(c, -G, -G, ax, ay, BB_HOLE, BB_HOLE, '#aeb4c0')
+          pxRect(c, -G, -G, ax, ay, BB_HOLE - 1, 1, '#ffffff')
+          pxRect(c, -G, -G, ax, ay, 1, BB_HOLE - 1, '#ffffff')
+          pxRect(c, -G, -G, ax + 1, ay + BB_HOLE - 1, BB_HOLE - 1, 1, '#6b7280')
+        }
+        return
+      }
       // shadow + body
       c.fillStyle = '#9d9884'
       rrect(c, -G, -G + 4, w, h, 6)
