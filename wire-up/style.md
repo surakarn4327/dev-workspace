@@ -28,16 +28,16 @@
 |---|---|---|
 | resistor | **pixel — ต้นแบบ** | `parts/art.ts` `resistorSprite` |
 | battery (9V + 1.5V + 3V + 4.5V แยกเป็น 4 ชิ้นส่วน) | **pixel — ผู้ใช้ชม "สวยเลย"** | `parts/art.ts` `batterySprite` — ขั้วบนตัวแบตเป็น pin ไม่มีสายอ่อน (หัวข้อ 5.13) |
-| multimeter | **pixel (ผู้ใช้ไปต่อชิ้นถัดไปแล้ว ยังไม่ได้อนุมัติชัด)** | `parts/art.ts` `meterSprite` — ดูหัวข้อ 5.11 |
-| bench supply | **pixel (ผู้ใช้ไปต่อชิ้นถัดไปแล้ว ยังไม่ได้อนุมัติชัด)** | `parts/art.ts` `supplySprite` — ดูหัวข้อ 5.12 |
+| multimeter | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `meterSprite` — ดูหัวข้อ 5.11 |
+| bench supply | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `supplySprite` — ดูหัวข้อ 5.12 |
 | LED | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `ledSprite` — ดูหัวข้อ 5.2 |
 | diode | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `diodeSprite` — ดูหัวข้อ 5.4 |
 | BC547/BC557 | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `to92Sprite` (ตัวเดียวใช้ทั้งสองรุ่น) — ดูหัวข้อ 5.5 |
 | pot | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `potSprite` — ดูหัวข้อ 5.6 |
 | LDR | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `ldrSprite` — ดูหัวข้อ 5.7 |
 | NTC | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `ntcSprite` — ดูหัวข้อ 5.8 |
-| สวิตช์ rocker (ชิ้น `switch` ชื่อ "Rocker switch") | **pixel (ผู้ใช้ไปต่อชิ้นถัดไปแล้ว ยังไม่ได้อนุมัติชัด)** | `parts/art.ts` `rockerSwitchSprite` — ดูหัวข้อ 5.9 |
-| สวิตช์เลื่อน (ชิ้น `slide-switch`) | **pixel (รออนุมัติ)** | `parts/art.ts` `slideSwitchSprite` — ดูหัวข้อ 5.9b (นำกลับมาตามคำขอ เป็นอีกตัวเลือกคู่กับ rocker) |
+| สวิตช์ rocker (ชิ้น `switch` ชื่อ "Rocker switch") | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `rockerSwitchSprite` — ดูหัวข้อ 5.9 |
+| สวิตช์เลื่อน (ชิ้น `slide-switch`) | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `slideSwitchSprite` — ดูหัวข้อ 5.9b (นำกลับมาตามคำขอ เป็นอีกตัวเลือกคู่กับ rocker) |
 | ปุ่มกด (tactile) | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `tactSprite` — ดูหัวข้อ 5.10 |
 | breadboard | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `breadboardSprite` — ดูหัวข้อ 5.1 |
 | สาย (jumper) | **pixel — ผู้ใช้อนุมัติ** | `render/pixelwire.ts` — ดูหัวข้อ 5.3 |
@@ -363,7 +363,7 @@
 
 ## 8. ช่องว่างที่รู้ (ยังไม่ทำ / ยังไม่ตัดสินใจ)
 
-- ชิ้นส่วนทุกชนิดมีสไปรต์พิกเซลแล้ว (ดู 1.2) ที่ผู้ใช้ยังไม่ได้อนุมัติชัด: multimeter, bench supply, สวิตช์ rocker; ที่รออนุมัติ: สวิตช์เลื่อน (นำกลับมาล่าสุด)
+- ชิ้นส่วนทุกชนิดมีสไปรต์พิกเซลและผู้ใช้อนุมัติครบแล้ว (2026-10-07) ดู 1.2
 - โหมดเวกเตอร์สำรอง (ปิดปุ่ม Pixel) ยังเป็นหน้าตาเก่า ไม่ได้ปรับตามชิ้นใหม่ (สวิตช์เลื่อน แบต supply มี `translate`/`bounds` ตามโหมดให้ขาตรงกัน)
 - สายตามชิ้นส่วนที่ย้ายและบอร์ดพาของบนบอร์ดไป: ทำแล้ว (ดู 5.3) ยังไม่ได้ลองด้วยเมาส์จริงทุกกรณี
 - สายอ่อนโพรบ: เส้นเนียนตั้งใจ (ผู้ใช้สั่ง) แบตไม่มีสายอ่อนแล้ว
