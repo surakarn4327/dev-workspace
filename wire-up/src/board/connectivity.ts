@@ -1,9 +1,11 @@
 // Turns the drawn workspace (parts, wires, breadboards) into a solver circuit.
-// Rule: two things are connected when their end points sit on the same grid point.
+// Rule: two things are connected when their end points sit on the same grid point; a wire end resting on the body of
+// another wire (not on a pin or hole) joins that wire too.
 
 import type { Circuit, Element } from '../sim/solver.ts'
 import { boardHoles } from '../parts/breadboard.ts'
 import { defOf, pinWorld } from '../parts/index.ts'
+import { socketKeys, tapTarget } from './wireJoin.ts'
 import { pointKey } from './world.ts'
 import type { Vec, World } from './world.ts'
 
@@ -68,6 +70,15 @@ export function buildNetlist(world: World): Netlist {
     for (const t of w.taps ?? []) {
       usedKeys.add(pointKey(t))
       uf.union(pointKey(t), pointKey(w.a))
+    }
+  }
+
+  // a wire end resting on the body of another wire taps it: one conductor
+  const sockets = socketKeys(world)
+  for (const w of world.wires) {
+    for (const end of [w.a, w.b]) {
+      const main = tapTarget(world, w, end, sockets)
+      if (main) uf.union(pointKey(end), pointKey(main.a))
     }
   }
 

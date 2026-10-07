@@ -8,6 +8,7 @@ import { hitTest } from '../board/hit.ts'
 import type { Hit } from '../board/hit.ts'
 import { routeVia } from '../board/router.ts'
 import { Simulation } from '../board/simulation.ts'
+import { branchesOfParts } from '../board/wireJoin.ts'
 import { dragEnd, moveBend, tidy, wireOverlaps } from '../board/wireEdit.ts'
 import type { WireShape } from '../board/wireEdit.ts'
 import { G, snap, unrotVec, WIRE_COLORS } from '../board/world.ts'
@@ -264,8 +265,10 @@ export class Workspace {
   deleteSelected(): void {
     const s = this.selection()
     if (s.parts.size + s.wires.size === 0) return
+    // wires branching off another wire from one of these parts go with them
+    const gone = branchesOfParts(this.world, this.world.parts.filter((p) => s.parts.has(p.id)))
     for (const id of s.parts) this.world.removePart(id)
-    for (const id of s.wires) this.world.removeWire(id)
+    for (const id of new Set([...s.wires, ...gone])) this.world.removeWire(id)
     this.select(null)
     this.world.commit()
     this.onSelect()
@@ -371,13 +374,18 @@ export class Workspace {
   private down(e: PointerEvent): void {
     this.canvas.setPointerCapture(e.pointerId)
     const w = this.world2(e)
-    if (e.button === 1 || e.button === 2 || this.space) {
+    if (e.button === 1 || this.space) {
       this.mode = { t: 'pan', sx: e.clientX, sy: e.clientY, camX: this.view.camX, camY: this.view.camY }
+      return
+    }
+    const ctrl = e.ctrlKey || e.metaKey
+    if (e.button === 2) {
+      // right button: drag a selection box (Ctrl keeps the current selection and adds to it)
+      this.mode = { t: 'box', a: w, b: w, sx: e.clientX, sy: e.clientY, add: ctrl, moved: false }
       return
     }
     if (e.button !== 0) return
     const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire, false, this.selectedPart)
-    const ctrl = e.ctrlKey || e.metaKey
 
     // Ctrl+click adds to / removes from the selection
     if (ctrl) {
@@ -471,8 +479,9 @@ export class Workspace {
         return
       }
       default:
-        // empty canvas: drag a selection box (Ctrl keeps the current selection and adds to it)
-        this.mode = { t: 'box', a: w, b: w, sx: e.clientX, sy: e.clientY, add: ctrl, moved: false }
+        // empty canvas: drag the view (a plain click also deselects, unless Ctrl is held)
+        if (!ctrl) this.select(null)
+        this.mode = { t: 'pan', sx: e.clientX, sy: e.clientY, camX: this.view.camX, camY: this.view.camY }
     }
   }
 
@@ -682,8 +691,8 @@ export class Workspace {
         text = 'Breadboard: drag to move.'
         break
       default:
-        cursor = 'crosshair'
-        text = 'Drag to select several parts. Middle or right button (or Space) drags the view. Ctrl adds to the selection.'
+        cursor = this.wireMode ? 'crosshair' : 'grab'
+        text = 'Left-drag moves the view. Right-drag draws a selection box. Ctrl adds to the selection.'
     }
     if (this.hoverPart !== prevHover) this.hoverSince = performance.now()
     this.canvas.style.cursor = cursor

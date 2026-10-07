@@ -1,3 +1,4 @@
+import { effectiveColors, rootWire } from '../board/wireJoin.ts'
 import { WIRE_COLORS } from '../board/world.ts'
 import { defOf } from '../parts/index.ts'
 import type { Field } from '../parts/types.ts'
@@ -78,14 +79,15 @@ export class Inspector {
       const h = document.createElement('div')
       h.innerHTML = '<h3>Wire</h3><div class="sub">Drag an end to stretch it, drag a corner or the middle handle to reshape it.</div>'
       this.root.appendChild(h)
+      const shown = effectiveColors(ws.world).get(wire.id) ?? wire.color
       const sw = document.createElement('div')
       sw.className = 'swatches'
       for (const col of WIRE_COLORS) {
         const b = document.createElement('button')
-        b.className = `swatch${col === wire.color ? ' sel' : ''}`
+        b.className = `swatch${col === shown ? ' sel' : ''}`
         b.style.background = col
         b.onclick = () => {
-          wire.color = col
+          rootWire(ws.world, wire).color = col // a branch wears its main wire's colour, so that is the one to change
           ws.world.commit()
           ws.onEdit()
           this.rebuild()

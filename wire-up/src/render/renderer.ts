@@ -4,9 +4,12 @@ import type { Simulation } from '../board/simulation.ts'
 import { G, pointKey, rotVec, wirePath } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
 import { defOf, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
+import { effectiveColors, socketKeys, tapEnds } from '../board/wireJoin.ts'
+import { paintBurnt, canBurn } from './burnt.ts'
 import { COL, drawText, mix, radialGlow, rrect } from './draw.ts'
 import { straightMid } from '../board/wireEdit.ts'
-import { pixelCable, pixelProbeHead } from './pixelwire.ts'
+import { cableShape, drawCableBase, drawCableBody, drawCableCaps, pixelProbeHead } from './pixelwire.ts'
+import type { CableShape } from './pixelwire.ts'
 import { scene } from './scene.ts'
 
 export interface View {
@@ -50,6 +53,9 @@ export class Renderer {
   private readonly main: CanvasRenderingContext2D
   /** Use hand-made pixel sprites where they exist (parts without a sprite still draw as vectors). */
   pixelMode = true
+  /** Device pixels per world unit while drawing (sets the resolution of the burnt-part scratch canvas). */
+  private scale = 1
+  private scratch: HTMLCanvasElement | null = null
   private particles: Particle[] = []
   private smokeUntil = new Map<string, number>()
   private emitAcc = new Map<string, number>()
@@ -155,6 +161,7 @@ export class Renderer {
     this.drawGrid(view)
 
     const sMain = this.dpr * zoom
+    this.scale = sMain
     scene.pixel = this.pixelMode
     main.setTransform(sMain, 0, 0, sMain, -view.camX * sMain, -view.camY * sMain)
     main.imageSmoothingEnabled = false
@@ -174,7 +181,18 @@ export class Renderer {
     const front = sel && layerOf(sel.type) > 0 ? sel : undefined
     const stack = stackOrder(world.parts).filter((p) => p !== front)
     for (const part of stack) if (layerOf(part.type) < 4) this.drawPart(part, sim, now, 1)
-    for (const w of world.wires) this.drawWire(w, w.id === ov.selectedWire || ov.group.wires.has(w.id))
+    const sockets = socketKeys(world)
+    const colors = effectiveColors(world, sockets)
+    // every cable's shadow and outline first, then the bodies: a branch merges into its main wire with no dark seam
+    const shapes = new Map<string, CableShape>()
+    if (this.pixelMode) {
+      for (const w of world.wires) {
+        const shape = cableShape(wirePath(w))
+        shapes.set(w.id, shape)
+        drawCableBase(c, shape, colors.get(w.id) ?? w.color)
+      }
+    }
+    for (const w of world.wires) this.drawWire(w, w.id === ov.selectedWire || ov.group.wires.has(w.id), colors.get(w.id) ?? w.color, shapes.get(w.id), tapEnds(world, w, sockets))
     for (const part of stack) if (layerOf(part.type) >= 4) this.drawPart(part, sim, now, 1)
     if (front) this.drawPart(front, sim, now, 1)
 
@@ -195,8 +213,8 @@ export class Renderer {
         leads: null,
         state: { heat: 0, failed: false, failMsg: '' },
       }
-      c.globalAlpha = 0.55
-      this.drawPart(tmp, sim, now, 0.55)
+      c.globalAlpha = 0.8
+      this.drawPart(tmp, sim, now, 0.8)
       c.globalAlpha = 1
     }
     this.drawParticles()
@@ -264,37 +282,22 @@ export class Renderer {
     c.save()
     c.translate(part.x, part.y)
     c.rotate((part.rot * Math.PI) / 2)
-    def.draw(c, part, live, now)
-    this.drawHeat(part, def.bounds(part), now, alpha)
+    if (part.state.failed && alpha === 1 && canBurn(part.type)) {
+      this.scratch ??= document.createElement('canvas')
+      const a = paintBurnt(this.scratch, (sc) => def.draw(sc, part, live, now), def.bounds(part), part.id, now, this.scale)
+      c.drawImage(this.scratch, a.x, a.y, a.w, a.h)
+    } else {
+      def.draw(c, part, live, now)
+      this.drawHeat(part, def.bounds(part), alpha)
+    }
     c.restore()
   }
 
-  private drawHeat(part: PartInstance, b: { x: number; y: number; w: number; h: number }, now: number, alpha: number): void {
+  private drawHeat(part: PartInstance, b: { x: number; y: number; w: number; h: number }, alpha: number): void {
     const c = this.ctx
     if (alpha < 1) return
     const st = part.state
-    if (st.failed) {
-      c.save()
-      c.globalAlpha = 0.62
-      c.fillStyle = '#050304'
-      rrect(c, b.x + 2, b.y + 2, b.w - 4, b.h - 4, 5)
-      c.fill()
-      c.globalAlpha = 1
-      c.strokeStyle = '#2a1a14'
-      c.lineWidth = 2
-      c.beginPath()
-      c.moveTo(b.x + b.w * 0.2, b.y + b.h * 0.3)
-      c.lineTo(b.x + b.w * 0.45, b.y + b.h * 0.55)
-      c.lineTo(b.x + b.w * 0.35, b.y + b.h * 0.8)
-      c.moveTo(b.x + b.w * 0.45, b.y + b.h * 0.55)
-      c.lineTo(b.x + b.w * 0.8, b.y + b.h * 0.4)
-      c.stroke()
-      const flick = 0.35 + 0.25 * Math.sin(now * 9 + b.x)
-      c.fillStyle = `rgba(255,120,40,${flick})`
-      c.fillRect(b.x + b.w * 0.45, b.y + b.h * 0.55, 3, 3)
-      drawText(c, 'BURNT', b.x + b.w / 2, b.y + b.h + 6, { color: COL.red, align: 'center' })
-      c.restore()
-    } else if (st.heat > 0.04) {
+    if (!st.failed && st.heat > 0.04) {
       radialGlow(c, b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h) * 0.8, '#ff5a1f', Math.min(st.heat, 1) * 0.75)
       if (st.heat > 0.4) drawText(c, 'HOT', b.x + b.w / 2, b.y - 10, { color: COL.amber, align: 'center' })
     }
@@ -333,7 +336,7 @@ export class Renderer {
     path.forEach((p, i) => (i === 0 ? c.moveTo(p.x, p.y + dy) : c.lineTo(p.x, p.y + dy)))
   }
 
-  private drawWire(w: Wire, selected: boolean): void {
+  private drawWire(w: Wire, selected: boolean, color: string, shape: CableShape | undefined, bare: Vec[]): void {
     const c = this.ctx
     const path = wirePath(w)
     c.lineCap = 'round'
@@ -349,7 +352,8 @@ export class Renderer {
     }
     if (this.pixelMode) {
       c.shadowBlur = 0
-      pixelCable(c, path, w.color, true, w.taps ?? [])
+      if (shape) drawCableBody(c, shape, color)
+      drawCableCaps(c, path, w.taps ?? [], bare)
       if (selected) {
         for (const e of [w.a, w.b]) {
           c.strokeStyle = COL.cyan
@@ -367,7 +371,7 @@ export class Renderer {
     c.lineWidth = 6
     this.tracePath(path, 1.5)
     c.stroke()
-    c.strokeStyle = w.color
+    c.strokeStyle = color
     c.lineWidth = 4
     this.tracePath(path)
     c.stroke()

@@ -46,6 +46,7 @@ export class App {
     buildToolbox(this.ws, $('tool-tabs'), $('tool-items'))
 
     this.ws.onSelect = () => {
+      this.followSelection()
       this.inspector.rebuild()
       $('btn-wire').classList.toggle('on', this.ws.wireMode)
     }
@@ -130,11 +131,38 @@ export class App {
     const tabs = $('side-tabs').querySelectorAll('button')
     tabs.forEach((t) => {
       t.onclick = () => {
-        tabs.forEach((x) => x.classList.toggle('active', x === t))
-        $('panel-inspect').hidden = t.dataset.tab !== 'inspect'
-        $('panel-lessons').hidden = t.dataset.tab !== 'lessons'
+        this.tabBeforeSelect = null // the player chose a tab: leave it alone when the selection goes away
+        this.showSideTab(t.dataset.tab ?? 'inspect')
       }
     })
+  }
+
+  private sideTab = 'inspect'
+  /** Tab that was open when a selection pulled the side panel to the Inspector; shown again when nothing is selected. */
+  private tabBeforeSelect: string | null = null
+  private hadSelection = false
+
+  private showSideTab(tab: string): void {
+    this.sideTab = tab
+    $('side-tabs').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x.dataset.tab === tab))
+    $('panel-inspect').hidden = tab !== 'inspect'
+    $('panel-lessons').hidden = tab !== 'lessons'
+  }
+
+  /** Selecting something opens the Inspector; letting go of the selection brings back the tab that was open before. */
+  private followSelection(): void {
+    const has = this.ws.selectedPart !== null || this.ws.selectedWire !== null || this.ws.groupSize() > 0
+    if (has === this.hadSelection) return
+    this.hadSelection = has
+    if (has) {
+      if (this.sideTab !== 'inspect') {
+        this.tabBeforeSelect = this.sideTab
+        this.showSideTab('inspect')
+      }
+    } else if (this.tabBeforeSelect) {
+      this.showSideTab(this.tabBeforeSelect)
+      this.tabBeforeSelect = null
+    }
   }
 
   private togglePanel: (side: 'left' | 'right') => void = () => {}

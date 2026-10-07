@@ -51,9 +51,17 @@ function fillCells(c: CanvasRenderingContext2D, cells: Array<[number, number]>, 
   c.fill()
 }
 
-/** Draw a cable along `pts` in `color`; `ends` adds a metal pin at both ends (jumper wires). */
-export function pixelCable(c: CanvasRenderingContext2D, pts: PixelPoint[], color: string, ends: boolean, plugs: PixelPoint[] = []): void {
-  if (pts.length < 2) return
+export interface CableShape {
+  bodyCells: Array<[number, number]>
+  outline: Array<[number, number]>
+  shadow: Array<[number, number]>
+  lit: Array<[number, number]>
+  mid: Array<[number, number]>
+  dark: Array<[number, number]>
+}
+
+/** Work out which art pixels a cable covers and how each is shaded. */
+export function cableShape(pts: PixelPoint[]): CableShape {
   const body = new Set<number>()
   for (const [x, y] of rasterize(pts)) {
     body.add(key(x, y))
@@ -63,7 +71,7 @@ export function pixelCable(c: CanvasRenderingContext2D, pts: PixelPoint[], color
     body.add(key(x, y + 1))
   }
   const bodyCells: Array<[number, number]> = []
-  const outline = new Map<number, [number, number]>()
+  const outlineMap = new Map<number, [number, number]>()
   const unkey = (k: number): [number, number] => [Math.floor(k / 2097152) - OFF, (k % 2097152) - OFF]
   for (const k of body) {
     const [x, y] = unkey(k)
@@ -75,12 +83,12 @@ export function pixelCable(c: CanvasRenderingContext2D, pts: PixelPoint[], color
       [x, y + 1],
     ]) {
       const nk = key(nx, ny)
-      if (!body.has(nk)) outline.set(nk, [nx, ny])
+      if (!body.has(nk)) outlineMap.set(nk, [nx, ny])
     }
   }
-  const solid = (x: number, y: number) => body.has(key(x, y)) || outline.has(key(x, y))
+  const solid = (x: number, y: number) => body.has(key(x, y)) || outlineMap.has(key(x, y))
   const shadow: Array<[number, number]> = []
-  for (const [x, y] of [...bodyCells, ...outline.values()]) if (!solid(x + 1, y + 1)) shadow.push([x + 1, y + 1])
+  for (const [x, y] of [...bodyCells, ...outlineMap.values()]) if (!solid(x + 1, y + 1)) shadow.push([x + 1, y + 1])
   const lit: Array<[number, number]> = []
   const mid: Array<[number, number]> = []
   const dark: Array<[number, number]> = []
@@ -89,20 +97,41 @@ export function pixelCable(c: CanvasRenderingContext2D, pts: PixelPoint[], color
     const shade = !body.has(key(x, y + 1)) || !body.has(key(x + 1, y))
     ;(light && !shade ? lit : shade && !light ? dark : mid).push([x, y])
   }
-  fillCells(c, shadow, 'rgba(0,0,0,0.38)')
-  fillCells(c, [...outline.values()], mix(color, '#000000', 0.78))
-  fillCells(c, mid, color)
-  fillCells(c, lit, mix(color, '#ffffff', 0.4))
-  fillCells(c, dark, mix(color, '#000000', 0.35))
-  if (ends) {
-    for (const p of [pts[0], pts[pts.length - 1], ...plugs]) {
-      const x = Math.round(p.x / PX)
-      const y = Math.round(p.y / PX)
-      fillCells(c, [[x, y], [x + 1, y], [x, y + 1]], '#c9ced6')
-      fillCells(c, [[x - 1, y], [x, y - 1]], '#f1f4f9')
-      fillCells(c, [[x + 1, y + 1]], '#7d838f')
-    }
+  return { bodyCells, outline: [...outlineMap.values()], shadow, lit, mid, dark }
+}
+
+/** The drop shadow and dark outline. Draw these for every cable before any body so joined cables merge cleanly. */
+export function drawCableBase(c: CanvasRenderingContext2D, shape: CableShape, color: string): void {
+  fillCells(c, shape.shadow, 'rgba(0,0,0,0.38)')
+  fillCells(c, shape.outline, mix(color, '#000000', 0.78))
+}
+
+export function drawCableBody(c: CanvasRenderingContext2D, shape: CableShape, color: string): void {
+  fillCells(c, shape.mid, color)
+  fillCells(c, shape.lit, mix(color, '#ffffff', 0.4))
+  fillCells(c, shape.dark, mix(color, '#000000', 0.35))
+}
+
+/** Metal pins at the wire's ends and plugs; `skip` lists ends that rest on another wire and get no pin. */
+export function drawCableCaps(c: CanvasRenderingContext2D, pts: PixelPoint[], plugs: PixelPoint[] = [], skip: PixelPoint[] = []): void {
+  const skipped = new Set(skip.map((p) => key(Math.round(p.x / PX), Math.round(p.y / PX))))
+  for (const p of [pts[0], pts[pts.length - 1], ...plugs]) {
+    const x = Math.round(p.x / PX)
+    const y = Math.round(p.y / PX)
+    if (skipped.has(key(x, y))) continue
+    fillCells(c, [[x, y], [x + 1, y], [x, y + 1]], '#c9ced6')
+    fillCells(c, [[x - 1, y], [x, y - 1]], '#f1f4f9')
+    fillCells(c, [[x + 1, y + 1]], '#7d838f')
   }
+}
+
+/** Draw a cable along `pts` in `color`; `ends` adds a metal pin at both ends (jumper wires). */
+export function pixelCable(c: CanvasRenderingContext2D, pts: PixelPoint[], color: string, ends: boolean, plugs: PixelPoint[] = []): void {
+  if (pts.length < 2) return
+  const shape = cableShape(pts)
+  drawCableBase(c, shape, color)
+  drawCableBody(c, shape, color)
+  if (ends) drawCableCaps(c, pts, plugs)
 }
 
 /**

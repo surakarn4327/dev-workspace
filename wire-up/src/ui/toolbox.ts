@@ -3,6 +3,11 @@ import type { Category, PartDef } from '../parts/types.ts'
 import { COL } from '../render/draw.ts'
 import type { Workspace } from './workspace.ts'
 
+/** An empty drag image, so the browser shows nothing of the toolbox card while dragging. */
+const BLANK = document.createElement('canvas')
+BLANK.width = 1
+BLANK.height = 1
+
 function icon(def: PartDef): HTMLCanvasElement {
   const W = 92
   const H = 64
@@ -49,7 +54,11 @@ export function buildToolbox(ws: Workspace, tabsEl: HTMLElement, itemsEl: HTMLEl
       el.addEventListener('dragstart', (e) => {
         ws.draggingType = def.type
         e.dataTransfer?.setData('text/plain', def.type)
-        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy'
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'copy'
+          // no toolbox card under the pointer: the part itself follows it (the canvas draws it, snapped to the grid)
+          e.dataTransfer.setDragImage(BLANK, 0, 0)
+        }
       })
       el.addEventListener('dragend', () => {
         ws.draggingType = null
