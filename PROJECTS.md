@@ -5,6 +5,7 @@
 | โปรเจกต์ | ชนิด | พอร์ต | เกิดเมื่อ | คำอธิบาย |
 |---|---|---|---|---|
 <!-- PROJECTS:START -->
+| [wire-up](wire-up/) | web | 5173 | 2026-10-07 | Virtual electronics lab: realistic circuit simulation with breadboard, instruments, Arduino and ESP32, plus mission-style lessons |
 | [kin-arai-dee](kin-arai-dee/) | web | 5172 | 2026-10-05 | แอปช่วยตรวจเมนูอาหารสำหรับผู้ป่วย เริ่มจากอาหารไอโอดีนต่ำก่อนกลืนแร่ (I-131) รองรับหลายโรคในอนาคต |
 | [agent-office](agent-office/) | web | 5171, 8071 (ตัวช่วยค้นเว็บ/ข่าว/อ่านหน้า ในเครื่อง) | 2026-10-02 | ออฟฟิศพิกเซล 8-bit แสดงบริษัท AI agent ที่ทำงานเป็นลำดับชั้น (เจ้าของ → หัวหน้าแผนก → ลูกน้อง → ส่งงานให้ผู้ใช้) |
 | [pc-controller](pc-controller/) | web | 5170 | 2026-09-20 | คุมเปิด-ปิดคอมจากมือถือผ่าน ESP32+relay พร้อมเช็คสถานะและแจ้งเตือน |

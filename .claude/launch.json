@@ -53,6 +53,20 @@
                                                    "5172"
                                                ],
                                "port":  5172
+                           },
+                           {
+                               "name":  "wire-up",
+                               "runtimeExecutable":  "npm",
+                               "runtimeArgs":  [
+                                                   "--prefix",
+                                                   "wire-up",
+                                                   "run",
+                                                   "dev",
+                                                   "--",
+                                                   "--port",
+                                                   "5173"
+                                               ],
+                               "port":  5173
                            }
                        ]
 }
