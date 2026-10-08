@@ -713,12 +713,12 @@ export class Workspace {
       case 'pin':
         this.hoverPoint = hit.point
         this.hoverPart = hit.part.id
-        cursor = 'crosshair'
+        cursor = 'pointer'
         text = `${defOf(hit.part.type).name} pin ${defOf(hit.part.type).pinLabels[hit.index]}: drag to wire. ${point(hit.point)}`
         break
       case 'hole':
         this.hoverPoint = hit.point
-        cursor = 'crosshair'
+        cursor = 'pointer'
         text = `Breadboard hole: drag to wire. ${point(hit.point)}`
         break
       case 'wire':
@@ -727,13 +727,14 @@ export class Workspace {
         break
       case 'part': {
         this.hoverPart = hit.part.id
-        cursor = 'move'
         const d = defOf(hit.part.type)
+        // the pressable cap of a push button is a button (pointer); the rest of a part is a handle (grab)
+        cursor = d.press && (!d.pressZone || d.pressZone(hit.local)) ? 'pointer' : 'grab'
         text = `${d.name}: ${d.summary(hit.part)}`
         break
       }
       case 'board':
-        cursor = 'move'
+        cursor = 'grab'
         text = 'Breadboard: drag to move.'
         break
       default:
