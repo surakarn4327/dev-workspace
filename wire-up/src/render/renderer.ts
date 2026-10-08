@@ -427,6 +427,7 @@ export class Renderer {
     this.tracePath(path, -1)
     c.stroke()
     for (const e of [w.a, w.b, ...(w.taps ?? [])]) {
+      if (bare.some((q) => q.x === e.x && q.y === e.y)) continue // a branch end gets the round junction dot, not a metal pin
       c.fillStyle = COL.metal
       c.beginPath()
       c.arc(e.x, e.y, 3.6, 0, Math.PI * 2)
