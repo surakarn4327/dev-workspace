@@ -28,7 +28,7 @@ function icon(def: PartDef): HTMLCanvasElement {
 
 /**
  * The parts list: every part in one scrolling list, grouped under a divider with the category name. The chips above it
- * scroll the list to a group (the last one clicked stays lit); the search box filters the whole list.
+ * scroll the list to a group (the one just clicked is lit until the list is scrolled by hand); the search box filters the whole list.
  */
 export function buildToolbox(ws: Workspace, headEl: HTMLElement, tabsEl: HTMLElement, itemsEl: HTMLElement): void {
   const scroller = itemsEl.closest<HTMLElement>('#toolbox') ?? itemsEl
@@ -67,10 +67,20 @@ export function buildToolbox(ws: Workspace, headEl: HTMLElement, tabsEl: HTMLEle
   const headings = new Map<Category, HTMLElement>()
   const chips = new Map<Category, HTMLButtonElement>()
 
-  let picked: Category | null = null // the chip last clicked; it stays lit (scrolling by hand does not change it)
+  let picked: Category | null = null // the chip last clicked; lit until the list is scrolled by hand
   const light = () => {
     for (const [cat, b] of chips) b.classList.toggle('active', cat === picked)
   }
+
+  // scrolling by hand (wheel, touch, scrollbar drag, keys) puts the chip back to normal; the click's own smooth scroll does not
+  const unlight = (e: Event) => {
+    if (e.target instanceof Node && headEl.contains(e.target)) return
+    if (e.type === 'pointerdown' && e.target !== scroller) return // only a press on the scrollbar itself scrolls
+    if (picked === null) return
+    picked = null
+    light()
+  }
+  for (const ev of ['wheel', 'touchmove', 'pointerdown', 'keydown']) scroller.addEventListener(ev, unlight, { passive: true })
 
   /** Scroll so the group heading sits right under the sticky header. */
   /** Scroll so the group heading sits right under the sticky header. */
