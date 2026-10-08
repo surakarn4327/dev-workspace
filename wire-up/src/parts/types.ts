@@ -1,7 +1,7 @@
 import type { Element, ElementCurrent } from '../sim/solver.ts'
 import type { Params, PartInstance, Vec } from '../board/world.ts'
 
-export type Category = 'power' | 'passive' | 'semiconductor' | 'switch' | 'sensor' | 'instrument' | 'board'
+export type Category = 'power' | 'passive' | 'semiconductor' | 'logic' | 'switch' | 'sensor' | 'instrument' | 'board'
 
 export interface Rect {
   x: number
@@ -56,7 +56,9 @@ export interface PartDef {
   /** No pin label boxes on hover (the part carries its own printed markings, or has none worth showing). */
   hidePinLabels?: boolean
   /** Where pin labels sit: beside each lead along the part's axis, or straight above the pin. Default: below the pin. */
-  pinLabelPlace?: 'axis' | 'side' | 'above' | 'below'
+  pinLabelPlace?: 'axis' | 'side' | 'lead' | 'above' | 'below'
+  /** For `pinLabelPlace: 'lead'`: the direction (local frame, before rotation) pin `index` points away from the body. */
+  pinLeadDir?(index: number): Vec
   /** How far the visible lead tip sticks out past the pin point, in the label's direction (world px). Default 0. */
   tipPastPin?: number
   /** Same as `tipPastPin` for the plain vector look (pixel look off). Defaults to `tipPastPin`. */

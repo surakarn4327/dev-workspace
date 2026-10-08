@@ -973,3 +973,78 @@ export function supplySprite(): Sprite {
     )
   })
 }
+
+// ---------------------------------------------------------------- logic gates
+
+export type GateShape = 'not' | 'and' | 'or' | 'nand' | 'nor' | 'xor' | 'xnor'
+
+/** Grid size of every gate sprite (art pixels). Grid cell (0, 0) sits at world (16, -8); the pins are on the row y = 20. */
+export const GATE_W = 24
+export const GATE_H = 28
+
+/**
+ * The classic logic-gate shapes as a lit, outlined plastic block (light from the top left): flat back + round front for AND,
+ * curved back + pointed front for OR, a triangle for NOT, an extra back arc for XOR, and a round bubble at the output of the
+ * inverting gates. 24 x 28 art pixels, the output leg meets the right edge at the vertical centre.
+ */
+export function gateSprite(shape: GateShape): Sprite {
+  return sprite(`gate-${shape}`, () => {
+    const W = GATE_W
+    const H = GATE_H
+    const g = new PixelGrid(W, H)
+    const bubble = shape === 'not' || shape === 'nand' || shape === 'nor' || shape === 'xnor'
+    const bodyEnd = bubble ? W - 4 : W
+    const xorLike = shape === 'xor' || shape === 'xnor'
+    const orLike = shape === 'or' || shape === 'nor' || xorLike
+    for (let y = 0; y < H; y++) {
+      const dy = (y + 0.5 - H / 2) / (H / 2)
+      const t = Math.abs(dy)
+      for (let x = 0; x < W; x++) {
+        const px = x + 0.5
+        let inside = false
+        if (shape === 'not') {
+          inside = px <= (bodyEnd + 1) * (1 - t)
+        } else if (orLike) {
+          const back = (xorLike ? 3 : 0) + 5 * (1 - t * t)
+          const front = bodyEnd * (1 - Math.max(0, t - 0.15) ** 2.4 / 0.85 ** 2.4)
+          inside = px >= back && px <= front
+          if (xorLike && px >= 5 * (1 - t * t) && px < 5 * (1 - t * t) + 1.2) g.set(x, y, 'A')
+        } else {
+          const straight = bodyEnd - H / 2
+          inside = px <= straight || (px - straight) ** 2 + (y + 0.5 - H / 2) ** 2 <= (H / 2) ** 2
+        }
+        if (inside) g.set(x, y, 'T')
+      }
+    }
+    if (bubble) {
+      for (let y = 0; y < H; y++) for (let x = W - 5; x < W; x++) if ((x + 0.5 - (W - 2.2)) ** 2 + (y + 0.5 - H / 2) ** 2 <= 2.2 ** 2) g.set(x, y, 'T')
+    }
+    // cylinder-like shading: tone by row from the top, lit left edge and dark right edge of every row
+    const rows = ['h', 'L', 'L', 'T', 'T', 'M', 'M', 'S', 'S', 'D']
+    for (let y = 0; y < H; y++) {
+      const tone = rows[Math.min(rows.length - 1, Math.floor((y / H) * rows.length))]
+      let first = -1
+      let last = -1
+      for (let x = 0; x < W; x++) {
+        if (g.get(x, y) !== 'T') continue
+        if (first < 0) first = x
+        last = x
+        g.set(x, y, tone)
+      }
+      if (first >= 0) g.set(first, y, 'h')
+      if (last >= 0) g.set(last, y, 'D')
+    }
+    return g.build(
+      {
+        h: '#8a97b8',
+        L: '#6f7ca2',
+        T: '#5a688f',
+        M: '#4a577d',
+        S: '#3c4768',
+        D: '#2e3752',
+        A: '#2e3752',
+      },
+      '#08080c',
+    )
+  })
+}

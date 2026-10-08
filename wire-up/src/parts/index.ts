@@ -2,6 +2,7 @@ import { rotVec, G, snap } from '../board/world.ts'
 import type { PartInstance, Rot, Vec } from '../board/world.ts'
 import { breadboardFull, breadboardMini } from './breadboard.ts'
 import { meter } from './instruments.ts'
+import { gateAnd, gateNand, gateNor, gateNot, gateOr, gateXnor, gateXor } from './logic.ts'
 import { ldr, ntc, potentiometer, resistor } from './passives.ts'
 import { battery, battery15, battery3, battery45, supply } from './power.ts'
 import { bc547, bc557, diode, led } from './semis.ts'
@@ -21,6 +22,13 @@ export const ALL_PARTS: PartDef[] = [
   diode,
   bc547,
   bc557,
+  gateNot,
+  gateAnd,
+  gateOr,
+  gateNand,
+  gateNor,
+  gateXor,
+  gateXnor,
   rockerSwitch,
   slideSwitch,
   pushButton,
@@ -44,6 +52,7 @@ export const CATEGORY_LABELS: [Category, string][] = [
   ['power', 'Power'],
   ['passive', 'Passive'],
   ['semiconductor', 'Semis'],
+  ['logic', 'Logic'],
   ['switch', 'Switches'],
   ['sensor', 'Sensors'],
   ['instrument', 'Meters'],
@@ -84,7 +93,7 @@ export function rotatePart(p: PartInstance): void {
 
 // ---------------------------------------------------------------- stacking order
 
-const LOW_PARTS = new Set(['resistor', 'diode', 'switch', 'slide-switch', 'button'])
+const LOW_PARTS = new Set(['resistor', 'diode', 'switch', 'slide-switch', 'button', 'gate-not', 'gate-and', 'gate-or', 'gate-nand', 'gate-nor', 'gate-xor', 'gate-xnor'])
 const TALL_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc'])
 
 /**

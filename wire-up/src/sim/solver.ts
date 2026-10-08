@@ -17,6 +17,27 @@ export type Element =
   | { kind: 'D'; id: string; a: number; b: number; is: number; n: number }
   /** Bipolar transistor (Ebers-Moll). pol = +1 NPN, -1 PNP. */
   | { kind: 'Q'; id: string; c: number; b: number; e: number; pol: 1 | -1; is: number; bf: number; br: number }
+  | GateElement
+
+export type GateFn = 'not' | 'and' | 'or' | 'nand' | 'nor' | 'xor' | 'xnor'
+
+/**
+ * Logic gate with no supply pins. The inputs only sense (they draw no current); the output Y is a voltage source `vh * f(inputs)`
+ * behind `rout`. Each input goes through a smooth step at `vth` (width `w`) so Newton can follow it.
+ */
+export interface GateElement {
+  kind: 'G'
+  id: string
+  fn: GateFn
+  /** Input A node, input B node (not used by NOT), output node. */
+  a: number
+  b?: number
+  y: number
+  vh: number
+  vth: number
+  w: number
+  rout: number
+}
 
 export interface Circuit {
   /** Number of nodes including ground (node 0). */
@@ -43,6 +64,30 @@ export interface SolveResult {
 
 export function expSafe(x: number): number {
   return Math.exp(Math.min(x, 80))
+}
+
+function step(v: number, vth: number, w: number): number {
+  return 1 / (1 + Math.exp(-Math.max(Math.min((v - vth) / w, 60), -60)))
+}
+
+/** Gate output as a fraction of `vh` and its slopes with respect to the two (smoothed) inputs. */
+function gateLogic(fn: GateFn, sa: number, sb: number): { f: number; da: number; db: number } {
+  switch (fn) {
+    case 'not':
+      return { f: 1 - sa, da: -1, db: 0 }
+    case 'and':
+      return { f: sa * sb, da: sb, db: sa }
+    case 'nand':
+      return { f: 1 - sa * sb, da: -sb, db: -sa }
+    case 'or':
+      return { f: sa + sb - sa * sb, da: 1 - sb, db: 1 - sa }
+    case 'nor':
+      return { f: 1 - (sa + sb - sa * sb), da: -(1 - sb), db: -(1 - sa) }
+    case 'xor':
+      return { f: sa + sb - 2 * sa * sb, da: 1 - 2 * sb, db: 1 - 2 * sa }
+    case 'xnor':
+      return { f: 1 - (sa + sb - 2 * sa * sb), da: -(1 - 2 * sb), db: -(1 - 2 * sa) }
+  }
 }
 
 function pnjlim(vnew: number, vold: number, vt: number, vcrit: number): number {
@@ -229,6 +274,25 @@ class Problem {
           this.stampI(z, e.a, e.b, id - g * vd)
           break
         }
+        case 'G': {
+          const va = this.nv(x, e.a)
+          const vb = e.b === undefined ? 0 : this.nv(x, e.b)
+          const sa = step(va, e.vth, e.w)
+          const sb = e.b === undefined ? 0 : step(vb, e.vth, e.w)
+          const { f, da, db } = gateLogic(e.fn, sa, sb)
+          const amp = e.vh * scale
+          const ta = amp * da * ((sa * (1 - sa)) / e.w)
+          const tb = e.b === undefined ? 0 : amp * db * ((sb * (1 - sb)) / e.w)
+          const g = 1 / Math.max(e.rout, 1e-6)
+          if (e.y > 0) {
+            const r = (e.y - 1) * n
+            A[r + (e.y - 1)] += g
+            if (e.a > 0) A[r + (e.a - 1)] -= g * ta
+            if (e.b !== undefined && e.b > 0) A[r + (e.b - 1)] -= g * tb
+            z[e.y - 1] += g * (amp * f - ta * va - tb * vb)
+          }
+          break
+        }
         case 'Q': {
           const nVt = VT
           const vcrit = vcritOf(nVt, e.is)
@@ -299,6 +363,14 @@ class Problem {
         case 'D': {
           const nVt = e.n * VT
           out.set(e.id, { i: e.is * (expSafe((nv(e.a) - nv(e.b)) / nVt) - 1) })
+          break
+        }
+        case 'G': {
+          const sa = step(nv(e.a), e.vth, e.w)
+          const sb = e.b === undefined ? 0 : step(nv(e.b), e.vth, e.w)
+          const { f } = gateLogic(e.fn, sa, sb)
+          // current the gate pushes out of Y into the circuit
+          out.set(e.id, { i: (e.vh * f - nv(e.y)) / Math.max(e.rout, 1e-6) })
           break
         }
         case 'Q': {

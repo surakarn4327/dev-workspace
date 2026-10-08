@@ -139,3 +139,79 @@ describe('semiconductors', () => {
     expect(r.v[3]).toBeGreaterThan(8)
   })
 })
+
+describe('logic gates', () => {
+  const GATE_BASE = { vh: 5, vth: 1.4, w: 0.12, rout: 60 }
+
+  /** Drive inputs with ideal sources (0 V / 5 V), put a 10 k load on Y and read Y. */
+  function out(fn: 'not' | 'and' | 'or' | 'nand' | 'nor' | 'xor' | 'xnor', a: number, b?: number): number {
+    const elements: Circuit['elements'] = [
+      { kind: 'V', id: 'va', a: 1, b: 0, v: a },
+      { kind: 'R', id: 'load', a: 3, b: 0, r: 10000 },
+      { kind: 'G', id: 'g', fn, a: 1, b: b === undefined ? undefined : 2, y: 3, ...GATE_BASE },
+    ]
+    if (b !== undefined) elements.push({ kind: 'V', id: 'vb', a: 2, b: 0, v: b })
+    const r = solve({ nodeCount: 4, elements })
+    expect(r.converged).toBe(true)
+    return r.v[3]
+  }
+
+  const HIGH = 5 * (10000 / 10060)
+  const truth: Record<string, number[]> = {
+    // outputs for (A,B) = 00, 01, 10, 11
+    and: [0, 0, 0, 1],
+    or: [0, 1, 1, 1],
+    nand: [1, 1, 1, 0],
+    nor: [1, 0, 0, 0],
+    xor: [0, 1, 1, 0],
+    xnor: [1, 0, 0, 1],
+  }
+
+  for (const [fn, table] of Object.entries(truth)) {
+    it(`${fn} follows its truth table`, () => {
+      ;[[0, 0], [0, 5], [5, 0], [5, 5]].forEach(([a, b], k) => {
+        const v = out(fn as 'and', a, b)
+        near(v, table[k] ? HIGH : 0, 0.02)
+      })
+    })
+  }
+
+  it('not inverts', () => {
+    near(out('not', 0), HIGH, 0.02)
+    near(out('not', 5), 0, 0.02)
+  })
+
+  it('switches around 1.4 V and a 3 V input counts as high', () => {
+    near(out('not', 0.8), HIGH, 0.05)
+    near(out('not', 2.0), 0, 0.05)
+    near(out('not', 3), 0, 0.02)
+  })
+
+  it('a high output into a short carries 5 V / 60 ohm', () => {
+    const r = solve({
+      nodeCount: 3,
+      elements: [
+        { kind: 'V', id: 'va', a: 1, b: 0, v: 0 },
+        { kind: 'G', id: 'g', fn: 'not', a: 1, y: 2, ...GATE_BASE },
+        { kind: 'R', id: 'short', a: 2, b: 0, r: 0.001 },
+      ],
+    })
+    expect(r.converged).toBe(true)
+    near(r.cur.get('g')!.i, 5 / 60, 1e-3)
+  })
+
+  it('a chain of three inverters inverts once overall', () => {
+    const r = solve({
+      nodeCount: 5,
+      elements: [
+        { kind: 'V', id: 'va', a: 1, b: 0, v: 5 },
+        { kind: 'G', id: 'g1', fn: 'not', a: 1, y: 2, ...GATE_BASE },
+        { kind: 'G', id: 'g2', fn: 'not', a: 2, y: 3, ...GATE_BASE },
+        { kind: 'G', id: 'g3', fn: 'not', a: 3, y: 4, ...GATE_BASE },
+        { kind: 'R', id: 'load', a: 4, b: 0, r: 10000 },
+      ],
+    })
+    expect(r.converged).toBe(true)
+    near(r.v[4], 0, 0.02)
+  })
+})

@@ -553,11 +553,17 @@ export class Renderer {
     const pins = pinWorld(part)
     const mid = { x: pins.reduce((s, p) => s + p.x, 0) / pins.length, y: pins.reduce((s, p) => s + p.y, 0) / pins.length }
     pins.forEach((p, i) => {
-      const label = PIN_SHOWN[def.pinLabels[i]] ?? def.pinLabels[i] ?? ''
+      const label = (def.type === 'led' || def.type === 'diode' ? PIN_SHOWN[def.pinLabels[i]] : undefined) ?? def.pinLabels[i] ?? ''
       // the label sits at the visible lead tip, with the same gap from its box edge on every side
       let dx = 0
       let dy = 0
-      if (def.pinLabelPlace === 'axis' || def.pinLabelPlace === 'side') {
+      if (def.pinLabelPlace === 'lead' && def.pinLeadDir) {
+        // out along the pin's own lead, whatever the part's rotation
+        const d = def.pinLeadDir(i)
+        const r = (part.rot * Math.PI) / 2
+        dx = Math.round(d.x * Math.cos(r) - d.y * Math.sin(r))
+        dy = Math.round(d.x * Math.sin(r) + d.y * Math.cos(r))
+      } else if (def.pinLabelPlace === 'axis' || def.pinLabelPlace === 'side') {
         dx = Math.sign(p.x - mid.x)
         dy = def.pinLabelPlace === 'axis' ? Math.sign(p.y - mid.y) : 0
       } else {
