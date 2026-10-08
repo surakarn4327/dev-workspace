@@ -129,6 +129,34 @@ export function drawSprite(c: CanvasRenderingContext2D, s: Sprite, x: number, y:
   c.imageSmoothingEnabled = smooth
 }
 
+const inkCache = new WeakMap<Sprite, { x0: number; y0: number; x1: number; y1: number }>()
+
+/** Visible (non-transparent) edges of a sprite drawn with `drawSprite(c, s, x, y)`, in world px. */
+export function spriteInk(s: Sprite, x: number, y: number): { left: number; top: number; right: number; bottom: number } {
+  let b = inkCache.get(s)
+  if (!b) {
+    const cv = s.canvas
+    const data = cv.getContext('2d')!.getImageData(0, 0, cv.width, cv.height).data
+    b = { x0: cv.width, y0: cv.height, x1: -1, y1: -1 }
+    for (let j = 0; j < cv.height; j++) {
+      for (let i = 0; i < cv.width; i++) {
+        if (data[(j * cv.width + i) * 4 + 3] === 0) continue
+        b.x0 = Math.min(b.x0, i)
+        b.x1 = Math.max(b.x1, i)
+        b.y0 = Math.min(b.y0, j)
+        b.y1 = Math.max(b.y1, j)
+      }
+    }
+    inkCache.set(s, b)
+  }
+  return {
+    left: x - PX + b.x0 * PX,
+    top: y - PX + b.y0 * PX,
+    right: x - PX + (b.x1 + 1) * PX,
+    bottom: y - PX + (b.y1 + 1) * PX,
+  }
+}
+
 /** One art pixel rectangle in art coordinates, for small moving details. */
 export function pxRect(c: CanvasRenderingContext2D, ox: number, oy: number, ax: number, ay: number, aw: number, ah: number, color: string): void {
   c.fillStyle = color

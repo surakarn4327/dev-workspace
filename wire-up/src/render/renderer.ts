@@ -8,13 +8,16 @@ import { effectiveColors, socketKeys, tapEnds } from '../board/wireJoin.ts'
 import { paintBurnt, canBurn } from './burnt.ts'
 import { ringOf } from './outline.ts'
 import { PX } from './pixel.ts'
-import { COL, drawText, mix, radialGlow, rrect } from './draw.ts'
+import { COL, drawLabelAt, drawText, LABEL_GAP, labelBoxSize, mix, radialGlow, rrect } from './draw.ts'
 import { straightMid } from '../board/wireEdit.ts'
 import { cableShape, drawCableBase, drawCableBody, drawCableCaps, pixelProbeHead } from './pixelwire.ts'
 import type { CableShape } from './pixelwire.ts'
 import { scene } from './scene.ts'
 
 /** Pin names shown on the pin label: an LED or diode lead reads + or - instead of A or K. */
+/** The straight leads of sensors, LEDs and transistors stick out this far past their pin point. */
+const LEAD_OVERSHOOT = 4
+
 const PIN_SHOWN: Record<string, string | undefined> = { A: '+', K: '-' }
 
 export interface View {
@@ -513,15 +516,28 @@ export class Renderer {
     const mid = { x: pins.reduce((s, p) => s + p.x, 0) / pins.length, y: pins.reduce((s, p) => s + p.y, 0) / pins.length }
     pins.forEach((p, i) => {
       const label = PIN_SHOWN[def.pinLabels[i]] ?? def.pinLabels[i] ?? ''
-      if (def.pinLabelPlace === 'axis') {
-        // beside the lead: pushed outward along the part's axis, away from its centre
-        const dx = Math.sign(p.x - mid.x)
-        const dy = Math.sign(p.y - mid.y)
-        drawText(c, label, p.x + dx * 13, p.y + dy * 13 - 8, { align: 'center', size: 10, box: true })
-        return
-      }
-      if (def.pinLabelPlace === 'above') {
-        drawText(c, label, p.x, p.y - 21, { align: 'center', size: 10, box: true })
+      if (def.pinLabelPlace) {
+        // the label sits at the visible lead tip, with the same gap from its box edge on every side
+        let dx = 0
+        let dy = 0
+        let tip = 0
+        if (def.pinLabelPlace === 'axis') {
+          dx = Math.sign(p.x - mid.x)
+          dy = Math.sign(p.y - mid.y)
+        } else {
+          // 'below' = past the lead tips in the part's own frame (leads overshoot their pin by LEAD_OVERSHOOT), 'above' = the opposite
+          const a = (part.rot * Math.PI) / 2
+          const sign = def.pinLabelPlace === 'below' ? 1 : -1
+          dx = Math.round(-Math.sin(a)) * sign
+          dy = Math.round(Math.cos(a)) * sign
+          if (def.pinLabelPlace === 'below') tip = LEAD_OVERSHOOT
+        }
+        const { w, h } = labelBoxSize(c, label, 10)
+        const tx = p.x + dx * tip
+        const ty = p.y + dy * tip
+        const left = dx > 0 ? tx + LABEL_GAP : dx < 0 ? tx - LABEL_GAP - w : tx - w / 2
+        const top = dy > 0 ? ty + LABEL_GAP : dy < 0 ? ty - LABEL_GAP - h : ty - h / 2
+        drawLabelAt(c, label, left, top, 10)
         return
       }
       drawText(c, label, p.x, p.y + 10, { align: 'center', size: 10, box: true })

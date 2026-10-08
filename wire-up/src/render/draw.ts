@@ -66,6 +66,39 @@ export function drawText(c: CanvasRenderingContext2D, str: string, x: number, y:
   c.restore()
 }
 
+/** Outer size of the white box `drawText(..., { box: true })` draws around `str`. */
+export function labelBoxSize(c: CanvasRenderingContext2D, str: string, size: number): { w: number; h: number } {
+  c.save()
+  c.font = `${size * FONT_BOOST}px ${FONT_STACK}`
+  const m = c.measureText(str)
+  c.restore()
+  return { w: m.width + 12, h: m.actualBoundingBoxAscent + m.actualBoundingBoxDescent + 12 }
+}
+
+/** Gap in world px between any label box and the edge it sits against (a part's visible edge or a lead tip). */
+export const LABEL_GAP = 4
+
+/** Value label centred on `cx`, its box bottom `LABEL_GAP` above `edge` (the part's visible top). */
+export function drawLabelAbove(c: CanvasRenderingContext2D, str: string, cx: number, edge: number, size = 11): void {
+  const { w, h } = labelBoxSize(c, str, size)
+  drawLabelAt(c, str, cx - w / 2, edge - LABEL_GAP - h, size)
+}
+
+/** Value label centred on `cx`, its box top `LABEL_GAP` below `edge` (the part's visible bottom). */
+export function drawLabelBelow(c: CanvasRenderingContext2D, str: string, cx: number, edge: number, size = 11): void {
+  const { w } = labelBoxSize(c, str, size)
+  drawLabelAt(c, str, cx - w / 2, edge + LABEL_GAP, size)
+}
+
+/** Boxed label whose box top-left corner is exactly (left, top). */
+export function drawLabelAt(c: CanvasRenderingContext2D, str: string, left: number, top: number, size: number): void {
+  c.save()
+  c.font = `${size * FONT_BOOST}px ${FONT_STACK}`
+  const m = c.measureText(str)
+  c.restore()
+  drawText(c, str, left + 6 + m.width / 2, top - size + m.actualBoundingBoxAscent + 6, { align: 'center', size, box: true })
+}
+
 export function rrect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   const rr = Math.min(r, w / 2, h / 2)
   c.beginPath()

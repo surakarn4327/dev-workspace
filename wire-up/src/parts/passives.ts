@@ -1,7 +1,7 @@
 import type { PartInstance } from '../board/world.ts'
-import { COL, drawText, leg, radialGlow, rrect } from '../render/draw.ts'
+import { COL, drawLabelAbove, leg, radialGlow, rrect } from '../render/draw.ts'
 import { eng, fmtOhms, ldrResistance, ntcResistance, resistorBands, RESISTOR_VALUES } from '../sim/models.ts'
-import { drawSprite, pxLine, pxRect } from '../render/pixel.ts'
+import { drawSprite, pxLine, pxRect, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { ldrSprite, ntcSprite, potSprite, resistorSprite } from './art.ts'
 import { eid, legDrop, legGrid, LEG_FIELD, num, spreadOf, stress, U } from './common.ts'
@@ -45,7 +45,8 @@ export const resistor: PartDef = {
     const s = spreadOf(p) * U
     const cx = s / 2
     if (scene.pixel) {
-      drawSprite(c, resistorSprite(resistorBands(num(p, 'value', 330))), cx - 24, -11)
+      const body = resistorSprite(resistorBands(num(p, 'value', 330)))
+      drawSprite(c, body, cx - 24, -11)
       for (const [x0, x1] of [
         [0, cx - 26],
         [cx + 26, s],
@@ -55,7 +56,7 @@ export const resistor: PartDef = {
         c.fillStyle = '#7d838f'
         c.fillRect(x0, 0, x1 - x0, 2)
       }
-      if (scene.labeled.has(p.id)) drawText(c, `${fmtOhms(num(p, 'value', 330))}`, cx, -34, { align: 'center', size: 11, box: true })
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, fmtOhms(num(p, 'value', 330)), cx, spriteInk(body, cx - 24, -11).top)
       return
     }
     leg(c, 0, 0, cx - 18, 0)
@@ -79,7 +80,7 @@ export const resistor: PartDef = {
       c.fillStyle = col
       c.fillRect(xs[k], k === 3 ? -9 : -8, 4, k === 3 ? 18 : 16)
     })
-    if (scene.labeled.has(p.id)) drawText(c, `${fmtOhms(num(p, 'value', 330))}`, cx, -34, { align: 'center', size: 11, box: true })
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, fmtOhms(num(p, 'value', 330)), cx, -10)
   },
   fields: () => [
     {
@@ -102,6 +103,7 @@ export const potentiometer: PartDef = {
   blurb: 'Trimmer pot. Turn the knob to slide the wiper.',
   wheelKey: 'pos',
   pinLabels: ['1', 'W', '2'],
+  pinLabelPlace: 'below',
   defaults: () => ({ value: 10000, pos: 0.5, legs: 1 }),
   pins: (p) => [
     { x: 0, y: legGrid(p) },
@@ -151,12 +153,7 @@ export const potentiometer: PartDef = {
       pxLine(c, -10, -62, 15 - dx * 6, 13.5 - dy * 6, 15 + dx * 6, 13.5 + dy * 6, '#173769')
       pxLine(c, -10, -62, 15 - dx * 6 - 1, 13.5 - dy * 6 - 1, 15 + dx * 6 - 1, 13.5 + dy * 6 - 1, '#a9cdff')
       pxRect(c, -10, -62, Math.round(15 + dx * 6) - 1, Math.round(13.5 + dy * 6) - 1, 2, 2, '#ffffff')
-      if (scene.labeled.has(p.id)) {
-        drawText(c, fmtOhms(num(p, 'value', 10000)), 20, 10 + legDrop(p), { align: 'center', size: 11, box: true })
-        drawText(c, '1', 0, -8, { align: 'center', size: 10, box: true })
-        drawText(c, 'W', 20, -8, { align: 'center', size: 10, box: true })
-        drawText(c, '2', 40, -8, { align: 'center', size: 10, box: true })
-      }
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, fmtOhms(num(p, 'value', 10000)), 20, spriteInk(potSprite(), -10, -62).top)
       return
     }
     leg(c, 0, 0, 0, -10)
@@ -187,11 +184,7 @@ export const potentiometer: PartDef = {
     c.fillStyle = '#e8c870'
     c.fillRect(-14, -3, 28, 1)
     c.restore()
-    if (!scene.labeled.has(p.id)) return
-    drawText(c, fmtOhms(num(p, 'value', 10000)), 20, 10 + legDrop(p), { align: 'center', size: 11, box: true })
-    drawText(c, '1', 0, -8, { align: 'center', size: 10, box: true })
-    drawText(c, 'W', 20, -8, { align: 'center', size: 10, box: true })
-    drawText(c, '2', 40, -8, { align: 'center', size: 10, box: true })
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, fmtOhms(num(p, 'value', 10000)), 20, -62)
   },
   fields: () => [
     {
@@ -214,6 +207,7 @@ export const ldr: PartDef = {
   category: 'sensor',
   blurb: 'Resistance falls as light gets brighter.',
   pinLabels: ['1', '2'],
+  pinLabelPlace: 'below',
   wheelKey: 'lux',
   defaults: () => ({ lux: 100, legs: 1 }),
   pins: (p) => pinsTwo(2, legGrid(p)),
@@ -245,7 +239,7 @@ export const ldr: PartDef = {
       drawSprite(c, ldrSprite(), -2, -48)
       const bright = Math.min(1, Math.log10(Math.max(lux, 1)) / 4.5)
       radialGlow(c, 20, -26, 38, '#fff3b0', bright * 0.35)
-      if (scene.labeled.has(p.id)) drawText(c, `${eng(lux, 'lx', 2).replace(' ', '')}`, 20, 10 + legDrop(p), { align: 'center', size: 11, box: true })
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, eng(lux, 'lx', 2).replace(' ', ''), 20, spriteInk(ldrSprite(), -2, -48).top)
       return
     }
     leg(c, 0, 0, 12, -14)
@@ -272,7 +266,7 @@ export const ldr: PartDef = {
     // light rays reflect the slider
     const b = Math.min(1, Math.log10(Math.max(lux, 1)) / 4.5)
     radialGlow(c, 20, -26, 38, '#fff3b0', b * 0.35)
-    if (scene.labeled.has(p.id)) drawText(c, `${eng(lux, 'lx', 2).replace(' ', '')}`, 20, 10 + legDrop(p), { align: 'center', size: 11, box: true })
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, eng(lux, 'lx', 2).replace(' ', ''), 20, -47)
   },
   fields: () => [{ kind: 'range', key: 'lux', label: 'Light level', min: 0.1, max: 100000, step: 0.1, log: true, unit: 'lx' }, LEG_FIELD],
   summary: (p) => `${eng(ldrResistance(num(p, 'lux', 100)), 'ohm')} at ${eng(num(p, 'lux', 100), 'lx')}`,
@@ -286,6 +280,7 @@ export const ntc: PartDef = {
   category: 'sensor',
   blurb: '10 k at 25 C. Resistance falls as it warms up.',
   pinLabels: ['1', '2'],
+  pinLabelPlace: 'below',
   wheelKey: 'temp',
   defaults: () => ({ temp: 25, legs: 1 }),
   pins: (p) => pinsTwo(2, legGrid(p)),
@@ -317,7 +312,7 @@ export const ntc: PartDef = {
         pxLine(c, 0, 0, x / 2, 0, tx, -7, COL.metalDark)
       }
       drawSprite(c, ntcSprite(), -2, -48)
-      if (scene.labeled.has(p.id)) drawText(c, `${t.toFixed(0)}C`, 20, 10 + legDrop(p), { align: 'center', size: 11, box: true })
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, `${t.toFixed(0)}C`, 20, spriteInk(ntcSprite(), -2, -48).top)
       return
     }
     leg(c, 0, 0, 14, -10)
@@ -338,7 +333,7 @@ export const ntc: PartDef = {
     c.beginPath()
     c.arc(20, -20, 14, 0, Math.PI * 2)
     c.stroke()
-    if (scene.labeled.has(p.id)) drawText(c, `${t.toFixed(0)}C`, 20, 10 + legDrop(p), { align: 'center', size: 11, box: true })
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, `${t.toFixed(0)}C`, 20, -34)
   },
   fields: () => [{ kind: 'range', key: 'temp', label: 'Temperature', min: -40, max: 150, step: 1, unit: 'C' }, LEG_FIELD],
   summary: (p) => `${eng(ntcResistance(num(p, 'temp', 25)), 'ohm')} at ${num(p, 'temp', 25).toFixed(0)} C`,

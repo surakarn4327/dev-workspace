@@ -1,7 +1,7 @@
-import { COL, drawText, neon, radialGlow, rrect } from '../render/draw.ts'
+import { COL, drawLabelBelow, drawText, neon, radialGlow, rrect } from '../render/draw.ts'
 import { BATTERY_TYPES, eng } from '../sim/models.ts'
 import { drawSprite } from '../render/pixel.ts'
-import { pxLine, pxRect } from '../render/pixel.ts'
+import { pxLine, pxRect, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { G } from '../board/world.ts'
 import { batteryArtSize, batterySprite, batteryTerminals, supplySprite } from './art.ts'
@@ -87,7 +87,7 @@ const makeBattery = (type: string, name: string, volts0: number): PartDef => ({
           c.restore()
         }
       }
-      if (scene.labeled.has(p.id)) drawText(c, `${v} V`, term.ox + w / 2, h + 16, { align: 'center', size: 11, box: true })
+      if (scene.labeled.has(p.id)) drawLabelBelow(c, `${v} V`, term.ox + w / 2, spriteInk(art.sprite, term.ox, 0).bottom)
       return
     }
     c.save()
@@ -125,7 +125,7 @@ const makeBattery = (type: string, name: string, volts0: number): PartDef => ({
       drawText(c, `${v}V`, w / 2, 90, { color: '#f0e6c8', align: 'center', scale: 2 })
     }
     c.restore()
-    if (scene.labeled.has(p.id)) drawText(c, `${v} V`, term.ox + w / 2, h + 16, { align: 'center', size: 11, box: true })
+    if (scene.labeled.has(p.id)) drawLabelBelow(c, `${v} V`, term.ox + w / 2, 8 + h)
   },
   fields: () => [],
   summary: (p) => `${volts(p)} V, ${eng((BATTERY_TYPES[volts(p)] ?? BATTERY_TYPES['9']).r, 'ohm')} internal`,

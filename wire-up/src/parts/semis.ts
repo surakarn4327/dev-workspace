@@ -1,6 +1,6 @@
-import { COL, drawText, leg, mix, radialGlow, rrect } from '../render/draw.ts'
+import { COL, drawLabelAbove, drawText, leg, mix, radialGlow, rrect } from '../render/draw.ts'
 import { BJT, DIODE, eng, LED_COLORS, LED_I_MAX, LED_I_RATED, LED_N, LED_RS, LED_VR_MAX, ledIs } from '../sim/models.ts'
-import { drawSprite, pxLine } from '../render/pixel.ts'
+import { drawSprite, pxLine, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { diodeSprite, ledSprite, to92Sprite } from './art.ts'
 import { eid, legDrop, legGrid, LEG_FIELD, spreadOf, str, stress, U } from './common.ts'
@@ -14,6 +14,7 @@ export const led: PartDef = {
   category: 'semiconductor',
   blurb: 'Lights up when current flows anode to cathode. Needs a resistor!',
   pinLabels: ['A', 'K'],
+  pinLabelPlace: 'below',
   defaults: () => ({ color: 'red', legs: 1 }),
   pins: (p) => [
     { x: 0, y: legGrid(p) },
@@ -59,7 +60,6 @@ export const led: PartDef = {
         c.globalAlpha = 1
       }
       radialGlow(c, 10, -42, 36 + 90 * b, col.glow, 0.85 * b)
-      drawText(c, '+', -3, 6 + legDrop(p), { color: COL.dim })
       return
     }
     leg(c, 0, 0, 0, -6)
@@ -87,7 +87,6 @@ export const led: PartDef = {
     c.arc(3, -14, 5, 0, Math.PI * 2)
     c.fill()
     radialGlow(c, 10, -4, 36 + 90 * b, col.glow, 0.85 * b)
-    drawText(c, '+', -3, 6, { color: COL.dim })
     if (legDrop(p) > 0) for (const x of [0, 20]) leg(c, x, 4, x, legDrop(p))
   },
   fields: () => [
@@ -138,7 +137,8 @@ export const diode: PartDef = {
     if (scene.pixel) {
       const sp = spreadOf(p) * U
       const cx = sp / 2
-      drawSprite(c, diodeSprite(), cx - 22, -10)
+      const body = diodeSprite()
+      drawSprite(c, body, cx - 22, -10)
       for (const [x0, x1] of [
         [0, cx - 24],
         [cx + 24, sp],
@@ -148,7 +148,7 @@ export const diode: PartDef = {
         c.fillStyle = COL.metalDark
         c.fillRect(x0, 0, x1 - x0, 2)
       }
-      if (scene.labeled.has(p.id)) drawText(c, '1N4007', cx, -34, { align: 'center', size: 11, box: true })
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, '1N4007', cx, spriteInk(body, cx - 22, -10).top)
       return
     }
     leg(c, 0, 0, 20, 0)
@@ -162,7 +162,7 @@ export const diode: PartDef = {
     c.fillRect(49, -10, 7, 20)
     c.fillStyle = 'rgba(0,0,0,0.25)'
     c.fillRect(54, -10, 2, 20)
-    if (scene.labeled.has(p.id)) drawText(c, '1N4007', 40, -34, { align: 'center', size: 11, box: true })
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, '1N4007', 40, -10)
   },
   fields: () => [LEG_FIELD],
   summary: () => `1N4007, ${DIODE.iMax} A, ${DIODE.vrMax} V`,
@@ -180,6 +180,7 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
       ? 'NPN switch/amplifier. A small base current controls a big collector current.'
       : 'PNP: conducts when the base is pulled LOW relative to the emitter.',
     pinLabels: ['C', 'B', 'E'],
+    pinLabelPlace: 'below',
     defaults: () => ({ legs: 1 }),
     pins: (p) => [
       { x: 0, y: legGrid(p) },
@@ -234,11 +235,6 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
         drawText(c, label, 20, -24, { color: '#8e8aa8', align: 'center' })
         const lit = Math.abs(live.ic ?? 0) > 1e-4
         radialGlow(c, 20, -26, 30, lit ? '#39ff88' : '#000000', lit ? Math.min(Math.abs(live.ic ?? 0) / 0.05, 0.4) : 0)
-        if (scene.labeled.has(p.id)) {
-          drawText(c, 'C', 0, 5 + legDrop(p), { align: 'center', size: 10, box: true })
-          drawText(c, 'B', 20, 5 + legDrop(p), { align: 'center', size: 10, box: true })
-          drawText(c, 'E', 40, 5 + legDrop(p), { align: 'center', size: 10, box: true })
-        }
         return
       }
       for (let k = 0; k < 3; k++) leg(c, k * U, 0, k * U, -8)
@@ -263,10 +259,6 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
       drawText(c, label, 20, -22, { color: '#8e8aa8', align: 'center' })
       const on = Math.abs(live.ic ?? 0) > 1e-4
       radialGlow(c, 20, -14, 30, on ? '#39ff88' : '#000000', on ? Math.min(Math.abs(live.ic ?? 0) / 0.05, 0.4) : 0)
-      if (!scene.labeled.has(p.id)) return
-      drawText(c, 'C', 0, 5, { align: 'center', size: 10, box: true })
-      drawText(c, 'B', 20, 5, { align: 'center', size: 10, box: true })
-      drawText(c, 'E', 40, 5, { align: 'center', size: 10, box: true })
     },
     fields: () => [LEG_FIELD],
     summary: () => `${label}, ${BJT.icMax * 1000} mA, ${BJT.vceMax} V, hFE ${BJT.bf}`,

@@ -54,7 +54,7 @@ export interface PartDef {
   fixedRot?: boolean
   pinLabels: string[]
   /** Where pin labels sit: beside each lead along the part's axis, or straight above the pin. Default: below the pin. */
-  pinLabelPlace?: 'axis' | 'above'
+  pinLabelPlace?: 'axis' | 'above' | 'below'
   defaults(): Params
   /** Pin positions in grid units, local, before rotation. For freeLeads: default tip offsets. */
   pins(p: PartInstance): Vec[]
