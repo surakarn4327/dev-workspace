@@ -74,19 +74,15 @@ export function cableShape(pts: PixelPoint[]): CableShape {
 }
 
 /**
- * The round dot where a branch wire joins the middle of another: a disc 6 art pixels across (the cable is 3 thick, so twice its
- * width), shaded and outlined exactly like a cable so the two merge. An even width cannot sit exactly on a 3-thick cable, so it
- * overhangs by one pixel more on the top/left. Draw its base with the cables' bases and its body after the cables' bodies.
+ * The round dot where a branch wire joins the middle of another: a disc 5 art pixels across (the cable is 3 thick; 4.5 would be
+ * 1.5 times, and 5 is the nearest width that sits exactly centred on the cable), shaded and outlined exactly like a cable so the
+ * two merge. Draw its base with the cables' bases and its body after the cables' bodies.
  */
 export function junctionShape(at: PixelPoint): CableShape {
   const cx = Math.round(at.x / PX)
   const cy = Math.round(at.y / PX)
   const body = new Set<number>()
-  for (let dx = -3; dx <= 2; dx++) {
-    for (let dy = -3; dy <= 2; dy++) {
-      if ((dx + 0.5) ** 2 + (dy + 0.5) ** 2 <= 9) body.add(key(cx + dx, cy + dy)) // 6x6 minus its four corner cells
-    }
-  }
+  for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) if (Math.abs(dx) + Math.abs(dy) < 4) body.add(key(cx + dx, cy + dy)) // 5x5 minus its four corner cells
   return shapeOf(body)
 }
 
