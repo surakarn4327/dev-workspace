@@ -140,9 +140,9 @@ export const battery45 = makeBattery('battery-4.5', 'Battery 4.5 V (3xAA)', 4.5)
 function drawSupplyPixel(c: CanvasRenderingContext2D, p: PartInstance, live: PartLive): void {
   const on = flag(p, 'on')
   drawSprite(c, supplySprite(), 0, 0)
-  const shownV = on ? (live.v ?? 0) : 0
+  const shownV = on ? (live.v ?? 0) : num(p, 'volts', 5)
   const shownI = on ? (live.i ?? 0) : 0
-  const LED = '#ff3b30'
+const LED = '#ff3b30'
   drawText(c, `${shownV.toFixed(2).padStart(5, ' ')}V`, 22, 17, { color: LED, scale: 2 })
   drawText(c, `${Math.abs(shownI).toFixed(3)}A`, 22, 59, { color: live.cc ? COL.amber : LED, scale: 2 })
   const knob = (cx: number, cy: number, frac: number, label: string) => {
@@ -211,7 +211,7 @@ export const supply: PartDef = {
     c.fillStyle = '#03140a'
     rrect(c, 10, 10, 96, 46, 3)
     c.fill()
-    const shownV = on ? (live.v ?? 0) : 0
+    const shownV = on ? (live.v ?? 0) : num(p, 'volts', 5)
     const shownI = on ? (live.i ?? 0) : 0
     drawText(c, `${shownV.toFixed(2).padStart(5, ' ')}V`, 14, 14, { color: COL.green, scale: 2 })
     drawText(c, `${Math.abs(shownI).toFixed(3)}A`, 14, 36, { color: live.cc ? COL.amber : COL.green, scale: 2 })
