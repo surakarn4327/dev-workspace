@@ -120,7 +120,7 @@ export const pushButton: PartDef = {
   category: 'switch',
   blurb: 'Tactile switch. Hold the mouse button down to press it.',
   pinLabels: ['1a', '1b', '2a', '2b'],
-  pinLabelPlace: 'axis',
+  pinLabelPlace: 'side',
   tipPastPin: -2,
   defaults: () => ({ pressed: false }),
   pins: () => [

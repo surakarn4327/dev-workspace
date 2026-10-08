@@ -54,7 +54,7 @@ export interface PartDef {
   fixedRot?: boolean
   pinLabels: string[]
   /** Where pin labels sit: beside each lead along the part's axis, or straight above the pin. Default: below the pin. */
-  pinLabelPlace?: 'axis' | 'above' | 'below'
+  pinLabelPlace?: 'axis' | 'side' | 'above' | 'below'
   /** How far the visible lead tip sticks out past the pin point, in the label's direction (world px). Default 0. */
   tipPastPin?: number
   defaults(): Params

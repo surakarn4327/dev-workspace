@@ -517,9 +517,9 @@ export class Renderer {
         // the label sits at the visible lead tip, with the same gap from its box edge on every side
         let dx = 0
         let dy = 0
-        if (def.pinLabelPlace === 'axis') {
+        if (def.pinLabelPlace === 'axis' || def.pinLabelPlace === 'side') {
           dx = Math.sign(p.x - mid.x)
-          dy = Math.sign(p.y - mid.y)
+          dy = def.pinLabelPlace === 'axis' ? Math.sign(p.y - mid.y) : 0
         } else {
           // 'below' = past the lead tips in the part's own frame, 'above' = the opposite; either way measured from the visible tip
           const a = (part.rot * Math.PI) / 2
