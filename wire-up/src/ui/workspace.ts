@@ -376,16 +376,12 @@ export class Workspace {
   private down(e: PointerEvent): void {
     this.canvas.setPointerCapture(e.pointerId)
     const w = this.world2(e)
-    if (e.button === 1 || this.space) {
+    if (e.button === 1 || e.button === 2 || this.space) {
+      // middle or right button (or Space + left): drag the view
       this.mode = { t: 'pan', sx: e.clientX, sy: e.clientY, camX: this.view.camX, camY: this.view.camY }
       return
     }
     const ctrl = e.ctrlKey || e.metaKey
-    if (e.button === 2) {
-      // right button: drag a selection box (Ctrl keeps the current selection and adds to it)
-      this.mode = { t: 'box', a: w, b: w, sx: e.clientX, sy: e.clientY, add: ctrl, moved: false }
-      return
-    }
     if (e.button !== 0) return
     const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire, false, this.selectedPart)
 
@@ -482,9 +478,8 @@ export class Workspace {
         return
       }
       default:
-        // empty canvas: drag the view (a plain click also deselects, unless Ctrl is held)
-        if (!ctrl) this.select(null)
-        this.mode = { t: 'pan', sx: e.clientX, sy: e.clientY, camX: this.view.camX, camY: this.view.camY }
+        // empty canvas: drag a selection box (a plain click just deselects; Ctrl keeps the current selection and adds to it)
+        this.mode = { t: 'box', a: w, b: w, sx: e.clientX, sy: e.clientY, add: ctrl, moved: false }
     }
   }
 
@@ -729,7 +724,7 @@ export class Workspace {
         break
       default:
         cursor = this.wireMode ? 'crosshair' : 'grab'
-        text = 'Left-drag moves the view. Right-drag draws a selection box. Ctrl adds to the selection.'
+        text = 'Left-drag draws a selection box. Right-drag moves the view. Ctrl adds to the selection.'
     }
     this.canvas.style.cursor = cursor
     this.onHover({ text })
