@@ -140,7 +140,7 @@ export function spriteInk(s: Sprite, x: number, y: number): { left: number; top:
     b = { x0: cv.width, y0: cv.height, x1: -1, y1: -1 }
     for (let j = 0; j < cv.height; j++) {
       for (let i = 0; i < cv.width; i++) {
-        if (data[(j * cv.width + i) * 4 + 3] === 0) continue
+        if (data[(j * cv.width + i) * 4 + 3] < 128) continue
         b.x0 = Math.min(b.x0, i)
         b.x1 = Math.max(b.x1, i)
         b.y0 = Math.min(b.y0, j)

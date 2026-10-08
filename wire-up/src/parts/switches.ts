@@ -21,6 +21,7 @@ export const rockerSwitch: PartDef = {
   blurb: 'Click it to flip. ON connects the two legs.',
   pinLabels: ['1', '2'],
   pinLabelPlace: 'axis',
+  tipPastPin: 4,
   defaults: () => ({ on: false }),
   pins: () => [
     { x: 0, y: 0 },
@@ -91,6 +92,7 @@ export const slideSwitch: PartDef = {
   ...rockerSwitch,
   type: 'slide-switch',
   name: 'Slide switch',
+  tipPastPin: 10,
   bounds: () => ({ x: -12, y: -18, w: 64, h: 36 }),
   draw(c, p, live, time) {
     if (!scene.pixel) {
@@ -119,6 +121,7 @@ export const pushButton: PartDef = {
   blurb: 'Tactile switch. Hold the mouse button down to press it.',
   pinLabels: ['1a', '1b', '2a', '2b'],
   pinLabelPlace: 'axis',
+  tipPastPin: -2,
   defaults: () => ({ pressed: false }),
   pins: () => [
     { x: 0, y: 0 },

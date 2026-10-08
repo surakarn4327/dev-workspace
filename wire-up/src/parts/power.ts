@@ -30,6 +30,7 @@ const makeBattery = (type: string, name: string, volts0: number): PartDef => ({
   fixedRot: true,
   pinLabels: ['+', '-'],
   pinLabelPlace: 'above',
+  tipPastPin: 2,
   defaults: () => ({ volts: volts0 }),
   // the two terminals are the pins: on grid points at the top of the sprite
   pins: (p) => {

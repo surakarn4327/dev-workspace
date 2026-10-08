@@ -15,9 +15,6 @@ import type { CableShape } from './pixelwire.ts'
 import { scene } from './scene.ts'
 
 /** Pin names shown on the pin label: an LED or diode lead reads + or - instead of A or K. */
-/** The straight leads of sensors, LEDs and transistors stick out this far past their pin point. */
-const LEAD_OVERSHOOT = 4
-
 const PIN_SHOWN: Record<string, string | undefined> = { A: '+', K: '-' }
 
 export interface View {
@@ -520,18 +517,17 @@ export class Renderer {
         // the label sits at the visible lead tip, with the same gap from its box edge on every side
         let dx = 0
         let dy = 0
-        let tip = 0
         if (def.pinLabelPlace === 'axis') {
           dx = Math.sign(p.x - mid.x)
           dy = Math.sign(p.y - mid.y)
         } else {
-          // 'below' = past the lead tips in the part's own frame (leads overshoot their pin by LEAD_OVERSHOOT), 'above' = the opposite
+          // 'below' = past the lead tips in the part's own frame, 'above' = the opposite; either way measured from the visible tip
           const a = (part.rot * Math.PI) / 2
           const sign = def.pinLabelPlace === 'below' ? 1 : -1
           dx = Math.round(-Math.sin(a)) * sign
           dy = Math.round(Math.cos(a)) * sign
-          if (def.pinLabelPlace === 'below') tip = LEAD_OVERSHOOT
         }
+        const tip = def.tipPastPin ?? 0
         const { w, h } = labelBoxSize(c, label, 10)
         const tx = p.x + dx * tip
         const ty = p.y + dy * tip

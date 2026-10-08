@@ -15,6 +15,7 @@ export const led: PartDef = {
   blurb: 'Lights up when current flows anode to cathode. Needs a resistor!',
   pinLabels: ['A', 'K'],
   pinLabelPlace: 'below',
+  tipPastPin: 4,
   defaults: () => ({ color: 'red', legs: 1 }),
   pins: (p) => [
     { x: 0, y: legGrid(p) },
@@ -181,6 +182,7 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
       : 'PNP: conducts when the base is pulled LOW relative to the emitter.',
     pinLabels: ['C', 'B', 'E'],
     pinLabelPlace: 'below',
+    tipPastPin: 4,
     defaults: () => ({ legs: 1 }),
     pins: (p) => [
       { x: 0, y: legGrid(p) },

@@ -104,6 +104,7 @@ export const potentiometer: PartDef = {
   wheelKey: 'pos',
   pinLabels: ['1', 'W', '2'],
   pinLabelPlace: 'below',
+  tipPastPin: 4,
   defaults: () => ({ value: 10000, pos: 0.5, legs: 1 }),
   pins: (p) => [
     { x: 0, y: legGrid(p) },
@@ -208,6 +209,7 @@ export const ldr: PartDef = {
   blurb: 'Resistance falls as light gets brighter.',
   pinLabels: ['1', '2'],
   pinLabelPlace: 'below',
+  tipPastPin: 4,
   wheelKey: 'lux',
   defaults: () => ({ lux: 100, legs: 1 }),
   pins: (p) => pinsTwo(2, legGrid(p)),
@@ -281,6 +283,7 @@ export const ntc: PartDef = {
   blurb: '10 k at 25 C. Resistance falls as it warms up.',
   pinLabels: ['1', '2'],
   pinLabelPlace: 'below',
+  tipPastPin: 4,
   wheelKey: 'temp',
   defaults: () => ({ temp: 25, legs: 1 }),
   pins: (p) => pinsTwo(2, legGrid(p)),
