@@ -57,6 +57,8 @@ export interface PartDef {
   pinLabelPlace?: 'axis' | 'side' | 'above' | 'below'
   /** How far the visible lead tip sticks out past the pin point, in the label's direction (world px). Default 0. */
   tipPastPin?: number
+  /** Same as `tipPastPin` for the plain vector look (pixel look off). Defaults to `tipPastPin`. */
+  tipPastPinVector?: number
   defaults(): Params
   /** Pin positions in grid units, local, before rotation. For freeLeads: default tip offsets. */
   pins(p: PartInstance): Vec[]

@@ -131,7 +131,7 @@ export function drawSprite(c: CanvasRenderingContext2D, s: Sprite, x: number, y:
 
 const inkCache = new WeakMap<Sprite, { x0: number; y0: number; x1: number; y1: number }>()
 
-/** Visible (non-transparent) edges of a sprite drawn with `drawSprite(c, s, x, y)`, in world px. */
+/** Visible edges of a sprite (solid pixels clearly different from the background, `COL.bg` = #23232b) drawn with `drawSprite(c, s, x, y)`, in world px. */
 export function spriteInk(s: Sprite, x: number, y: number): { left: number; top: number; right: number; bottom: number } {
   let b = inkCache.get(s)
   if (!b) {
@@ -140,7 +140,9 @@ export function spriteInk(s: Sprite, x: number, y: number): { left: number; top:
     b = { x0: cv.width, y0: cv.height, x1: -1, y1: -1 }
     for (let j = 0; j < cv.height; j++) {
       for (let i = 0; i < cv.width; i++) {
-        if (data[(j * cv.width + i) * 4 + 3] < 128) continue
+        const o = (j * cv.width + i) * 4
+        // visible = solid enough and different enough from the canvas background (a near-background outline row is not an edge)
+        if (data[o + 3] < 128 || Math.abs(data[o] - 35) + Math.abs(data[o + 1] - 35) + Math.abs(data[o + 2] - 43) <= 60) continue
         b.x0 = Math.min(b.x0, i)
         b.x1 = Math.max(b.x1, i)
         b.y0 = Math.min(b.y0, j)

@@ -527,7 +527,7 @@ export class Renderer {
           dx = Math.round(-Math.sin(a)) * sign
           dy = Math.round(Math.cos(a)) * sign
         }
-        const tip = def.tipPastPin ?? 0
+        const tip = (this.pixelMode ? def.tipPastPin : (def.tipPastPinVector ?? def.tipPastPin)) ?? 0
         const { w, h } = labelBoxSize(c, label, 10)
         const tx = p.x + dx * tip
         const ty = p.y + dy * tip

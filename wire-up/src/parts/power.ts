@@ -30,7 +30,8 @@ const makeBattery = (type: string, name: string, volts0: number): PartDef => ({
   fixedRot: true,
   pinLabels: ['+', '-'],
   pinLabelPlace: 'above',
-  tipPastPin: 2,
+  tipPastPin: type === 'battery' ? 0 : 2,
+  tipPastPinVector: type === 'battery' ? -4 : -26,
   defaults: () => ({ volts: volts0 }),
   // the two terminals are the pins: on grid points at the top of the sprite
   pins: (p) => {
@@ -126,7 +127,7 @@ const makeBattery = (type: string, name: string, volts0: number): PartDef => ({
       drawText(c, `${v}V`, w / 2, 90, { color: '#f0e6c8', align: 'center', scale: 2 })
     }
     c.restore()
-    if (scene.labeled.has(p.id)) drawLabelBelow(c, `${v} V`, term.ox + w / 2, 8 + h)
+    if (scene.labeled.has(p.id)) drawLabelBelow(c, `${v} V`, term.ox + w / 2, v === '9' ? h : h - 4)
   },
   fields: () => [],
   summary: (p) => `${volts(p)} V, ${eng((BATTERY_TYPES[volts(p)] ?? BATTERY_TYPES['9']).r, 'ohm')} internal`,

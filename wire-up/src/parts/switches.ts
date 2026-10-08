@@ -22,6 +22,7 @@ export const rockerSwitch: PartDef = {
   pinLabels: ['1', '2'],
   pinLabelPlace: 'axis',
   tipPastPin: 4,
+  tipPastPinVector: 8,
   defaults: () => ({ on: false }),
   pins: () => [
     { x: 0, y: 0 },
@@ -92,7 +93,8 @@ export const slideSwitch: PartDef = {
   ...rockerSwitch,
   type: 'slide-switch',
   name: 'Slide switch',
-  tipPastPin: 10,
+  tipPastPin: 8,
+  tipPastPinVector: 8,
   bounds: () => ({ x: -12, y: -18, w: 64, h: 36 }),
   draw(c, p, live, time) {
     if (!scene.pixel) {

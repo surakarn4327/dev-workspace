@@ -105,6 +105,7 @@ export const potentiometer: PartDef = {
   pinLabels: ['1', 'W', '2'],
   pinLabelPlace: 'below',
   tipPastPin: 4,
+  tipPastPinVector: 2,
   defaults: () => ({ value: 10000, pos: 0.5, legs: 1 }),
   pins: (p) => [
     { x: 0, y: legGrid(p) },
@@ -210,6 +211,7 @@ export const ldr: PartDef = {
   pinLabels: ['1', '2'],
   pinLabelPlace: 'below',
   tipPastPin: 4,
+  tipPastPinVector: 2,
   wheelKey: 'lux',
   defaults: () => ({ lux: 100, legs: 1 }),
   pins: (p) => pinsTwo(2, legGrid(p)),
@@ -284,6 +286,7 @@ export const ntc: PartDef = {
   pinLabels: ['1', '2'],
   pinLabelPlace: 'below',
   tipPastPin: 4,
+  tipPastPinVector: 2,
   wheelKey: 'temp',
   defaults: () => ({ temp: 25, legs: 1 }),
   pins: (p) => pinsTwo(2, legGrid(p)),
@@ -336,7 +339,7 @@ export const ntc: PartDef = {
     c.beginPath()
     c.arc(20, -20, 14, 0, Math.PI * 2)
     c.stroke()
-    if (scene.labeled.has(p.id)) drawLabelAbove(c, `${t.toFixed(0)}C`, 20, -34)
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, `${t.toFixed(0)}C`, 20, -35)
   },
   fields: () => [{ kind: 'range', key: 'temp', label: 'Temperature', min: -40, max: 150, step: 1, unit: 'C' }, LEG_FIELD],
   summary: (p) => `${eng(ntcResistance(num(p, 'temp', 25)), 'ohm')} at ${num(p, 'temp', 25).toFixed(0)} C`,

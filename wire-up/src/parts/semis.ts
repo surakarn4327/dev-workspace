@@ -16,6 +16,7 @@ export const led: PartDef = {
   pinLabels: ['A', 'K'],
   pinLabelPlace: 'below',
   tipPastPin: 4,
+  tipPastPinVector: 2,
   defaults: () => ({ color: 'red', legs: 1 }),
   pins: (p) => [
     { x: 0, y: legGrid(p) },
@@ -111,6 +112,7 @@ export const diode: PartDef = {
   blurb: 'One-way valve for current. Band marks the cathode.',
   pinLabels: ['A', 'K'],
   pinLabelPlace: 'axis',
+  tipPastPinVector: 2,
   defaults: () => ({ legs: 1 }),
   pins: (p) => [
     { x: 0, y: 0 },
@@ -152,8 +154,12 @@ export const diode: PartDef = {
       if (scene.labeled.has(p.id)) drawLabelAbove(c, '1N4007', cx, spriteInk(body, cx - 22, -10).top)
       return
     }
-    leg(c, 0, 0, 20, 0)
-    leg(c, 60, 0, 80, 0)
+    const sp = spreadOf(p) * U
+    const cx = sp / 2
+    leg(c, 0, 0, cx - 20, 0)
+    leg(c, cx + 20, 0, sp, 0)
+    c.save()
+    c.translate(cx - 40, 0)
     c.fillStyle = '#1b1b20'
     rrect(c, 19, -10, 42, 20, 3)
     c.fill()
@@ -163,7 +169,8 @@ export const diode: PartDef = {
     c.fillRect(49, -10, 7, 20)
     c.fillStyle = 'rgba(0,0,0,0.25)'
     c.fillRect(54, -10, 2, 20)
-    if (scene.labeled.has(p.id)) drawLabelAbove(c, '1N4007', 40, -10)
+    c.restore()
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, '1N4007', cx, -10)
   },
   fields: () => [LEG_FIELD],
   summary: () => `1N4007, ${DIODE.iMax} A, ${DIODE.vrMax} V`,
@@ -183,6 +190,7 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
     pinLabels: ['C', 'B', 'E'],
     pinLabelPlace: 'below',
     tipPastPin: 4,
+    tipPastPinVector: 2,
     defaults: () => ({ legs: 1 }),
     pins: (p) => [
       { x: 0, y: legGrid(p) },
