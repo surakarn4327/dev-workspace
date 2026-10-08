@@ -136,6 +136,7 @@ export class App {
     tabs.forEach((t) => {
       t.onclick = () => {
         this.tabBeforeSelect = null // the player chose a tab: leave it alone when the selection goes away
+        this.openedBySelect = false
         this.showSideTab(t.dataset.tab ?? 'inspect')
       }
     })
@@ -153,21 +154,38 @@ export class App {
     $('panel-lessons').hidden = tab !== 'lessons'
   }
 
-  /** Selecting something opens the Inspector; letting go of the selection brings back the tab that was open before. */
+  /**
+   * Selecting something shows the Inspector: if the right panel is hidden it slides open, otherwise the Inspector tab replaces
+   * the tab that was open. Letting go of the selection undoes exactly that: the panel hides again, or the earlier tab returns.
+   * Touching the panel by hand in between (tab or toggle) leaves it alone.
+   */
   private followSelection(): void {
     const has = this.ws.selectedPart !== null || this.ws.selectedWire !== null || this.ws.groupSize() > 0
     if (has === this.hadSelection) return
     this.hadSelection = has
     if (has) {
+      if (this.isRightHidden()) {
+        this.openedBySelect = true
+        this.setRightHidden(false)
+      }
       if (this.sideTab !== 'inspect') {
         this.tabBeforeSelect = this.sideTab
         this.showSideTab('inspect')
       }
-    } else if (this.tabBeforeSelect) {
-      this.showSideTab(this.tabBeforeSelect)
-      this.tabBeforeSelect = null
+    } else {
+      if (this.tabBeforeSelect) {
+        this.showSideTab(this.tabBeforeSelect)
+        this.tabBeforeSelect = null
+      }
+      if (this.openedBySelect) this.setRightHidden(true)
+      this.openedBySelect = false
     }
   }
+
+  /** The right panel was hidden and a selection opened it. */
+  private openedBySelect = false
+  private isRightHidden = (): boolean => $('app').classList.contains('hide-right')
+  private setRightHidden: (hidden: boolean) => void = () => {}
 
   private togglePanel: (side: 'left' | 'right') => void = () => {}
 
@@ -194,7 +212,12 @@ export class App {
         // ignore
       }
     }
+    this.setRightHidden = (hidden) => {
+      app.classList.toggle('hide-right', hidden)
+      sync()
+    }
     this.togglePanel = (side) => {
+      if (side === 'right') this.openedBySelect = false // the player took over the panel
       app.classList.toggle(side === 'left' ? 'hide-left' : 'hide-right')
       sync()
     }
