@@ -45,9 +45,6 @@ function emptyGroup(): { parts: Set<string>; wires: Set<string> } {
   return { parts: new Set(), wires: new Set() }
 }
 
-/** How long the pointer must rest on a part before its value labels appear. */
-const HOVER_LABEL_MS = 1000
-
 export interface HoverInfo {
   text: string
 }
@@ -71,7 +68,6 @@ export class Workspace {
   private mode: Mode | null = null
   private space = false
   private hoverPart: string | null = null
-  private hoverSince = 0
   private hoverPoint: Vec | null = null
   private ghost: { type: string; x: number; y: number } | null = null
   private last = performance.now()
@@ -125,7 +121,7 @@ export class Workspace {
       group: this.group,
       box: m && m.t === 'box' && m.moved ? normBox(m.a, m.b) : null,
       hoverPart: this.hoverPart,
-      labelPart: this.hoverPart && performance.now() - this.hoverSince >= HOVER_LABEL_MS ? this.hoverPart : null,
+      labelPart: this.hoverPart,
       hoverPoint: this.hoverPoint,
       draft: m && m.t === 'newWire' ? [m.a, ...m.via, m.b] : null,
       draftBad: !!(m && m.t === 'newWire' && m.bad),
@@ -679,7 +675,6 @@ export class Workspace {
   private hover(w: Vec): void {
     const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire, false, this.selectedPart)
     this.hoverPoint = null
-    const prevHover = this.hoverPart
     this.hoverPart = null
     let cursor = this.wireMode ? 'crosshair' : 'default'
     let text = ''
@@ -736,7 +731,6 @@ export class Workspace {
         cursor = this.wireMode ? 'crosshair' : 'grab'
         text = 'Left-drag moves the view. Right-drag draws a selection box. Ctrl adds to the selection.'
     }
-    if (this.hoverPart !== prevHover) this.hoverSince = performance.now()
     this.canvas.style.cursor = cursor
     this.onHover({ text })
   }
