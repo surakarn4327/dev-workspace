@@ -21,6 +21,9 @@ const BLURBS: Record<GateFn, string> = {
   xnor: 'Y is high when A and B are the same.',
 }
 
+/** Radius of the white disc in the vector look (world px). */
+const GATE_DISC_R = 44
+
 function gate(fn: GateFn): PartDef {
   const two = fn !== 'not'
   const name = NAMES[fn]
@@ -92,12 +95,12 @@ function gate(fn: GateFn): PartDef {
       c.strokeStyle = '#08080c'
       c.lineWidth = 1.5
       c.beginPath()
-      c.arc(GATE_CENTRE.x, GATE_CENTRE.y, 44, 0, Math.PI * 2)
+      c.arc(GATE_CENTRE.x, GATE_CENTRE.y, GATE_DISC_R, 0, Math.PI * 2)
       c.fill()
       c.stroke()
       drawSymbol(c, fn)
       statusDot(c, GATE_CENTRE.x, -18, high)
-      if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, -25)
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, GATE_CENTRE.y - GATE_DISC_R - 0.75) // top of the outlined disc
     },
     fields: () => [],
     summary: () => `${name} gate, 5 V logic, switches at ${GATE.vth} V`,

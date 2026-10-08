@@ -6,6 +6,7 @@ export const COL = {
   cyan: '#38f9ff',
   magenta: '#ff3df2',
   green: '#39ff88',
+  flow: '#fff6b8', // the dots drifting along a wire with current
   amber: '#ffb43a',
   red: '#ff3b4a',
   dim: '#a29dd2',

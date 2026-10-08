@@ -5,7 +5,7 @@ export async function harness(opts = {}) {
   const parts = await import('/src/parts/index.ts')
   const { Renderer } = await import('/src/render/renderer.ts')
   const { scene } = await import('/src/render/scene.ts')
-  const K = 3, SIZE = 1000, OX = 500, OY = 260, BG = [35, 35, 43]
+  const K = 3, SIZE = 1000, OX = 500, OY = 500, BG = [35, 35, 43]
   const cv = document.createElement('canvas')
   cv.width = SIZE
   cv.height = SIZE
@@ -60,6 +60,7 @@ export async function harness(opts = {}) {
     fake.pixelMode = scene.pixel
     for (const def of parts.ALL_PARTS) {
       if (['breadboard-mini', 'supply', 'meter'].includes(def.type)) continue
+      if (opts.only && !opts.only.includes(def.type)) continue
       const row = []
       const dimsByRot = []
       for (let rot = 0; rot < 4; rot++) {
@@ -81,10 +82,10 @@ export async function harness(opts = {}) {
             const s = Math.max(x - L.x1 - 1, L.x0 - x - 1, y - L.y1 - 1, L.y0 - y - 1, 0)
             if (s < best) best = s
           }
-          return { gap: +(best / K).toFixed(1), dims: Math.round((L.x1 - L.x0 + 1) / K) + 'x' + Math.round((L.y1 - L.y0 + 1) / K) }
+          return { gap: +(best / K).toFixed(1), dims: Math.round((L.x1 - L.x0 + 1) / K) + 'x' + Math.round((L.y1 - L.y0 + 1) / K), at: opts.boxes ? ' @' + Math.round((L.x0 - OX) / K) + ',' + Math.round((L.y0 - OY) / K) : '' }
         })
         dimsByRot.push(gaps.map((g) => g.dims).sort().join(','))
-        row.push(gaps.map((g) => g.gap).join(' '))
+        row.push(gaps.map((g) => g.gap + (g.at ? g.dims + g.at : '')).join(' '))
       }
       const upright = dimsByRot.every((d) => d === dimsByRot[0]) ? '' : '  !! label boxes change shape when rotated: ' + dimsByRot.join(' / ')
       results[mode + ' ' + def.type] = row.join(' | ') + upright

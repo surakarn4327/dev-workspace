@@ -81,7 +81,8 @@ export const resistor: PartDef = {
       c.fillStyle = col
       c.fillRect(xs[k], k === 3 ? -9 : -8, 4, k === 3 ? 18 : 16)
     })
-    if (scene.labeled.has(p.id)) drawLabelAbove(c, fmtOhms(num(p, 'value', 330)), cx, -10)
+    // sideways (rotated) the label only spans the thin middle and the shoulders of the round caps, whose nearest ink is 9.3 px out (label-gap-harness)
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, fmtOhms(num(p, 'value', 330)), cx, p.rot % 2 ? -9.3 : -10)
   },
   fields: () => [
     {

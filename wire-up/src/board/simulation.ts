@@ -6,6 +6,7 @@ import { defOf, pinWorld } from '../parts/index.ts'
 import type { PartLive, Stress } from '../parts/types.ts'
 import { buildNetlist } from './connectivity.ts'
 import type { Netlist } from './connectivity.ts'
+import { computeFlow } from './flow.ts'
 import type { World } from './world.ts'
 
 export interface FailEvent {
@@ -29,6 +30,8 @@ export class Simulation {
   net: Netlist
   result: SolveResult | null = null
   live = new Map<string, PartLive>()
+  /** Signed current in each wire (+ = from its `a` end to its `b` end) for the flowing dots; wires with no answer are absent. */
+  flow = new Map<string, number>()
   stress = new Map<string, Stress>()
   events: FailEvent[] = []
   log: LogEntry[] = []
@@ -50,6 +53,7 @@ export class Simulation {
     const res = solve(this.net.circuit, this.warm)
     this.warm = res.raw
     this.result = res
+    this.flow = computeFlow(this.world, this.net, res)
     this.live.clear()
     this.stress.clear()
     for (const part of this.world.parts) {

@@ -54,6 +54,7 @@ export interface Lead extends Vec {
  * type here when the rule should cover it, and list it in CLAUDE.md:
  *   bench supply (type 'supply')    -> down
  *   batteries (types 'battery*')    -> up
+ *   74HC chips (types 'ic-*')       -> out of the package: top row up, bottom row down
  *   switches (category 'switch')    -> out to the side (left leg left, right leg right), except the push button (type 'button'), which keeps free routing
  */
 function leadDirs(p: PartInstance): Vec[] | null {
@@ -64,6 +65,7 @@ function leadDirs(p: PartInstance): Vec[] | null {
   const right = { x: 1, y: 0 }
   if (p.type === 'supply') return def.pins(p).map(() => down)
   if (p.type.startsWith('battery')) return def.pins(p).map(() => up)
+  if (p.type.startsWith('ic-')) return def.pins(p).map((v) => (v.y === 0 ? up : down))
   if (def.category === 'switch' && p.type !== 'button') {
     const pins = def.pins(p)
     const mid = pins.reduce((s, v) => s + v.x, 0) / pins.length

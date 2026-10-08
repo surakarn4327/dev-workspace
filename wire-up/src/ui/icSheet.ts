@@ -1,0 +1,124 @@
+// Pinout of the selected 74HC chip, drawn on its own transparent canvas that floats over the board beside the right panel:
+// just the package (notch on the left), numbered pin boxes, the words VCC and GND, and the gates inside wired to their real
+// pins, in white lines straight on the dark board (style.md 4.02).
+
+import { CHIP_INFO } from '../parts/ic.ts'
+import type { ChipInfo } from '../parts/ic.ts'
+import { gateGeometry } from '../parts/art.ts'
+import { drawText } from '../render/draw.ts'
+import type { PartInstance } from '../board/world.ts'
+import type { GateFn } from '../sim/solver.ts'
+
+/** Colours of the pinout drawing (style.md 2.9). */
+export const SHEET = { ink: '#ffffff' }
+
+// drawing frame: the package spans x 14..222, y 62..150 and the pin boxes and words around it fit in 228 x 192
+const W = 228
+const H = 192
+const OFFSET = { x: -6, y: -22 }
+const PITCH = 29
+const X0 = 30 // column of pin 1 / pin 14
+const CHIP = { x: 14, y: 62, w: 208, h: 112 }
+const BOX = 16
+const GATE_Y = { top: 90, bottom: 146 } // gate centres: each gate and all its wires stay inside its own half of the package, so nothing crosses a symbol
+const LANE = 10 // how far wires run before turning toward a gate
+const SCALE = 0.36 // gate geometry units -> sheet px
+
+/** Pin k (1..14) column x and whether it is on the top row. */
+function pinCol(k: number): { x: number; top: boolean } {
+  return k <= 7 ? { x: X0 + (k - 1) * PITCH, top: false } : { x: X0 + (14 - k) * PITCH, top: true }
+}
+
+function line(c: CanvasRenderingContext2D, pts: [number, number][]): void {
+  c.beginPath()
+  pts.forEach(([x, y], i) => (i === 0 ? c.moveTo(x, y) : c.lineTo(x, y)))
+  c.stroke()
+}
+
+/** One gate standing between its pins: bottom-row gates point up, top-row ones down; wires turn at right angles. */
+function drawGate(c: CanvasRenderingContext2D, fn: GateFn, g: number[]): void {
+  const ins = g.length === 2 ? [g[0]] : [g[0], g[1]]
+  const out = pinCol(g[g.length - 1])
+  const top = out.top
+  const edge = top ? CHIP.y : CHIP.y + CHIP.h
+  const cy = top ? GATE_Y.top : GATE_Y.bottom
+  const inXs = ins.map((k) => pinCol(k).x).sort((p, q) => p - q)
+  const cx = inXs.reduce((sum, x) => sum + x, 0) / inXs.length
+  const dir = top ? 1 : -1 // screen y per unit along the gate's output direction
+  // geometry: u runs input -> output, v across; turned so the output points away from the gate's own pin row
+  const at = (u: number, v: number): [number, number] => [cx - dir * v * SCALE, cy + dir * u * SCALE]
+  const geo = gateGeometry(fn)
+  const legs = ins.length + 1
+  for (const poly of geo.polys.slice(0, geo.polys.length - legs)) line(c, poly.map(([u, v]) => at(u, v)))
+  for (const [u, v, r] of geo.circles) {
+    c.beginPath()
+    c.arc(...at(u, v), r * SCALE, 0, Math.PI * 2)
+    c.stroke()
+  }
+  // inputs: left pin to the left input, so the wires never cross
+  const inEnds = geo.polys
+    .slice(geo.polys.length - legs, geo.polys.length - 1)
+    .map((leg) => at(leg[1][0], leg[1][1]))
+    .sort((p, q) => p[0] - q[0])
+  inXs.forEach((x, i) => {
+    const [ex, ey] = inEnds[i]
+    const lane = ey - dir * LANE
+    line(c, [[x, edge], [x, lane], [ex, lane], [ex, ey]])
+  })
+  const outLeg = geo.polys[geo.polys.length - 1]
+  const [ox, oy] = at(outLeg[0][0], 0)
+  const lane = oy + dir * LANE
+  line(c, [[ox, oy], [ox, lane], [out.x, lane], [out.x, edge]])
+}
+
+function drawSheet(c: CanvasRenderingContext2D, info: ChipInfo): void {
+  c.translate(OFFSET.x, OFFSET.y)
+  c.strokeStyle = SHEET.ink
+  c.lineWidth = 1.5
+  c.lineCap = 'square'
+  c.lineJoin = 'miter'
+  // package with the notch on the left
+  const mid = CHIP.y + CHIP.h / 2
+  c.beginPath()
+  c.moveTo(CHIP.x, CHIP.y)
+  c.lineTo(CHIP.x + CHIP.w, CHIP.y)
+  c.lineTo(CHIP.x + CHIP.w, CHIP.y + CHIP.h)
+  c.lineTo(CHIP.x, CHIP.y + CHIP.h)
+  c.lineTo(CHIP.x, mid + 8)
+  c.arc(CHIP.x, mid, 8, Math.PI / 2, -Math.PI / 2, true)
+  c.closePath()
+  c.stroke()
+  for (const g of info.layout) drawGate(c, info.fn, g)
+  // numbered pin boxes
+  for (let k = 1; k <= 14; k++) {
+    const p = pinCol(k)
+    const y = p.top ? CHIP.y - BOX : CHIP.y + CHIP.h
+    c.strokeRect(p.x - BOX / 2, y, BOX, BOX)
+    drawText(c, String(k), p.x, y + 3, { color: SHEET.ink, align: 'center', size: 10 })
+  }
+  drawText(c, 'VCC', pinCol(14).x - BOX / 2, CHIP.y - BOX - 16, { color: SHEET.ink, size: 10 })
+  drawText(c, 'GND', pinCol(7).x - BOX / 2, CHIP.y + CHIP.h + BOX + 4, { color: SHEET.ink, size: 10 })
+}
+
+/** Show the pinout for the selected chip, or hide it when anything else (or nothing) is selected. */
+export function updateChipSheet(canvas: HTMLCanvasElement, part: PartInstance | undefined): void {
+  const info = part ? CHIP_INFO.get(part.type) : undefined
+  if (!info) {
+    canvas.style.display = 'none'
+    canvas.dataset.chip = ''
+    return
+  }
+  canvas.style.display = 'block'
+  if (canvas.dataset.chip === part!.type) return
+  canvas.dataset.chip = part!.type
+  const dpr = window.devicePixelRatio || 1
+  canvas.width = Math.round(W * dpr)
+  canvas.height = Math.round(H * dpr)
+  canvas.style.width = `${W}px`
+  canvas.style.height = `${H}px`
+  const c = canvas.getContext('2d')
+  if (!c) return
+  c.setTransform(dpr, 0, 0, dpr, 0, 0)
+  c.clearRect(0, 0, W, H)
+  drawSheet(c, info)
+}

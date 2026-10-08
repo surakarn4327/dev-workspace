@@ -18,6 +18,7 @@ export type Element =
   /** Bipolar transistor (Ebers-Moll). pol = +1 NPN, -1 PNP. */
   | { kind: 'Q'; id: string; c: number; b: number; e: number; pol: 1 | -1; is: number; bf: number; br: number }
   | GateElement
+  | CmosGateElement
 
 export type GateFn = 'not' | 'and' | 'or' | 'nand' | 'nor' | 'xor' | 'xnor'
 
@@ -41,6 +42,25 @@ export interface GateElement {
   ref?: number
 }
 
+/**
+ * One gate inside a real CMOS chip (74HC). It works off the chip's own VCC and GND pins: Y is joined to VCC through
+ * `f * g` and to GND through `(1 - f) * g` (`g = 1 / rout`), where `f` is the logic result of the inputs, each judged
+ * against half the supply. Inputs draw no current. With no supply the output just floats between the two rails.
+ */
+export interface CmosGateElement {
+  kind: 'C'
+  id: string
+  fn: GateFn
+  a: number
+  b?: number
+  y: number
+  vcc: number
+  gnd: number
+  rout: number
+  /** Width of the input switching step, in volts. */
+  w: number
+}
+
 export interface Circuit {
   /** Number of nodes including ground (node 0). */
   nodeCount: number
@@ -48,9 +68,9 @@ export interface Circuit {
 }
 
 export interface ElementCurrent {
-  /** a -> b through the element (Q: collector current into the device). */
+  /** a -> b through the element (Q: collector current into the device; C: current from Y into VCC). */
   i: number
-  /** Q only: base current into the device. */
+  /** Q: base current into the device. C: current from Y into GND. */
   ib?: number
 }
 
@@ -90,6 +110,20 @@ function gateLogic(fn: GateFn, sa: number, sb: number): { f: number; da: number;
     case 'xnor':
       return { f: 1 - (sa + sb - 2 * sa * sb), da: -(1 - 2 * sb), db: -(1 - 2 * sa) }
   }
+}
+
+const CMOS_DV = 1e-6
+
+/** Currents leaving a CMOS gate's Y: [to VCC, to GND]. */
+function cmosBranches(e: CmosGateElement, v: (node: number) => number): [number, number] {
+  const vg = v(e.gnd)
+  const half = (v(e.vcc) - vg) / 2
+  const vy = v(e.y)
+  const sa = step(v(e.a) - vg, half, e.w)
+  const sb = e.b === undefined ? 0 : step(v(e.b) - vg, half, e.w)
+  const { f } = gateLogic(e.fn, sa, sb)
+  const g = 1 / Math.max(e.rout, 1e-6)
+  return [g * f * (vy - v(e.vcc)), g * (1 - f) * (vy - vg)]
 }
 
 function pnjlim(vnew: number, vold: number, vt: number, vcrit: number): number {
@@ -219,6 +253,20 @@ class Problem {
   }
 
   /** Current i flowing a -> b through an element (leaves node a, enters node b). */
+  /** A nonlinear current i(x) flowing p -> q, linearised at the present x: `partials` are [node, d i / d v(node)]. */
+  private stampBranch(A: Float64Array, z: Float64Array, p: number, q: number, i0: number, partials: [number, number][], v0: (node: number) => number): void {
+    const n = this.size
+    let known = i0
+    for (const [node, j] of partials) known -= j * v0(node)
+    for (const [node, j] of partials) {
+      if (node === 0) continue
+      if (p > 0) A[(p - 1) * n + (node - 1)] += j
+      if (q > 0) A[(q - 1) * n + (node - 1)] -= j
+    }
+    if (p > 0) z[p - 1] -= known
+    if (q > 0) z[q - 1] += known
+  }
+
   private stampI(z: Float64Array, a: number, b: number, i: number): void {
     if (a > 0) z[a - 1] -= i
     if (b > 0) z[b - 1] += i
@@ -306,6 +354,22 @@ class Problem {
           stamp(ref, -1)
           break
         }
+        case 'C': {
+          // two nonlinear branches (Y -> VCC, Y -> GND) of up to five node voltages, differentiated numerically
+          const v0 = (node: number) => this.nv(x, node)
+          const base = cmosBranches(e, v0)
+          const nodes = new Set([e.y, e.a, e.b ?? 0, e.vcc, e.gnd])
+          ;[e.vcc, e.gnd].forEach((to, k) => {
+            const partials: [number, number][] = []
+            for (const node of nodes) {
+              if (node === 0) continue
+              const bumped = cmosBranches(e, (m) => v0(m) + (m === node ? CMOS_DV : 0))[k]
+              partials.push([node, (bumped - base[k]) / CMOS_DV])
+            }
+            this.stampBranch(A, z, e.y, to, base[k], partials, v0)
+          })
+          break
+        }
         case 'Q': {
           const nVt = VT
           const vcrit = vcritOf(nVt, e.is)
@@ -385,6 +449,11 @@ class Problem {
           const { f } = gateLogic(e.fn, sa, sb)
           // current the gate pushes out of Y into the circuit
           out.set(e.id, { i: (e.vh * f - (nv(e.y) - vr)) / Math.max(e.rout, 1e-6) })
+          break
+        }
+        case 'C': {
+          const [toVcc, toGnd] = cmosBranches(e, nv)
+          out.set(e.id, { i: toVcc, ib: toGnd })
           break
         }
         case 'Q': {

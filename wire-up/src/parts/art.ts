@@ -1101,3 +1101,41 @@ export function gateSprite(shape: GateShape): Sprite {
     return g.build({ '0': DISC_TONES[0], '1': DISC_TONES[1], '2': DISC_TONES[2], '3': DISC_TONES[3] }, '#08080c')
   })
 }
+
+// ---------------------------------------------------------------- DIP-14 chip
+
+/**
+ * Black DIP-14 package seen from above, notch on the left, pin-1 dimple bottom left. 70 x 30 art pixels; cell (0, 0) sits at
+ * world (-10, 0) so the 2-pixel legs centre on the pin points (pins at x = 0..120 step 20, y = 0 and 60). Body rows 4..25.
+ */
+/** Chip package colours (style.md 2.8): the sprite and the vector look both read them from here. */
+export const DIP_COLORS = { a: '#2c2c33', b: '#26262c', c: '#202026', L: '#5a5a66', M: '#3c3c45', D: '#111115', p: '#16161b', S: '#c9ced6', T: '#7d838f', edge: '#07070a' }
+
+export function dipSprite(): Sprite {
+  return sprite('dip14', () => {
+    const W = 70
+    const H = 30
+    const g = new PixelGrid(W, H)
+    g.rrect(0, 4, W, 22, 1, 'F')
+    g.disc(0, 15, 3, '.') // notch
+    const face = (y: number) => (y < 11 ? 'a' : y < 19 ? 'b' : 'c')
+    const cells: Array<[number, number]> = []
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g.get(x, y) !== '.') cells.push([x, y])
+    for (const [x, y] of cells) {
+      const litEdge = g.get(x - 1, y) === '.' || g.get(x, y - 1) === '.'
+      const darkEdge = g.get(x + 1, y) === '.' || g.get(x, y + 1) === '.'
+      const inner = g.get(x - 2, y) === '.' || g.get(x, y - 2) === '.'
+      g.set(x, y, litEdge && !darkEdge ? 'L' : darkEdge && !litEdge ? 'D' : inner ? 'M' : face(y))
+    }
+    g.disc(6, 21, 1, 'p') // pin-1 dimple
+    for (let i = 0; i < 7; i++) {
+      const x = 4 + 10 * i
+      for (const y of [0, 26]) {
+        g.rect(x, y, 2, 4, 'S')
+        g.rect(x + 1, y, 1, 4, 'T')
+      }
+    }
+    const { edge, ...tones } = DIP_COLORS
+    return g.build(tones, edge)
+  })
+}

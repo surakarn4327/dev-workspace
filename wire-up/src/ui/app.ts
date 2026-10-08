@@ -3,7 +3,8 @@ import type { WorldData } from '../board/world.ts'
 import { SceneBuilder } from '../lessons/lessons.ts'
 import { exportFile, loadLab, parseImport, saveLab } from '../save/storage.ts'
 import { History } from '../save/history.ts'
-import { isRuntimeState } from '../parts/index.ts'
+import { defOf, isRuntimeState } from '../parts/index.ts'
+import { updateChipSheet } from './icSheet.ts'
 import { Inspector } from './inspector.ts'
 import { LessonPanel } from './lessonPanel.ts'
 import { buildToolbox } from './toolbox.ts'
@@ -52,6 +53,7 @@ export class App {
     this.ws.onSelect = () => {
       this.followSelection()
       this.inspector.rebuild()
+      updateChipSheet($<HTMLCanvasElement>('ic-sheet'), this.ws.selectedPart ? this.world.getPart(this.ws.selectedPart) : undefined)
       $('btn-wire').classList.toggle('on', this.ws.wireMode)
     }
     this.ws.onEdit = () => this.afterEdit()
@@ -162,7 +164,10 @@ export class App {
    * Touching the panel by hand in between (tab or toggle) leaves it alone.
    */
   private followSelection(): void {
-    const has = this.ws.selectedPart !== null || this.ws.selectedWire !== null || this.ws.groupSize() > 0
+    // a lone part with nothing to adjust (a gate, a chip, a battery, a push button...) does not call the panel up
+    const part = this.ws.selectedPart ? this.world.getPart(this.ws.selectedPart) : undefined
+    const settings = part ? defOf(part.type).fields(part).length > 0 : false
+    const has = settings || this.ws.selectedWire !== null || this.ws.groupSize() > 0
     if (has === this.hadSelection) return
     this.hadSelection = has
     if (has) {

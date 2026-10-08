@@ -354,6 +354,17 @@ button:disabled {
   touch-action: none;
 }
 
+/* datasheet pinout of the selected chip: floats over the board just left of the right panel (style.md 4.02) */
+#ic-sheet {
+  position: absolute;
+  top: 12px;
+  right: calc(12px + var(--rw));
+  transition: right 0.2s ease;
+  display: none;
+  pointer-events: none;
+  z-index: 2;
+}
+
 #toasts {
   position: absolute;
   right: calc(12px + var(--rw));

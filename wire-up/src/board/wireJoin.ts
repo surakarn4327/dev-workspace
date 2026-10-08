@@ -100,21 +100,6 @@ export function branchesOfParts(world: World, parts: PartInstance[]): Set<string
 }
 
 /**
- * Does a pin of `part` sit exactly on the end (or plug) of a wire? Placing a part like that would join it to the wire
- * without the user having drawn anything, so a new part may not be dropped there. `ignore` lists wires that belong to the
- * part on purpose (the wires pasted together with it).
- */
-export function pinOnWireEnd(world: World, part: PartInstance, ignore: Set<string> = new Set()): boolean {
-  if (part.type.startsWith('breadboard') || defOf(part.type).pinLabels.length === 0) return false
-  const ends = new Set<string>()
-  for (const w of world.wires) {
-    if (ignore.has(w.id)) continue
-    for (const v of [w.a, w.b, ...(w.taps ?? [])]) ends.add(pointKey(v))
-  }
-  return pinWorld(part).some((v) => ends.has(pointKey(v)))
-}
-
-/**
  * Does a pasted group (parts + wires) sit on something outside it? A pin on a foreign wire end, a wire end on a foreign wire
  * end, or a wire end on a foreign pin would all join silently, so the group is held apart (red) until it is moved clear.
  */

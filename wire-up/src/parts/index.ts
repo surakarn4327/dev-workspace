@@ -1,3 +1,4 @@
+import { hc00, hc02, hc04, hc08, hc32, hc86 } from './ic.ts'
 import { rotVec, G, snap } from '../board/world.ts'
 import type { PartInstance, Rot, Vec } from '../board/world.ts'
 import { breadboardFull, breadboardMini } from './breadboard.ts'
@@ -29,6 +30,12 @@ export const ALL_PARTS: PartDef[] = [
   gateNor,
   gateXor,
   gateXnor,
+  hc00,
+  hc02,
+  hc04,
+  hc08,
+  hc32,
+  hc86,
   rockerSwitch,
   slideSwitch,
   pushButton,

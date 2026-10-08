@@ -17,6 +17,8 @@ import { scene } from './scene.ts'
 /** Pin names shown on the pin label: an LED or diode lead reads + or - instead of A or K. */
 /** The dot grid never packs its dots closer than this many screen px (see drawGrid). */
 const GRID_MIN_PX = 24
+/** Below this current (A) a wire shows no flowing dots: the 1 Mohm pull-downs of a gate input leak a few uA and would only be noise. */
+const MIN_FLOW = 1e-5
 /** Overall strength of the dot grid (1 = full `COL.grid`). */
 const GRID_ALPHA = 0.5
 
@@ -223,6 +225,7 @@ export class Renderer {
         c.fill()
       }
     }
+    this.drawFlow(world, sim, now)
     for (const part of stack) if (layerOf(part.type) >= 4) this.drawPart(part, sim, now, 1)
     if (front) this.drawPart(front, sim, now, 1)
 
@@ -388,6 +391,43 @@ export class Renderer {
     const c = this.ctx
     c.beginPath()
     path.forEach((p, i) => (i === 0 ? c.moveTo(p.x, p.y + dy) : c.lineTo(p.x, p.y + dy)))
+  }
+
+  /** Dots drifting along each wire in the direction the current flows; faster for more current, none below 1 uA. */
+  private drawFlow(world: World, sim: Simulation, now: number): void {
+    const c = this.ctx
+    const SPACING = 22
+    c.save()
+    c.fillStyle = COL.flow
+    for (const w of world.wires) {
+      const i = sim.flow.get(w.id)
+      if (i === undefined || Math.abs(i) < MIN_FLOW) continue
+      const path = wirePath(w)
+      let total = 0
+      for (let k = 0; k + 1 < path.length; k++) total += Math.hypot(path[k + 1].x - path[k].x, path[k + 1].y - path[k].y)
+      if (total < 1) continue
+      const speed = Math.min(14 + 22 * Math.log10(Math.abs(i) / 1e-6), 150) // px per second
+      const shift = (((now * speed * Math.sign(i)) % SPACING) + SPACING) % SPACING
+      c.globalAlpha = Math.min(0.5 + 0.12 * Math.log10(Math.abs(i) / 1e-6), 0.95)
+      for (let d = shift; d < total; d += SPACING) {
+        let left = d
+        for (let k = 0; k + 1 < path.length; k++) {
+          const a = path[k]
+          const b = path[k + 1]
+          const len = Math.hypot(b.x - a.x, b.y - a.y)
+          if (left <= len) {
+            const t = len === 0 ? 0 : left / len
+            // snap to the art pixel grid so the dots look like the rest of the game
+            const x = Math.round((a.x + (b.x - a.x) * t) / PX) * PX
+            const y = Math.round((a.y + (b.y - a.y) * t) / PX) * PX
+            c.fillRect(x - PX, y - PX, PX * 2, PX * 2)
+            break
+          }
+          left -= len
+        }
+      }
+    }
+    c.restore()
   }
 
   private drawWire(w: Wire, selected: boolean, color: string, shape: CableShape | undefined, bare: Vec[]): void {
