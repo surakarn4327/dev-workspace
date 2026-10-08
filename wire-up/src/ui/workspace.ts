@@ -609,9 +609,17 @@ export class Workspace {
         break
       }
     }
+    // dragging anything but a wire shows the closed hand (a press that has not moved yet keeps the hover cursor)
+    const dragged = m.t === 'pan' || m.t === 'lead' || ((m.t === 'part' || m.t === 'group' || m.t === 'box') && m.moved)
+    if (dragged) this.canvas.style.cursor = 'grabbing'
   }
 
   private up(e: PointerEvent): void {
+    this.finishUp(e)
+    this.hover(this.world2(e)) // the cursor goes back to what is under the pointer
+  }
+
+  private finishUp(e: PointerEvent): void {
     const m = this.mode
     this.mode = null
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId)
@@ -697,12 +705,12 @@ export class Workspace {
       case 'lead':
         this.hoverPoint = hit.point
         this.hoverPart = hit.part.id
-        cursor = 'grab'
+        cursor = 'pointer'
         text = `${defOf(hit.part.type).pinLabels[hit.index]} lead, drag to move. ${point(hit.point)}`
         break
       case 'wireEnd':
         this.hoverPoint = hit.point
-        cursor = 'grab'
+        cursor = 'pointer'
         text = `Wire end stays plugged in. Drag it to pull the wire out into a corner. ${point(hit.point)}`
         break
       case 'bend':
