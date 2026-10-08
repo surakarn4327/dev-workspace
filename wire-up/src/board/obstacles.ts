@@ -49,14 +49,34 @@ export interface Lead extends Vec {
   dy: number
 }
 
-/** Bench supply posts leave from below, battery terminals from above; both follow the part's rotation. */
+/**
+ * Which way wires must leave each kind of part, in the part's own frame (rotation applied on top). Add a category or
+ * type here when the rule should cover it, and list it in CLAUDE.md:
+ *   bench supply (type 'supply')    -> down
+ *   batteries (types 'battery*')    -> up
+ *   switches (category 'switch')    -> up, except the push button (type 'button'), which keeps free routing
+ */
+function leadDirs(p: PartInstance): Vec[] | null {
+  const def = defOf(p.type)
+  const up = { x: 0, y: -1 }
+  const down = { x: 0, y: 1 }
+  if (p.type === 'supply') return def.pins(p).map(() => down)
+  if (p.type.startsWith('battery')) return def.pins(p).map(() => up)
+  if (def.category === 'switch' && p.type !== 'button') return def.pins(p).map(() => up)
+  return null
+}
+
+/** Pins a wire must leave or enter straight along their direction (see `leadDirs`); follows the part's rotation. */
 export function leadPins(world: World): Lead[] {
   const out: Lead[] = []
   for (const p of world.parts) {
-    const base = p.type === 'supply' ? { x: 0, y: 1 } : p.type.startsWith('battery') ? { x: 0, y: -1 } : null
-    if (!base) continue
-    const d = rotVec(base, p.rot)
-    for (const v of pinWorld(p)) out.push({ x: v.x, y: v.y, dx: d.x, dy: d.y })
+    const dirs = leadDirs(p)
+    if (!dirs) continue
+    const pins = pinWorld(p)
+    pins.forEach((v, i) => {
+      const d = rotVec(dirs[i], p.rot)
+      out.push({ x: v.x, y: v.y, dx: d.x, dy: d.y })
+    })
   }
   return out
 }
