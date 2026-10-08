@@ -109,6 +109,11 @@ export class World {
   parts: PartInstance[] = []
   wires: Wire[] = []
   private counter = 1
+  /**
+   * Parts and wires of a fresh paste (or a part clicked in) that sit on something they were not drawn to, shown red: each maps to its
+   * group. Items of one group are joined to each other but to nothing outside it, until moved clear. Not saved.
+   */
+  isolated = new Map<string, string>()
   /** Bumped on any change that needs the circuit rebuilt. */
   version = 0
   /** Bumped on any change worth an undo step / autosave. */
@@ -237,8 +242,11 @@ export function validateWorldData(raw: unknown, knownTypes: Set<string>): WorldD
     })
   }
   const wires: Wire[] = []
+  const wireIds = new Set<string>()
   for (const w of d.wires as Record<string, unknown>[]) {
     if (typeof w !== 'object' || w === null || typeof w.id !== 'string') return 'Bad wire entry.'
+    if (wireIds.has(w.id)) return `Duplicate wire id: ${w.id}.`
+    wireIds.add(w.id)
     if (!isVec(w.a) || !isVec(w.b)) return `Wire ${w.id} has bad endpoints.`
     const via = Array.isArray(w.via) && w.via.every(isVec) ? (w.via as Vec[]).map(cloneVec) : []
     wires.push({
@@ -251,5 +259,11 @@ export function validateWorldData(raw: unknown, knownTypes: Set<string>): WorldD
     const taps = Array.isArray(w.taps) && w.taps.every(isVec) ? (w.taps as Vec[]).map(cloneVec) : []
     if (taps.length > 0) wires[wires.length - 1].taps = taps
   }
-  return { version: 1, counter: d.counter, parts, wires }
+  // the id counter must stay ahead of every id in the file, or the next new part or wire would reuse one
+  let counter = d.counter
+  for (const id of [...ids, ...wireIds]) {
+    const n = /([0-9]+)$/.exec(id)
+    if (n) counter = Math.max(counter, Number(n[1]) + 1)
+  }
+  return { version: 1, counter, parts, wires }
 }

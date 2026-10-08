@@ -98,3 +98,42 @@ export function branchesOfParts(world: World, parts: PartInstance[]): Set<string
   }
   return out
 }
+
+/**
+ * Does a pin of `part` sit exactly on the end (or plug) of a wire? Placing a part like that would join it to the wire
+ * without the user having drawn anything, so a new part may not be dropped there. `ignore` lists wires that belong to the
+ * part on purpose (the wires pasted together with it).
+ */
+export function pinOnWireEnd(world: World, part: PartInstance, ignore: Set<string> = new Set()): boolean {
+  if (part.type.startsWith('breadboard') || defOf(part.type).pinLabels.length === 0) return false
+  const ends = new Set<string>()
+  for (const w of world.wires) {
+    if (ignore.has(w.id)) continue
+    for (const v of [w.a, w.b, ...(w.taps ?? [])]) ends.add(pointKey(v))
+  }
+  return pinWorld(part).some((v) => ends.has(pointKey(v)))
+}
+
+/**
+ * Does a pasted group (parts + wires) sit on something outside it? A pin on a foreign wire end, a wire end on a foreign wire
+ * end, or a wire end on a foreign pin would all join silently, so the group is held apart (red) until it is moved clear.
+ */
+export function groupCollides(world: World, partIds: Set<string>, wireIds: Set<string>): boolean {
+  const foreign = new Set<string>()
+  for (const w of world.wires) if (!wireIds.has(w.id)) for (const v of [w.a, w.b, ...(w.taps ?? [])]) foreign.add(pointKey(v))
+  const foreignPins = new Set<string>()
+  for (const p of world.parts) {
+    if (partIds.has(p.id) || p.type.startsWith('breadboard') || defOf(p.type).pinLabels.length === 0) continue
+    for (const v of pinWorld(p)) foreignPins.add(pointKey(v))
+  }
+  for (const id of partIds) {
+    const p = world.getPart(id)
+    if (!p || p.type.startsWith('breadboard') || defOf(p.type).pinLabels.length === 0) continue
+    if (pinWorld(p).some((v) => foreign.has(pointKey(v)))) return true
+  }
+  for (const id of wireIds) {
+    const w = world.getWire(id)
+    if (w && [w.a, w.b, ...(w.taps ?? [])].some((v) => foreign.has(pointKey(v)) || foreignPins.has(pointKey(v)))) return true
+  }
+  return false
+}

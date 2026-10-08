@@ -10,7 +10,7 @@ import { leadPins, partObstacles, pathHitsRects, segmentHitsRect, insideRects } 
 import { untangle } from '../board/untangle.ts'
 import { routeVia } from '../board/router.ts'
 import { Simulation } from '../board/simulation.ts'
-import { branchesOfParts } from '../board/wireJoin.ts'
+import { branchesOfParts, groupCollides } from '../board/wireJoin.ts'
 import { dragEnd, moveBend, tidy, wireOverlaps } from '../board/wireEdit.ts'
 import type { WireShape } from '../board/wireEdit.ts'
 import { G, snap, unrotVec, WIRE_COLORS } from '../board/world.ts'
@@ -76,6 +76,9 @@ export class Workspace {
   private hoverPart: string | null = null
   private hoverPoint: Vec | null = null
   private ghost: { type: string; x: number; y: number } | null = null
+  /** Fresh pastes / clicked-in parts sitting on something they were not drawn to: held apart (red) until moved clear. */
+  private holdGroups = new Map<string, { parts: Set<string>; wires: Set<string> }>()
+  private holdCount = 0
   private last = performance.now()
   private time = 0
   private paused = false
@@ -132,6 +135,7 @@ export class Workspace {
       draft: m && m.t === 'newWire' ? [m.a, ...m.via, m.b] : null,
       draftBad: !!(m && m.t === 'newWire' && m.bad),
       ghost: this.ghost,
+      badParts: this.currentBadParts(),
       wireMode: this.wireMode,
     }
   }
@@ -321,6 +325,7 @@ export class Workspace {
     const dx = hasBoard ? this.pasteCount * (clipWidth(this.clip) + 2 * G) : this.pasteCount * 2 * G
     const dy = hasBoard ? 0 : dx
     const made = pasteIn(this.world, this.clip, dx, dy)
+    if (!hasBoard) this.hold(made.parts, made.wires)
     untangle(this.world)
     this.world.commit()
     this.setSelection(made.parts, made.wires)
@@ -380,6 +385,32 @@ export class Workspace {
     })
     window.addEventListener('keydown', (e) => this.key(e, true))
     window.addEventListener('keyup', (e) => this.key(e, false))
+  }
+
+  /** Hold a freshly placed group apart from the circuit if it sits on something outside it. */
+  private hold(parts: Set<string>, wires: Set<string>): void {
+    if (!groupCollides(this.world, parts, wires)) return
+    this.holdGroups.set(`h${++this.holdCount}`, { parts, wires })
+    this.syncIsolated()
+  }
+
+  /** Parts of groups still sitting on something they were not drawn to (red); groups that moved clear are released. */
+  private currentBadParts(): string[] {
+    for (const [id, g] of this.holdGroups) {
+      if (!groupCollides(this.world, g.parts, g.wires)) this.holdGroups.delete(id)
+    }
+    this.syncIsolated()
+    return [...this.holdGroups.values()].flatMap((g) => [...g.parts].filter((id) => this.world.getPart(id)))
+  }
+
+  /** Held items are cut off from the circuit: tell the world (and re-solve) when that changes. */
+  private syncIsolated(): void {
+    const next = new Map<string, string>()
+    for (const [gid, g] of this.holdGroups) for (const id of [...g.parts, ...g.wires]) next.set(id, gid)
+    const now = this.world.isolated
+    if (now.size === next.size && [...next].every(([k, v]) => now.get(k) === v)) return
+    this.world.isolated = next
+    this.world.touch()
   }
 
   private dropPoint(e: DragEvent, type: string): Vec {

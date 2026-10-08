@@ -43,7 +43,9 @@ export interface Overlay {
   draft: Vec[] | null
   /** The wire being drawn cannot be made (it would end inside a part or cut through one). */
   draftBad: boolean
-  ghost: { type: string; x: number; y: number } | null
+  ghost: { type: string; x: number; y: number; bad?: boolean } | null
+  /** Parts whose pin sits on a wire end they were not drawn to: shown red until moved away. */
+  badParts: string[]
   wireMode: boolean
 }
 
@@ -244,6 +246,7 @@ export class Renderer {
       c.globalAlpha = 0.8
       this.drawPart(tmp, sim, now, 0.8)
       c.globalAlpha = 1
+      if (ov.ghost.bad) this.drawSelection(tmp, now, COL.red)
     }
     this.drawParticles()
   }
@@ -258,6 +261,10 @@ export class Renderer {
     for (const id of ov.group.parts) {
       const gp = world.getPart(id)
       if (gp) this.drawSelection(gp, now)
+    }
+    for (const id of ov.badParts) {
+      const bp = world.getPart(id)
+      if (bp) this.drawSelection(bp, now, COL.red)
     }
     if (ov.box) {
       const b = ov.box
@@ -527,15 +534,15 @@ export class Renderer {
   }
 
   /** Outline that follows the part's own shape, one art pixel thick, its dashes crawling round it. */
-  private drawSelection(part: PartInstance, now: number): void {
+  private drawSelection(part: PartInstance, now: number, color: string = COL.cyan): void {
     const c = this.ctx
     const ring = ringOf(part, defOf(part.type))
     const phase = Math.floor(now * 8)
     c.save()
     c.translate(part.x, part.y)
     c.rotate((part.rot * Math.PI) / 2)
-    c.fillStyle = COL.cyan
-    c.shadowColor = COL.cyan
+    c.fillStyle = color
+    c.shadowColor = color
     c.shadowBlur = 6
     c.beginPath()
     for (const [x, y] of ring.cells) {

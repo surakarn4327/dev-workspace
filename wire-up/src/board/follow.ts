@@ -24,6 +24,8 @@ export interface FollowPlan {
   wires: Wire[]
   /** Ids of wires that move as a whole (selected wires of a group drag). */
   whole: Set<string>
+  /** Wires that must stay put even if an end lies on a travelling point (they belong to the other side of a held paste). */
+  skip?: Set<string>
 }
 
 function clonePoint(v: Vec): Vec {
@@ -57,7 +59,7 @@ export function planFollow(world: World, dragged: PartInstance): FollowPlan {
   }
   const parts = new Map<string, PartSnap>()
   for (const p of [...carried, ...partial]) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
-  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole: new Set() }
+  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole: new Set(), skip: skipSet(world, [dragged.id]) }
 }
 
 /**
@@ -92,7 +94,18 @@ export function planGroup(world: World, partIds: Set<string>, wireIds: Set<strin
   }
   const parts = new Map<string, PartSnap>()
   for (const p of [...carried, ...partial]) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
-  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole }
+  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole, skip: skipSet(world, [...carried.map((p) => p.id), ...wireIds]) }
+}
+
+/**
+ * A held (red) paste is cut off from the circuit, so wires of the other side must not follow it, and a held wire must not be
+ * dragged along by something it merely lies on. Wires whose hold state differs from the dragged items' are skipped.
+ */
+function skipSet(world: World, draggedIds: string[]): Set<string> {
+  const held = draggedIds.some((id) => world.isolated.has(id))
+  const out = new Set<string>()
+  for (const w of world.wires) if (world.isolated.has(w.id) !== held) out.add(w.id)
+  return out
 }
 
 function same(a: Vec, b: Vec): boolean {
@@ -112,6 +125,25 @@ function followWire(w: Wire, moving: Set<string>, dx: number, dy: number): Pick<
     return { a: shift(w.a), b: shift(w.b), via: w.via.map(shift), taps: taps.filter((t) => w.via.some((v) => same(v, t))).map(shift) }
   }
   const q = pts.map((v, i) => (flags[i] ? shift(v) : clonePoint(v)))
+  // Rubber band: the corner next to a travelling end slides along with it (a vertical last stretch keeps its x and follows
+  // the end sideways, a horizontal one follows it up or down) instead of the wire growing an extra corner to stay straight.
+  for (const e of [0, last]) {
+    const n = e === 0 ? 1 : last - 1
+    const m = e === 0 ? 2 : last - 2
+    if (!flags[e] || n < 1 || n > last - 1 || m < 0 || m > last) continue
+    if (flags[n] || taps.some((t) => same(t, pts[n]))) continue
+    if (pts[e].x === pts[n].x && pts[m].y === pts[n].y && dx !== 0) q[n] = { x: pts[n].x + dx, y: pts[n].y }
+    else if (pts[e].y === pts[n].y && pts[m].x === pts[n].x && dy !== 0) q[n] = { x: pts[n].x, y: pts[n].y + dy }
+  }
+  // rubber band: a travelling end drags the corner next to it along, so the wire gets shorter instead of growing a new corner
+  for (let i = 0; i < last; i++) {
+    if (q[i].x === q[i + 1].x || q[i].y === q[i + 1].y) continue
+    const moved = flags[i] ? i : flags[i + 1] ? i + 1 : -1
+    const other = moved === i ? i + 1 : i
+    if (moved < 0 || flags[other] || other === 0 || other === last || taps.some((t) => same(t, pts[other]))) continue
+    if (pts[i].x === pts[i + 1].x) q[other].x = q[moved].x
+    else q[other].y = q[moved].y
+  }
   const out: Vec[] = [q[0]]
   for (let i = 0; i < last; i++) {
     if (q[i].x !== q[i + 1].x && q[i].y !== q[i + 1].y) {
@@ -142,7 +174,7 @@ export function applyFollow(world: World, plan: FollowPlan, dx: number, dy: numb
   }
   for (const base of plan.wires) {
     const w = world.getWire(base.id)
-    if (!w) continue
+    if (!w || plan.skip?.has(base.id)) continue
     if (plan.whole.has(base.id)) {
       const shift = (v: Vec): Vec => ({ x: v.x + dx, y: v.y + dy })
       w.a = shift(base.a)

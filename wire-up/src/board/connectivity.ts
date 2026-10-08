@@ -57,6 +57,11 @@ export interface Netlist {
 
 export function buildNetlist(world: World): Netlist {
   const uf = new UnionFind()
+  // a point's key; items of an isolated paste group get their own namespace so they join each other but nothing else
+  const keyOf = (p: Vec, owner: string): string => {
+    const group = world.isolated.get(owner)
+    return group === undefined ? pointKey(p) : `${pointKey(p)}#${group}`
+  }
   const usedKeys = new Set<string>()
 
   for (const part of world.parts) {
@@ -67,11 +72,11 @@ export function buildNetlist(world: World): Netlist {
   for (const w of world.wires) {
     usedKeys.add(pointKey(w.a))
     usedKeys.add(pointKey(w.b))
-    uf.union(pointKey(w.a), pointKey(w.b))
+    uf.union(keyOf(w.a, w.id), keyOf(w.b, w.id))
     // corners that were plugged ends stay joined: a wire pulled out of a pin or hole keeps its hold there
     for (const t of w.taps ?? []) {
       usedKeys.add(pointKey(t))
-      uf.union(pointKey(t), pointKey(w.a))
+      uf.union(keyOf(t, w.id), keyOf(w.a, w.id))
     }
   }
 
@@ -80,7 +85,7 @@ export function buildNetlist(world: World): Netlist {
   for (const w of world.wires) {
     for (const end of [w.a, w.b]) {
       const main = tapTarget(world, w, end, sockets)
-      if (main) uf.union(pointKey(end), pointKey(main.a))
+      if (main && world.isolated.get(w.id) === world.isolated.get(main.id)) uf.union(keyOf(end, w.id), keyOf(main.a, main.id))
     }
   }
 
@@ -88,12 +93,12 @@ export function buildNetlist(world: World): Netlist {
   for (const part of world.parts) {
     const def = defOf(part.type)
     if (def.pinLabels.length === 0) continue
-    const keys = pinWorld(part).map(pointKey)
+    const plain = pinWorld(part).map(pointKey)
+    // an isolated part (placed with a pin on a wire end, shown red) is not joined to anything until it is moved away
+    const keys = world.isolated.has(part.id) ? plain.map((k) => `${k}#${world.isolated.get(part.id)}`) : plain
     pinKeys.set(part.id, keys)
-    for (const k of keys) {
-      usedKeys.add(k)
-      uf.find(k)
-    }
+    for (const k of keys) uf.find(k)
+    for (const k of plain) usedKeys.add(k)
   }
 
   // Reference node: negative terminal of the first live source, else anything.

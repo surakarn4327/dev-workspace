@@ -116,3 +116,28 @@ export function layerOf(type: string): number {
 export function stackOrder(parts: PartInstance[]): PartInstance[] {
   return parts.map((p, i) => ({ p, i })).sort((a, b) => layerOf(a.p.type) - layerOf(b.p.type) || a.i - b.i).map((e) => e.p)
 }
+
+/**
+ * Pull untrusted part settings back into what the inspector could have produced: a slider value inside its range, a
+ * choice among its options (a resistance must still be above 0), a switch that is true or false. Anything else goes back
+ * to the part's default, so an edited file cannot hold a 0 ohm resistor or a negative voltage.
+ */
+export function sanitizeParams(parts: PartInstance[]): void {
+  for (const p of parts) {
+    const def = defOf(p.type)
+    const dflt = def.defaults()
+    for (const f of def.fields(p)) {
+      const v = p.params[f.key]
+      const d = dflt[f.key]
+      if (f.kind === 'range') {
+        p.params[f.key] = typeof v === 'number' && Number.isFinite(v) ? Math.min(Math.max(v, f.min), f.max) : (d ?? f.min)
+      } else if (f.kind === 'toggle') {
+        if (typeof v !== 'boolean') p.params[f.key] = typeof d === 'boolean' ? d : false
+      } else if (f.options.every((o) => typeof o.value === 'number')) {
+        if (!(typeof v === 'number' && Number.isFinite(v) && v > 0)) p.params[f.key] = d ?? f.options[0].value
+      } else if (!f.options.some((o) => o.value === v)) {
+        p.params[f.key] = d ?? f.options[0].value
+      }
+    }
+  }
+}

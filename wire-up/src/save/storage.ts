@@ -2,7 +2,7 @@
 
 import { validateWorldData } from '../board/world.ts'
 import type { WorldData } from '../board/world.ts'
-import { KNOWN_TYPES } from '../parts/index.ts'
+import { KNOWN_TYPES, sanitizeParams } from '../parts/index.ts'
 import type { View } from '../render/renderer.ts'
 
 const LAB_KEY = 'wire-up:lab:v1'
@@ -46,6 +46,7 @@ export function parseSave(raw: unknown): SavedLab | null {
   const body = o && typeof o === 'object' && 'data' in o ? o.data : raw
   const data = validateWorldData(body, KNOWN_TYPES)
   if (typeof data === 'string') return null
+  sanitizeParams(data.parts)
   return { data, view: o?.layout === VIEW_LAYOUT && isView(o?.view) ? o.view : null }
 }
 
@@ -60,6 +61,7 @@ export function parseImport(text: string): { ok: true; lab: SavedLab } | { ok: f
   const body = o && typeof o === 'object' && 'data' in o ? o.data : json
   const data = validateWorldData(body, KNOWN_TYPES)
   if (typeof data === 'string') return { ok: false, error: data }
+  sanitizeParams(data.parts)
   return { ok: true, lab: { data, view: isView(o?.view) ? o.view : null } }
 }
 
