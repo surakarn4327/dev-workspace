@@ -26,12 +26,13 @@ function icon(def: PartDef): HTMLCanvasElement {
   return cv
 }
 
-export function buildToolbox(ws: Workspace, tabsEl: HTMLElement, itemsEl: HTMLElement): void {
-  let active: Category | 'all' = 'all'
+export function buildToolbox(ws: Workspace, itemsEl: HTMLElement): void {
   let query = ''
   const labelOf = new Map(CATEGORY_LABELS)
+  const order = CATEGORY_LABELS.map(([cat]) => cat)
+  const catRank = (c: Category): number => order.indexOf(c)
 
-  // search box between the tabs and the list: it looks through every category, whichever tab is open
+  // search box above the list: it filters the whole list, every category at once
   const search = document.createElement('input')
   search.type = 'search'
   search.id = 'tool-search'
@@ -61,29 +62,24 @@ export function buildToolbox(ws: Workspace, tabsEl: HTMLElement, itemsEl: HTMLEl
   const render = () => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean)
     const searching = words.length > 0
-    tabsEl.innerHTML = ''
-    const tabs: [Category | 'all', string][] = [['all', 'All'], ...CATEGORY_LABELS]
-    for (const [cat, label] of tabs) {
-      const b = document.createElement('button')
-      b.textContent = label
-      b.className = !searching && cat === active ? 'active' : ''
-      b.onclick = () => {
-        active = cat
-        query = ''
-        search.value = ''
-        render()
-      }
-      tabsEl.appendChild(b)
-    }
     itemsEl.innerHTML = ''
-    const shown = searching ? ALL_PARTS.filter((d) => matches(d, words)) : ALL_PARTS.filter((d) => active === 'all' || d.category === active)
+    const shown = ALL_PARTS.filter((d) => !searching || matches(d, words))
     if (searching && shown.length === 0) {
       const none = document.createElement('div')
       none.className = 'tool-none'
       none.textContent = 'No parts match.'
       itemsEl.appendChild(none)
     }
-    for (const def of shown) {
+    let lastCat: Category | null = null
+    for (const def of shown.slice().sort((x, y) => catRank(x.category) - catRank(y.category))) {
+      // one divider line with the category name above each group
+      if (def.category !== lastCat) {
+        lastCat = def.category
+        const head = document.createElement('div')
+        head.className = 'tool-cat'
+        head.textContent = labelOf.get(def.category) ?? def.category
+        itemsEl.appendChild(head)
+      }
       const el = document.createElement('div')
       el.className = 'tool'
       el.draggable = true
