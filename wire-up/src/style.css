@@ -31,7 +31,7 @@ body {
 #app {
   display: grid;
   --lw: 232px;
-  --rw: 300px;
+  --rw: 150px;
   grid-template-columns: var(--lw) minmax(0, 1fr) var(--rw);
   transition: grid-template-columns 0.2s ease;
   grid-template-rows: 44px 1fr 26px;
