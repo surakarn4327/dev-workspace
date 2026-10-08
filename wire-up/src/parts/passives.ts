@@ -55,7 +55,7 @@ export const resistor: PartDef = {
         c.fillStyle = '#7d838f'
         c.fillRect(x0, 0, x1 - x0, 2)
       }
-      if (scene.labeled.has(p.id)) drawText(c, `${fmtOhms(num(p, 'value', 330))}`, cx, 15, { align: 'center', size: 11, box: true })
+      if (scene.labeled.has(p.id)) drawText(c, `${fmtOhms(num(p, 'value', 330))}`, cx, -34, { align: 'center', size: 11, box: true })
       return
     }
     leg(c, 0, 0, cx - 18, 0)
@@ -79,7 +79,7 @@ export const resistor: PartDef = {
       c.fillStyle = col
       c.fillRect(xs[k], k === 3 ? -9 : -8, 4, k === 3 ? 18 : 16)
     })
-    if (scene.labeled.has(p.id)) drawText(c, `${fmtOhms(num(p, 'value', 330))}`, cx, 15, { align: 'center', size: 11, box: true })
+    if (scene.labeled.has(p.id)) drawText(c, `${fmtOhms(num(p, 'value', 330))}`, cx, -34, { align: 'center', size: 11, box: true })
   },
   fields: () => [
     {
