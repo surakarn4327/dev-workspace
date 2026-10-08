@@ -217,7 +217,7 @@ export class Renderer {
       else {
         c.fillStyle = d.color
         c.beginPath()
-        c.arc(d.at.x, d.at.y, 3, 0, Math.PI * 2) // vector look: 6 px across, 1.5 x the 4 px wire
+        c.arc(d.at.x, d.at.y, 4, 0, Math.PI * 2) // vector look: 8 px across, 2 x the 4 px wire
         c.fill()
       }
     }
