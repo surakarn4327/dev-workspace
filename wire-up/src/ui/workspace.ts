@@ -6,7 +6,7 @@ import { clipWidth, copyOut, itemsInBox, normBox, pasteIn } from '../board/group
 import type { Clip } from '../board/group.ts'
 import { hitTest } from '../board/hit.ts'
 import type { Hit } from '../board/hit.ts'
-import { downPins, partObstacles, pathHitsRects, segmentHitsRect, insideRects } from '../board/obstacles.ts'
+import { leadPins, partObstacles, pathHitsRects, segmentHitsRect, insideRects } from '../board/obstacles.ts'
 import { untangle } from '../board/untangle.ts'
 import { routeVia } from '../board/router.ts'
 import { Simulation } from '../board/simulation.ts'
@@ -522,7 +522,7 @@ export class Workspace {
     const others = this.world.wires.filter((x) => x !== cur)
     const out: Vec[] = [pts[0]]
     for (let i = 0; i + 1 < pts.length; i++) {
-      if (rects.some((r) => segmentHitsRect(pts[i], pts[i + 1], r))) out.push(...routeVia(pts[i], pts[i + 1], others, rects, downPins(this.world)))
+      if (rects.some((r) => segmentHitsRect(pts[i], pts[i + 1], r))) out.push(...routeVia(pts[i], pts[i + 1], others, rects, leadPins(this.world)))
       out.push(pts[i + 1])
     }
     return { ...shape, via: out.slice(1, -1) }
@@ -603,7 +603,7 @@ export class Workspace {
         if (nb.x !== m.b.x || nb.y !== m.b.y) {
           const rects = partObstacles(this.world)
           m.b = nb
-          m.via = routeVia(m.a, m.b, this.world.wires, rects, downPins(this.world))
+          m.via = routeVia(m.a, m.b, this.world.wires, rects, leadPins(this.world))
           // an end inside a part, or no way round one, makes a wire that cannot be made: the draft turns red and is dropped
           m.bad = insideRects(nb, rects) || pathHitsRects([m.a, ...m.via, m.b], rects)
         }

@@ -43,9 +43,22 @@ export function bodyRect(p: PartInstance): Rect {
   return r
 }
 
-/** Pins a wire must arrive at (or leave) vertically from below: the posts of the bench supply. */
-export function downPins(world: World): Vec[] {
-  return world.parts.filter((p) => p.type === 'supply').flatMap((p) => pinWorld(p))
+/** A pin a wire must leave or enter straight along (dx, dy): one unit step out of the part, in world space. */
+export interface Lead extends Vec {
+  dx: number
+  dy: number
+}
+
+/** Bench supply posts leave from below, battery terminals from above; both follow the part's rotation. */
+export function leadPins(world: World): Lead[] {
+  const out: Lead[] = []
+  for (const p of world.parts) {
+    const base = p.type === 'supply' ? { x: 0, y: 1 } : p.type.startsWith('battery') ? { x: 0, y: -1 } : null
+    if (!base) continue
+    const d = rotVec(base, p.rot)
+    for (const v of pinWorld(p)) out.push({ x: v.x, y: v.y, dx: d.x, dy: d.y })
+  }
+  return out
 }
 
 export function partObstacles(world: World): Rect[] {

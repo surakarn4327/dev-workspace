@@ -2,7 +2,7 @@
 // A* over grid nodes with a direction in the state, so bends cost extra and crossings are straight-through only.
 
 import { segmentHitsRect } from './obstacles.ts'
-import type { Rect } from './obstacles.ts'
+import type { Lead, Rect } from './obstacles.ts'
 import { G, wirePath } from './world.ts'
 import type { Vec, Wire } from './world.ts'
 
@@ -115,15 +115,15 @@ function lShape(a: Vec, b: Vec): Vec[] {
 }
 
 /** Bend points for a wire from a to b that stays off the other wires and out of the `parts` rectangles. */
-export function routeVia(a: Vec, b: Vec, others: Wire[], parts: Rect[] = [], downs: Vec[] = []): Vec[] {
-  const isDown = (p: Vec) => downs.some((d) => d.x === p.x && d.y === p.y)
-  const downA = isDown(a)
-  const downB = isDown(b)
-  if (!downA && !downB) return route(a, b, others, parts)
-  // a down pin is left or entered straight from below: step one grid unit under it first, then route from there
-  const a2 = downA ? { x: a.x, y: a.y + G } : a
-  const b2 = downB ? { x: b.x, y: b.y + G } : b
-  const path = [a, ...(downA ? [a2] : []), ...route(a2, b2, others, parts), ...(downB ? [b2] : []), b]
+export function routeVia(a: Vec, b: Vec, others: Wire[], parts: Rect[] = [], leads: Lead[] = []): Vec[] {
+  const leadOf = (p: Vec) => leads.find((d) => d.x === p.x && d.y === p.y)
+  const leadA = leadOf(a)
+  const leadB = leadOf(b)
+  if (!leadA && !leadB) return route(a, b, others, parts)
+  // a lead pin is left or entered straight along its direction: step one grid unit out of it first, then route from there
+  const a2 = leadA ? { x: a.x + leadA.dx * G, y: a.y + leadA.dy * G } : a
+  const b2 = leadB ? { x: b.x + leadB.dx * G, y: b.y + leadB.dy * G } : b
+  const path = [a, ...(leadA ? [a2] : []), ...route(a2, b2, others, parts), ...(leadB ? [b2] : []), b]
   const out: Vec[] = []
   for (let i = 1; i + 1 < path.length; i++) {
     const p = path[i - 1]

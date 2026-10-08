@@ -69,7 +69,7 @@ describe('wire router', () => {
 })
 
 describe('supply posts', () => {
-  const down = [{ x: 40, y: 160 }]
+  const down = [{ x: 40, y: 160, dx: 0, dy: 1 }]
 
   it('leaves a down pin straight downwards even when the target is above it', () => {
     const via = routeVia({ x: 40, y: 160 }, { x: 200, y: 100 }, [], [], down)
@@ -88,5 +88,26 @@ describe('supply posts', () => {
 
   it('a pin that is not a down pin routes as before', () => {
     expect(routeVia({ x: 0, y: 0 }, { x: 100, y: 60 }, [], [], down)).toEqual(routeVia({ x: 0, y: 0 }, { x: 100, y: 60 }, []))
+  })
+})
+
+describe('battery terminals', () => {
+  const up = [{ x: 40, y: 160, dx: 0, dy: -1 }]
+
+  it('leaves an up pin straight upwards even when the target is below it', () => {
+    const via = routeVia({ x: 40, y: 160 }, { x: 200, y: 260 }, [], [], up)
+    expect(via[0]).toEqual({ x: 40, y: 140 })
+  })
+
+  it('arrives at an up pin from above', () => {
+    const via = routeVia({ x: 200, y: 260 }, { x: 40, y: 160 }, [], [], up)
+    const last = via[via.length - 1]
+    expect(last.x).toBe(40)
+    expect(last.y).toBeLessThan(160)
+  })
+
+  it('follows a rotated part (pointing right)', () => {
+    const via = routeVia({ x: 40, y: 160 }, { x: -100, y: 260 }, [], [], [{ x: 40, y: 160, dx: 1, dy: 0 }])
+    expect(via[0]).toEqual({ x: 60, y: 160 })
   })
 })
