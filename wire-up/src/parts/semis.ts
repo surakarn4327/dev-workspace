@@ -110,6 +110,7 @@ export const diode: PartDef = {
   category: 'semiconductor',
   blurb: 'One-way valve for current. Band marks the cathode.',
   pinLabels: ['A', 'K'],
+  pinLabelPlace: 'axis',
   defaults: () => ({ legs: 1 }),
   pins: (p) => [
     { x: 0, y: 0 },

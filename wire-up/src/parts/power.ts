@@ -29,6 +29,7 @@ const makeBattery = (type: string, name: string, volts0: number): PartDef => ({
   blurb: 'Real cell with internal resistance. Wire from the left terminal (+) and the right terminal (-).',
   fixedRot: true,
   pinLabels: ['+', '-'],
+  pinLabelPlace: 'above',
   defaults: () => ({ volts: volts0 }),
   // the two terminals are the pins: on grid points at the top of the sprite
   pins: (p) => {
@@ -86,7 +87,7 @@ const makeBattery = (type: string, name: string, volts0: number): PartDef => ({
           c.restore()
         }
       }
-      if (scene.labeled.has(p.id)) drawText(c, `${v} V`, term.ox + w / 2, h + 12, { align: 'center', size: 11, box: true })
+      if (scene.labeled.has(p.id)) drawText(c, `${v} V`, term.ox + w / 2, h + 16, { align: 'center', size: 11, box: true })
       return
     }
     c.save()
@@ -124,7 +125,7 @@ const makeBattery = (type: string, name: string, volts0: number): PartDef => ({
       drawText(c, `${v}V`, w / 2, 90, { color: '#f0e6c8', align: 'center', scale: 2 })
     }
     c.restore()
-    if (scene.labeled.has(p.id)) drawText(c, `${v} V`, term.ox + w / 2, h + 12, { align: 'center', size: 11, box: true })
+    if (scene.labeled.has(p.id)) drawText(c, `${v} V`, term.ox + w / 2, h + 16, { align: 'center', size: 11, box: true })
   },
   fields: () => [],
   summary: (p) => `${volts(p)} V, ${eng((BATTERY_TYPES[volts(p)] ?? BATTERY_TYPES['9']).r, 'ohm')} internal`,
