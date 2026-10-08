@@ -115,7 +115,28 @@ function lShape(a: Vec, b: Vec): Vec[] {
 }
 
 /** Bend points for a wire from a to b that stays off the other wires and out of the `parts` rectangles. */
-export function routeVia(a: Vec, b: Vec, others: Wire[], parts: Rect[] = []): Vec[] {
+export function routeVia(a: Vec, b: Vec, others: Wire[], parts: Rect[] = [], downs: Vec[] = []): Vec[] {
+  const isDown = (p: Vec) => downs.some((d) => d.x === p.x && d.y === p.y)
+  const downA = isDown(a)
+  const downB = isDown(b)
+  if (!downA && !downB) return route(a, b, others, parts)
+  // a down pin is left or entered straight from below: step one grid unit under it first, then route from there
+  const a2 = downA ? { x: a.x, y: a.y + G } : a
+  const b2 = downB ? { x: b.x, y: b.y + G } : b
+  const path = [a, ...(downA ? [a2] : []), ...route(a2, b2, others, parts), ...(downB ? [b2] : []), b]
+  const out: Vec[] = []
+  for (let i = 1; i + 1 < path.length; i++) {
+    const p = path[i - 1]
+    const q = path[i]
+    const r = path[i + 1]
+    if (q.x === p.x && q.y === p.y) continue
+    if ((q.x - p.x) * (r.y - q.y) - (q.y - p.y) * (r.x - q.x) === 0 && (q.x - p.x) * (r.x - q.x) + (q.y - p.y) * (r.y - q.y) > 0) continue // straight on
+    out.push(q)
+  }
+  return out
+}
+
+function route(a: Vec, b: Vec, others: Wire[], parts: Rect[]): Vec[] {
   const sx = Math.round(a.x / G)
   const sy = Math.round(a.y / G)
   const ex = Math.round(b.x / G)

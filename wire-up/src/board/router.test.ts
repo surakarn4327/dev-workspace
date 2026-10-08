@@ -67,3 +67,26 @@ describe('wire router', () => {
     expect(routeVia({ x: 0, y: 0 }, { x: 100, y: 0 }, [])).toEqual([])
   })
 })
+
+describe('supply posts', () => {
+  const down = [{ x: 40, y: 160 }]
+
+  it('leaves a down pin straight downwards even when the target is above it', () => {
+    const via = routeVia({ x: 40, y: 160 }, { x: 200, y: 100 }, [], [], down)
+    expect(via[0]).toEqual({ x: 40, y: 180 })
+    // the first stretch goes down from the pin, never up or sideways
+    expect(via[0].x).toBe(40)
+    expect(via[0].y).toBeGreaterThan(160)
+  })
+
+  it('arrives at a down pin from below', () => {
+    const via = routeVia({ x: 200, y: 100 }, { x: 40, y: 160 }, [], [], down)
+    const last = via[via.length - 1]
+    expect(last.x).toBe(40)
+    expect(last.y).toBeGreaterThan(160)
+  })
+
+  it('a pin that is not a down pin routes as before', () => {
+    expect(routeVia({ x: 0, y: 0 }, { x: 100, y: 60 }, [], [], down)).toEqual(routeVia({ x: 0, y: 0 }, { x: 100, y: 60 }, []))
+  })
+})

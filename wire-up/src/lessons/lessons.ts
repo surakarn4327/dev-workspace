@@ -1,6 +1,7 @@
 // Mission-style lessons. Data-driven: each step is a live check against the real simulation.
 
 import type { Simulation } from '../board/simulation.ts'
+import { downPins } from '../board/obstacles.ts'
 import { routeVia } from '../board/router.ts'
 import { G, HANGING_LEG_PARTS } from '../board/world.ts'
 import type { PartInstance, Vec, World } from '../board/world.ts'
@@ -69,7 +70,7 @@ export class SceneBuilder {
   }
 
   wire(a: Vec, b: Vec, color = '#ff4a4a'): void {
-    this.world.addWire(a, b, color, routeVia(a, b, this.world.wires))
+    this.world.addWire(a, b, color, routeVia(a, b, this.world.wires, [], downPins(this.world)))
   }
 
   /** Wire a two-pin part's pins to two points, replacing any wires already on those pins (test and mission helper). */

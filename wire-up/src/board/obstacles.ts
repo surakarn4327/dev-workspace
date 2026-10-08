@@ -43,6 +43,11 @@ export function bodyRect(p: PartInstance): Rect {
   return r
 }
 
+/** Pins a wire must arrive at (or leave) vertically from below: the posts of the bench supply. */
+export function downPins(world: World): Vec[] {
+  return world.parts.filter((p) => p.type === 'supply').flatMap((p) => pinWorld(p))
+}
+
 export function partObstacles(world: World): Rect[] {
   return world.parts.filter((p) => !p.type.startsWith('breadboard')).map(bodyRect)
 }

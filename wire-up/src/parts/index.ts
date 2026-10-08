@@ -93,8 +93,8 @@ export function rotatePart(p: PartInstance): void {
 
 // ---------------------------------------------------------------- stacking order
 
-const LOW_PARTS = new Set(['resistor', 'diode', 'switch', 'slide-switch', 'button', 'gate-not', 'gate-and', 'gate-or', 'gate-nand', 'gate-nor', 'gate-xor', 'gate-xnor'])
-const TALL_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc'])
+const LOW_PARTS = new Set(['resistor', 'diode'])
+const TALL_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc', 'supply'])
 
 /**
  * Draw layer of a part: 0 breadboard, 1 flat parts, 2 tall parts, 4 bench tools and batteries.
