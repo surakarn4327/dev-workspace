@@ -55,6 +55,8 @@ export class Workspace {
   view: View = { camX: -60, camY: -60, zoom: 1 }
   /** Width of the toolbox floating over the left edge of the canvas: the part of the canvas that is covered. */
   leftInset = 0
+  /** The same for the inspector floating over the right edge. */
+  rightInset = 0
   selectedPart: string | null = null
   selectedWire: string | null = null
   /** Several parts/wires selected at once. Only used for 2 or more items; a single item is `selectedPart`/`selectedWire`. */
@@ -206,8 +208,12 @@ export class Workspace {
     this.leftInset = px
   }
 
+  setRightInset(px: number): void {
+    this.rightInset = px
+  }
+
   centerOfView(): Vec {
-    return this.renderer.toWorld(this.view, this.leftInset + (this.renderer.width - this.leftInset) / 2, this.renderer.height / 2)
+    return this.renderer.toWorld(this.view, this.leftInset + (this.renderer.width - this.leftInset - this.rightInset) / 2, this.renderer.height / 2)
   }
 
   fitView(): void {
@@ -234,7 +240,7 @@ export class Workspace {
       }
     }
     const pad = 60
-    const visibleW = this.renderer.width - this.leftInset
+    const visibleW = this.renderer.width - this.leftInset - this.rightInset
     const zw = visibleW / (x1 - x0 + pad * 2)
     const zh = this.renderer.height / (y1 - y0 + pad * 2)
     const zoom = Math.min(Math.max(Math.min(zw, zh), 0.3), 1.4)

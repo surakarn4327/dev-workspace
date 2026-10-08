@@ -186,6 +186,7 @@ export class App {
       const right = app.classList.contains('hide-right')
       $('toggle-left').textContent = left ? '›' : '‹'
       this.ws.setLeftInset(left ? 0 : $('toolbox').offsetWidth)
+      this.ws.setRightInset(right ? 0 : $('side').offsetWidth)
       $('toggle-right').textContent = right ? '‹' : '›'
       try {
         localStorage.setItem(key, JSON.stringify({ left, right }))

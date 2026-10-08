@@ -65,14 +65,14 @@ body {
 #app {
   display: grid;
   --lw: 232px;
+  --rw-full: 150px;
   --rw: 150px;
-  grid-template-columns: minmax(0, 1fr) var(--rw);
-  transition: grid-template-columns 0.2s ease;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 44px 1fr 26px;
   grid-template-areas:
-    'top top'
-    'stage side'
-    'status status';
+    'top'
+    'stage'
+    'status';
   height: 100vh;
 }
 
@@ -162,25 +162,42 @@ button:disabled {
   --rw: 0px;
 }
 
-#app.hide-right #side {
-  border-width: 0;
+/*
+ * Every side panel is a .float-panel: it floats over the canvas (same grid cell as the stage), so showing or hiding it
+ * never resizes the canvas or moves the board. Add a new panel as `float-panel left|right` with its own width and
+ * `hide-<side>` handling; code that centres or fits the view must subtract the covered width (Workspace insets).
+ */
+.float-panel {
+  grid-area: stage;
+  z-index: 3;
+  transition: transform 0.2s ease;
 }
 
-/* The toolbox floats over the left edge of the canvas (same grid cell as the stage), so hiding it never moves the board */
-#toolbox {
-  grid-area: stage;
+.float-panel.left {
   justify-self: start;
   width: var(--lw);
-  z-index: 3;
   border-right: 1px solid var(--line);
-  transition: transform 0.2s ease;
+}
+
+.float-panel.right {
+  justify-self: end;
+  width: var(--rw-full);
+  border-left: 1px solid var(--line);
+}
+
+#app.hide-left #toolbox,
+#app.hide-right #side {
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.2s ease, visibility 0s 0.2s;
 }
 
 #app.hide-left #toolbox {
   transform: translateX(-100%);
-  visibility: hidden;
-  pointer-events: none;
-  transition: transform 0.2s ease, visibility 0s 0.2s;
+}
+
+#app.hide-right #side {
+  transform: translateX(100%);
 }
 
 .edge-toggle {
@@ -204,7 +221,8 @@ button:disabled {
 }
 
 .edge-toggle.right {
-  right: 0;
+  right: var(--rw);
+  transition: right 0.2s ease;
   border-radius: 4px 0 0 4px;
   border-right: 0;
 }
@@ -338,7 +356,8 @@ button:disabled {
 
 #toasts {
   position: absolute;
-  right: 12px;
+  right: calc(12px + var(--rw));
+  transition: right 0.2s ease;
   bottom: 12px;
   display: flex;
   flex-direction: column;
