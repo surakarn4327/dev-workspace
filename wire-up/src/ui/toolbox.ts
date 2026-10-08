@@ -26,7 +26,12 @@ function icon(def: PartDef): HTMLCanvasElement {
   return cv
 }
 
-export function buildToolbox(ws: Workspace, itemsEl: HTMLElement): void {
+/**
+ * The parts list: every part in one scrolling list, grouped under a divider with the category name. The chips above it
+ * scroll the list to a group (and light up for the group at the top while scrolling); the search box filters the whole list.
+ */
+export function buildToolbox(ws: Workspace, headEl: HTMLElement, tabsEl: HTMLElement, itemsEl: HTMLElement): void {
+  const scroller = itemsEl.closest<HTMLElement>('#toolbox') ?? itemsEl
   let query = ''
   const labelOf = new Map(CATEGORY_LABELS)
   const order = CATEGORY_LABELS.map(([cat]) => cat)
@@ -52,17 +57,52 @@ export function buildToolbox(ws: Workspace, itemsEl: HTMLElement): void {
       render()
     }
   })
-  itemsEl.parentElement?.insertBefore(search, itemsEl)
+  headEl.appendChild(search)
 
   const matches = (d: PartDef, words: string[]): boolean => {
     const hay = `${d.name} ${d.type} ${d.blurb} ${labelOf.get(d.category) ?? ''}`.toLowerCase()
     return words.every((w) => hay.includes(w))
   }
 
+  const headings = new Map<Category, HTMLElement>()
+  const chips = new Map<Category, HTMLButtonElement>()
+
+  /** Scroll so the group heading sits right under the sticky header. */
+  let pinned: Category | null = null // the chip just clicked: stays lit when the list is too short to bring its group to the top
+  const goTo = (cat: Category) => {
+    const head = headings.get(cat)
+    if (!head) return
+    pinned = cat
+    const top = scroller.scrollTop + head.getBoundingClientRect().top - scroller.getBoundingClientRect().top - headEl.offsetHeight - 6
+    scroller.scrollTo({ top, behavior: 'smooth' })
+  }
+
+  /** Light up the chip of the group that is at the top of the list. */
+  const spy = () => {
+    const line = scroller.getBoundingClientRect().top + headEl.offsetHeight + 12
+    let current: Category | null = null
+    for (const [cat, head] of headings) if (head.getBoundingClientRect().top <= line) current = cat
+    if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2 && headings.size > 0) {
+      current = pinned && headings.has(pinned) ? pinned : ([...headings.keys()].pop() ?? current)
+    }
+    for (const [cat, b] of chips) b.classList.toggle('active', cat === current)
+  }
+  for (const ev of ['wheel', 'touchmove', 'pointerdown']) scroller.addEventListener(ev, () => (pinned = null), { passive: true })
+  let spyQueued = false
+  scroller.addEventListener('scroll', () => {
+    if (spyQueued) return
+    spyQueued = true
+    requestAnimationFrame(() => {
+      spyQueued = false
+      spy()
+    })
+  })
+
   const render = () => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean)
     const searching = words.length > 0
     itemsEl.innerHTML = ''
+    headings.clear()
     const shown = ALL_PARTS.filter((d) => !searching || matches(d, words))
     if (searching && shown.length === 0) {
       const none = document.createElement('div')
@@ -78,6 +118,7 @@ export function buildToolbox(ws: Workspace, itemsEl: HTMLElement): void {
         const head = document.createElement('div')
         head.className = 'tool-cat'
         head.textContent = labelOf.get(def.category) ?? def.category
+        headings.set(def.category, head)
         itemsEl.appendChild(head)
       }
       const el = document.createElement('div')
@@ -104,6 +145,18 @@ export function buildToolbox(ws: Workspace, itemsEl: HTMLElement): void {
       el.addEventListener('click', () => ws.addPart(def.type))
       itemsEl.appendChild(el)
     }
+    // one chip per group that is on the list
+    tabsEl.innerHTML = ''
+    chips.clear()
+    for (const cat of headings.keys()) {
+      const b = document.createElement('button')
+      b.textContent = labelOf.get(cat) ?? cat
+      b.onclick = () => goTo(cat)
+      chips.set(cat, b)
+      tabsEl.appendChild(b)
+    }
+    spy()
+    requestAnimationFrame(spy) // again once the new list has been laid out
   }
   render()
 }

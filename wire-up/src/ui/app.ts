@@ -46,7 +46,7 @@ export class App {
       exit: () => this.exitLesson(),
       toast: (t, b, good) => this.toast(t, b, good),
     })
-    buildToolbox(this.ws, $('tool-items'))
+    buildToolbox(this.ws, $('tool-head'), $('tool-tabs'), $('tool-items'))
 
     this.ws.onSelect = () => {
       this.followSelection()

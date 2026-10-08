@@ -212,10 +212,17 @@ button:disabled {
   box-shadow: 0 0 8px rgba(255, 61, 242, 0.35);
 }
 
+#tool-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+}
+
 #tool-search {
   display: block;
   width: calc(100% - 16px);
-  margin: 8px 8px 0;
+  margin: 6px 8px 6px;
   padding: 5px 7px;
   font-size: 11px;
   background: var(--panel2);
