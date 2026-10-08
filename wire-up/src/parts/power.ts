@@ -177,6 +177,7 @@ export const supply: PartDef = {
   blurb: 'Adjustable 0-30 V with a current limit (CC mode).',
   fixedRot: true,
   pinLabels: ['+', '-'],
+  hidePinLabels: true,
   defaults: () => ({ volts: 5, limit: 0.5, on: true }),
   pins: () => [
     { x: 2, y: 8 },

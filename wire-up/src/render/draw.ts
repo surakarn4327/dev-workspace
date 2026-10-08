@@ -78,16 +78,38 @@ export function labelBoxSize(c: CanvasRenderingContext2D, str: string, size: num
 /** Gap in world px between any label box and the edge it sits against (a part's visible edge or a lead tip). */
 export const LABEL_GAP = 4
 
-/** Value label centred on `cx`, its box bottom `LABEL_GAP` above `edge` (the part's visible top). */
-export function drawLabelAbove(c: CanvasRenderingContext2D, str: string, cx: number, edge: number, size = 11): void {
+/**
+ * Value label for a part that is being drawn in its own (possibly rotated) frame: the anchor (x, y) is the visible edge of the
+ * part in that frame and (dx, dy) is the local direction the label sits in (0,-1 = above, 0,1 = below). The text itself always
+ * stays upright on screen; only its position follows the part's rotation, keeping the `LABEL_GAP` from the edge.
+ */
+export function drawLabelBeside(c: CanvasRenderingContext2D, str: string, x: number, y: number, dx: number, dy: number, size = 11): void {
+  const m = c.getTransform()
+  const ax = m.a * x + m.c * y + m.e
+  const ay = m.b * x + m.d * y + m.f
+  const scale = Math.hypot(m.a, m.b)
+  const vx = m.a * dx + m.c * dy
+  const vy = m.b * dx + m.d * dy
+  const horizontal = Math.abs(vx) > Math.abs(vy)
+  const ux = horizontal ? Math.sign(vx) : 0
+  const uy = horizontal ? 0 : Math.sign(vy)
+  c.save()
+  c.setTransform(scale, 0, 0, scale, ax, ay)
   const { w, h } = labelBoxSize(c, str, size)
-  drawLabelAt(c, str, cx - w / 2, edge - LABEL_GAP - h, size)
+  const left = ux > 0 ? LABEL_GAP : ux < 0 ? -LABEL_GAP - w : -w / 2
+  const top = uy > 0 ? LABEL_GAP : uy < 0 ? -LABEL_GAP - h : -h / 2
+  drawLabelAt(c, str, left, top, size)
+  c.restore()
 }
 
-/** Value label centred on `cx`, its box top `LABEL_GAP` below `edge` (the part's visible bottom). */
+/** Value label centred above `edge` (the part's visible top), upright whatever the rotation. */
+export function drawLabelAbove(c: CanvasRenderingContext2D, str: string, cx: number, edge: number, size = 11): void {
+  drawLabelBeside(c, str, cx, edge, 0, -1, size)
+}
+
+/** Value label centred below `edge` (the part's visible bottom), upright whatever the rotation. */
 export function drawLabelBelow(c: CanvasRenderingContext2D, str: string, cx: number, edge: number, size = 11): void {
-  const { w } = labelBoxSize(c, str, size)
-  drawLabelAt(c, str, cx - w / 2, edge + LABEL_GAP, size)
+  drawLabelBeside(c, str, cx, edge, 0, 1, size)
 }
 
 /** Boxed label whose box top-left corner is exactly (left, top). */

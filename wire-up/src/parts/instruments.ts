@@ -53,6 +53,7 @@ export const meter: PartDef = {
   leadTip: 'probe',
   leadColors: ['#ff3b4a', '#15151a'],
   pinLabels: ['red', 'black'],
+  hidePinLabels: true,
   defaults: () => ({ mode: 'V' }),
   pins: () => [
     { x: 1, y: 11 },

@@ -33,6 +33,7 @@ export const resistor: PartDef = {
   category: 'passive',
   blurb: 'Limits current. 1/4 W carbon film, 5%.',
   pinLabels: ['1', '2'],
+  hidePinLabels: true,
   defaults: () => ({ value: 330, legs: 1 }),
   pins: (p) => pinsTwo(spreadOf(p)),
   bounds: (p) => ({ x: -12, y: -14, w: spreadOf(p) * U + 24, h: 28 }),

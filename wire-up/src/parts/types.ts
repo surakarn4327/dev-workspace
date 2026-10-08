@@ -53,6 +53,8 @@ export interface PartDef {
   freeLeads?: boolean
   fixedRot?: boolean
   pinLabels: string[]
+  /** No pin label boxes on hover (the part carries its own printed markings, or has none worth showing). */
+  hidePinLabels?: boolean
   /** Where pin labels sit: beside each lead along the part's axis, or straight above the pin. Default: below the pin. */
   pinLabelPlace?: 'axis' | 'side' | 'above' | 'below'
   /** How far the visible lead tip sticks out past the pin point, in the label's direction (world px). Default 0. */

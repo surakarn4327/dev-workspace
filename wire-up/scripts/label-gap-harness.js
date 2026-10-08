@@ -61,6 +61,7 @@ export async function harness(opts = {}) {
     for (const def of parts.ALL_PARTS) {
       if (['breadboard-mini', 'supply', 'meter'].includes(def.type)) continue
       const row = []
+      const dimsByRot = []
       for (let rot = 0; rot < 4; rot++) {
         const part = parts.newPart('t', def.type, 0, 0)
         part.rot = rot
@@ -80,11 +81,13 @@ export async function harness(opts = {}) {
             const s = Math.max(x - L.x1 - 1, L.x0 - x - 1, y - L.y1 - 1, L.y0 - y - 1, 0)
             if (s < best) best = s
           }
-          return +(best / K).toFixed(1)
+          return { gap: +(best / K).toFixed(1), dims: Math.round((L.x1 - L.x0 + 1) / K) + 'x' + Math.round((L.y1 - L.y0 + 1) / K) }
         })
-        row.push(gaps.join(' '))
+        dimsByRot.push(gaps.map((g) => g.dims).sort().join(','))
+        row.push(gaps.map((g) => g.gap).join(' '))
       }
-      results[mode + ' ' + def.type] = row.join(' | ')
+      const upright = dimsByRot.every((d) => d === dimsByRot[0]) ? '' : '  !! label boxes change shape when rotated: ' + dimsByRot.join(' / ')
+      results[mode + ' ' + def.type] = row.join(' | ') + upright
     }
   }
   scene.pixel = true

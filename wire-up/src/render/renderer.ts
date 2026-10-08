@@ -507,36 +507,32 @@ export class Renderer {
 
   private drawPinLabels(part: PartInstance): void {
     const def = defOf(part.type)
-    if (def.pinLabels.length === 0 || def.type === 'resistor') return
+    if (def.pinLabels.length === 0 || def.hidePinLabels || !def.pinLabelPlace) return
     const c = this.ctx
     const pins = pinWorld(part)
     const mid = { x: pins.reduce((s, p) => s + p.x, 0) / pins.length, y: pins.reduce((s, p) => s + p.y, 0) / pins.length }
     pins.forEach((p, i) => {
       const label = PIN_SHOWN[def.pinLabels[i]] ?? def.pinLabels[i] ?? ''
-      if (def.pinLabelPlace) {
-        // the label sits at the visible lead tip, with the same gap from its box edge on every side
-        let dx = 0
-        let dy = 0
-        if (def.pinLabelPlace === 'axis' || def.pinLabelPlace === 'side') {
-          dx = Math.sign(p.x - mid.x)
-          dy = def.pinLabelPlace === 'axis' ? Math.sign(p.y - mid.y) : 0
-        } else {
-          // 'below' = past the lead tips in the part's own frame, 'above' = the opposite; either way measured from the visible tip
-          const a = (part.rot * Math.PI) / 2
-          const sign = def.pinLabelPlace === 'below' ? 1 : -1
-          dx = Math.round(-Math.sin(a)) * sign
-          dy = Math.round(Math.cos(a)) * sign
-        }
-        const tip = (this.pixelMode ? def.tipPastPin : (def.tipPastPinVector ?? def.tipPastPin)) ?? 0
-        const { w, h } = labelBoxSize(c, label, 10)
-        const tx = p.x + dx * tip
-        const ty = p.y + dy * tip
-        const left = dx > 0 ? tx + LABEL_GAP : dx < 0 ? tx - LABEL_GAP - w : tx - w / 2
-        const top = dy > 0 ? ty + LABEL_GAP : dy < 0 ? ty - LABEL_GAP - h : ty - h / 2
-        drawLabelAt(c, label, left, top, 10)
-        return
+      // the label sits at the visible lead tip, with the same gap from its box edge on every side
+      let dx = 0
+      let dy = 0
+      if (def.pinLabelPlace === 'axis' || def.pinLabelPlace === 'side') {
+        dx = Math.sign(p.x - mid.x)
+        dy = def.pinLabelPlace === 'axis' ? Math.sign(p.y - mid.y) : 0
+      } else {
+        // 'below' = past the lead tips in the part's own frame, 'above' = the opposite; either way measured from the visible tip
+        const a = (part.rot * Math.PI) / 2
+        const sign = def.pinLabelPlace === 'below' ? 1 : -1
+        dx = Math.round(-Math.sin(a)) * sign
+        dy = Math.round(Math.cos(a)) * sign
       }
-      drawText(c, label, p.x, p.y + 10, { align: 'center', size: 10, box: true })
+      const tip = (this.pixelMode ? def.tipPastPin : (def.tipPastPinVector ?? def.tipPastPin)) ?? 0
+      const { w, h } = labelBoxSize(c, label, 10)
+      const tx = p.x + dx * tip
+      const ty = p.y + dy * tip
+      const left = dx > 0 ? tx + LABEL_GAP : dx < 0 ? tx - LABEL_GAP - w : tx - w / 2
+      const top = dy > 0 ? ty + LABEL_GAP : dy < 0 ? ty - LABEL_GAP - h : ty - h / 2
+      drawLabelAt(c, label, left, top, 10)
     })
   }
 
