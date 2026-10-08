@@ -95,7 +95,7 @@ function gate(fn: GateFn): PartDef {
         drawSprite(c, sprite, GATE_ORIGIN.x, GATE_ORIGIN.y)
         drawSymbol(c, fn)
         pinDots(c, pinsAt)
-        statusDot(c, GATE_CENTRE.x, -9, high)
+        statusDot(c, GATE_CENTRE.x, -16, high)
         if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, spriteInk(sprite, GATE_ORIGIN.x, GATE_ORIGIN.y).top)
         return
       }
@@ -108,7 +108,7 @@ function gate(fn: GateFn): PartDef {
       c.stroke()
       drawSymbol(c, fn)
       pinDots(c, pinsAt)
-      statusDot(c, GATE_CENTRE.x, -9, high)
+      statusDot(c, GATE_CENTRE.x, -16, high)
       if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, -25)
     },
     fields: () => [],

@@ -1016,43 +1016,47 @@ function arc(cx: number, cy: number, r: number, a0: number, a1: number, n = 18):
 export const GATE_PIN_UNITS = { inY: 18.2, inX: -36.4, outX: 36.4 }
 
 /**
- * The classic logic-gate symbol, with its own input and output legs, drawn inside the disc: AND = flat back and round front,
+ * The classic logic-gate symbol with its own input and output legs, drawn inside the disc: AND = flat back and round front,
  * OR = curved back and pointed front, NOT = triangle, XOR = OR plus a second back arc, and a small bubble on the output of the
- * inverting gates. Inputs come in from the rim and step to the body (an elbow), because the pin grid keeps them 40 px apart.
+ * inverting gates. The body is tall enough (+-26 units) that the two input legs, 36.4 units apart on the pin grid, run straight
+ * from the rim to the back edge of the body: no bends.
  */
 export function gateGeometry(shape: GateShape): GateGeometry {
   const { inY, inX, outX } = GATE_PIN_UNITS
   const polys: Pt[][] = []
   const circles: [number, number, number][] = []
-  let backAt = -17 // x of the body's back edge at the input rows (y = +-9)
-  let outFrom = 16 // x where the output leg leaves the body
+  const H = 26
+  let backAt = -24 // x of the body's back edge at the input rows (y = +-18.2)
+  let outFrom = 26 // x where the output leg leaves the body
   switch (shape) {
     case 'not':
-      polys.push([[-14, -17], [14, 0], [-14, 17], [-14, -17]])
-      circles.push([18, 0, 4])
-      outFrom = 22
+      polys.push([[-22, -24], [20, 0], [-22, 24], [-22, -24]])
+      circles.push([24, 0, 4])
+      outFrom = 28
       break
     case 'and':
-      polys.push([[-17, -18], [-2, -18], ...arc(-2, 0, 18, -Math.PI / 2, Math.PI / 2), [-17, 18], [-17, -18]])
+      polys.push([[-24, -H], [0, -H], ...arc(0, 0, H, -Math.PI / 2, Math.PI / 2), [-24, H], [-24, -H]])
       break
     case 'nand':
-      polys.push([[-19, -18], [-6, -18], ...arc(-6, 0, 18, -Math.PI / 2, Math.PI / 2), [-19, 18], [-19, -18]])
-      circles.push([17, 0, 4])
-      backAt = -19
-      outFrom = 21
+      polys.push([[-26, -H], [-6, -H], ...arc(-6, 0, H, -Math.PI / 2, Math.PI / 2), [-26, H], [-26, -H]])
+      circles.push([24, 0, 4])
+      backAt = -26
+      outFrom = 28
       break
     case 'or':
     case 'nor':
     case 'xor':
     case 'xnor': {
-      const tip = shape === 'or' || shape === 'xor' ? 20 : 14
-      const x0 = shape === 'xor' || shape === 'xnor' ? -15 : -19
-      polys.push([...quad([x0, -18], [shape === 'or' || shape === 'xor' ? 6 : 2, -18], [tip, 0]), ...quad([tip, 0], [shape === 'or' || shape === 'xor' ? 6 : 2, 18], [x0, 18]), ...quad([x0, 18], [x0 + 9, 0], [x0, -18])])
-      backAt = x0 + 3.4
+      const sharp = shape === 'or' || shape === 'xor'
+      const tip = sharp ? 24 : 16
+      const x0 = shape === 'xor' || shape === 'xnor' ? -20 : -26
+      const ctrl = sharp ? 4 : 0
+      polys.push([...quad([x0, -H], [ctrl, -H], [tip, 0]), ...quad([tip, 0], [ctrl, H], [x0, H]), ...quad([x0, H], [x0 + 13, 0], [x0, -H])])
+      backAt = x0 + 3.3
       outFrom = tip
       if (shape === 'xor' || shape === 'xnor') {
-        polys.push(quad([-22, -18], [-13, 0], [-22, 18]))
-        backAt = -18.6
+        polys.push(quad([-27, -H], [-18, 0], [-27, H]))
+        backAt = -27 + 2.3
       }
       if (shape === 'nor' || shape === 'xnor') {
         circles.push([tip + 5, 0, 4])
@@ -1061,11 +1065,8 @@ export function gateGeometry(shape: GateShape): GateGeometry {
       break
     }
   }
-  if (shape === 'not') {
-    polys.push([[inX, 0], [-14, 0]])
-  } else {
-    for (const y of [-inY, inY]) polys.push([[inX, y], [-27, y], [-27, y < 0 ? -9 : 9], [backAt, y < 0 ? -9 : 9]])
-  }
+  if (shape === 'not') polys.push([[inX, 0], [-22, 0]])
+  else for (const y of [-inY, inY]) polys.push([[inX, y], [backAt, y]])
   polys.push([[outFrom, 0], [outX, 0]])
   return { polys, circles }
 }
