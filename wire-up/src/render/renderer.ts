@@ -17,6 +17,8 @@ import { scene } from './scene.ts'
 /** Pin names shown on the pin label: an LED or diode lead reads + or - instead of A or K. */
 /** The dot grid never packs its dots closer than this many screen px (see drawGrid). */
 const GRID_MIN_PX = 24
+/** Overall strength of the dot grid (1 = full `COL.grid`). */
+const GRID_ALPHA = 0.65
 
 const PIN_SHOWN: Record<string, string | undefined> = { A: '+', K: '-' }
 
@@ -297,7 +299,7 @@ export class Renderer {
         const isCoarse = jx % 2 === 0 && jy % 2 === 0
         if (!isCoarse && fine === 0) continue
         if (mult === 1 && !isCoarse) continue
-        c.globalAlpha = prev * (isCoarse ? 1 : fine)
+        c.globalAlpha = prev * GRID_ALPHA * (isCoarse ? 1 : fine)
         c.fillRect(Math.round((jx * half - view.camX) * view.zoom), Math.round((jy * half - view.camY) * view.zoom), 2, 2)
       }
     }
