@@ -978,73 +978,133 @@ export function supplySprite(): Sprite {
 
 export type GateShape = 'not' | 'and' | 'or' | 'nand' | 'nor' | 'xor' | 'xnor'
 
-/** Grid size of every gate sprite (art pixels). Grid cell (0, 0) sits at world (16, -8); the pins are on the row y = 20. */
-export const GATE_W = 24
-export const GATE_H = 28
+/** Gate disc: 44 x 44 art pixels (88 world px). Grid cell (0, 0) sits at world (-4, -24); the disc centre is world (40, 20). */
+export const GATE_ART = 44
+export const GATE_ORIGIN = { x: -4, y: -24 }
+export const GATE_CENTRE = { x: 40, y: 20 }
+/** World px per geometry unit (the disc radius is 40 units = 44 world px). */
+export const GATE_UNIT = 1.1
+
+type Pt = [number, number]
+
+export interface GateGeometry {
+  /** Strokes (open or closed polylines) in geometry units, centre at (0, 0), y down. */
+  polys: Pt[][]
+  /** Output bubbles: centre x, centre y, radius. */
+  circles: [number, number, number][]
+}
+
+function quad(p0: Pt, c: Pt, p1: Pt, n = 14): Pt[] {
+  const out: Pt[] = []
+  for (let k = 0; k <= n; k++) {
+    const t = k / n
+    out.push([(1 - t) ** 2 * p0[0] + 2 * t * (1 - t) * c[0] + t * t * p1[0], (1 - t) ** 2 * p0[1] + 2 * t * (1 - t) * c[1] + t * t * p1[1]])
+  }
+  return out
+}
+
+function arc(cx: number, cy: number, r: number, a0: number, a1: number, n = 18): Pt[] {
+  const out: Pt[] = []
+  for (let k = 0; k <= n; k++) {
+    const a = a0 + ((a1 - a0) * k) / n
+    out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)])
+  }
+  return out
+}
+
+/** Where the pins sit, in units from the disc centre (the 20 px pin grid puts the inputs at +-18.2 units, the output at the right rim). */
+export const GATE_PIN_UNITS = { inY: 18.2, inX: -36.4, outX: 36.4 }
 
 /**
- * The classic logic-gate shapes as a lit, outlined plastic block (light from the top left): flat back + round front for AND,
- * curved back + pointed front for OR, a triangle for NOT, an extra back arc for XOR, and a round bubble at the output of the
- * inverting gates. 24 x 28 art pixels, the output leg meets the right edge at the vertical centre.
+ * The classic logic-gate symbol, with its own input and output legs, drawn inside the disc: AND = flat back and round front,
+ * OR = curved back and pointed front, NOT = triangle, XOR = OR plus a second back arc, and a small bubble on the output of the
+ * inverting gates. Inputs come in from the rim and step to the body (an elbow), because the pin grid keeps them 40 px apart.
  */
+export function gateGeometry(shape: GateShape): GateGeometry {
+  const { inY, inX, outX } = GATE_PIN_UNITS
+  const polys: Pt[][] = []
+  const circles: [number, number, number][] = []
+  let backAt = -17 // x of the body's back edge at the input rows (y = +-9)
+  let outFrom = 16 // x where the output leg leaves the body
+  switch (shape) {
+    case 'not':
+      polys.push([[-14, -17], [14, 0], [-14, 17], [-14, -17]])
+      circles.push([18, 0, 4])
+      outFrom = 22
+      break
+    case 'and':
+      polys.push([[-17, -18], [-2, -18], ...arc(-2, 0, 18, -Math.PI / 2, Math.PI / 2), [-17, 18], [-17, -18]])
+      break
+    case 'nand':
+      polys.push([[-19, -18], [-6, -18], ...arc(-6, 0, 18, -Math.PI / 2, Math.PI / 2), [-19, 18], [-19, -18]])
+      circles.push([17, 0, 4])
+      backAt = -19
+      outFrom = 21
+      break
+    case 'or':
+    case 'nor':
+    case 'xor':
+    case 'xnor': {
+      const tip = shape === 'or' || shape === 'xor' ? 20 : 14
+      const x0 = shape === 'xor' || shape === 'xnor' ? -15 : -19
+      polys.push([...quad([x0, -18], [shape === 'or' || shape === 'xor' ? 6 : 2, -18], [tip, 0]), ...quad([tip, 0], [shape === 'or' || shape === 'xor' ? 6 : 2, 18], [x0, 18]), ...quad([x0, 18], [x0 + 9, 0], [x0, -18])])
+      backAt = x0 + 3.4
+      outFrom = tip
+      if (shape === 'xor' || shape === 'xnor') {
+        polys.push(quad([-22, -18], [-13, 0], [-22, 18]))
+        backAt = -18.6
+      }
+      if (shape === 'nor' || shape === 'xnor') {
+        circles.push([tip + 5, 0, 4])
+        outFrom = tip + 9
+      }
+      break
+    }
+  }
+  if (shape === 'not') {
+    polys.push([[inX, 0], [-14, 0]])
+  } else {
+    for (const y of [-inY, inY]) polys.push([[inX, y], [-27, y], [-27, y < 0 ? -9 : 9], [backAt, y < 0 ? -9 : 9]])
+  }
+  polys.push([[outFrom, 0], [outX, 0]])
+  return { polys, circles }
+}
+
+const DISC_TONES = ['#ffffff', '#f3f5fa', '#e6e9f1', '#d6dae6']
+
+/** The white disc with the symbol in dark pixels (light from the top left); 44 x 44 art pixels. */
 export function gateSprite(shape: GateShape): Sprite {
   return sprite(`gate-${shape}`, () => {
-    const W = GATE_W
-    const H = GATE_H
-    const g = new PixelGrid(W, H)
-    const bubble = shape === 'not' || shape === 'nand' || shape === 'nor' || shape === 'xnor'
-    const bodyEnd = bubble ? W - 4 : W
-    const xorLike = shape === 'xor' || shape === 'xnor'
-    const orLike = shape === 'or' || shape === 'nor' || xorLike
-    for (let y = 0; y < H; y++) {
-      const dy = (y + 0.5 - H / 2) / (H / 2)
-      const t = Math.abs(dy)
-      for (let x = 0; x < W; x++) {
-        const px = x + 0.5
-        let inside = false
-        if (shape === 'not') {
-          inside = px <= (bodyEnd + 1) * (1 - t)
-        } else if (orLike) {
-          const back = (xorLike ? 3 : 0) + 5 * (1 - t * t)
-          const front = bodyEnd * (1 - Math.max(0, t - 0.15) ** 2.4 / 0.85 ** 2.4)
-          inside = px >= back && px <= front
-          if (xorLike && px >= 5 * (1 - t * t) && px < 5 * (1 - t * t) + 1.2) g.set(x, y, 'A')
-        } else {
-          const straight = bodyEnd - H / 2
-          inside = px <= straight || (px - straight) ** 2 + (y + 0.5 - H / 2) ** 2 <= (H / 2) ** 2
-        }
-        if (inside) g.set(x, y, 'T')
+    const N = GATE_ART
+    const g = new PixelGrid(N, N)
+    const R = N / 2
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const dx = x + 0.5 - R
+        const dy = y + 0.5 - R
+        if (dx * dx + dy * dy > R * R) continue
+        const lit = (dx + dy) / (R * 2.8) // -0.5 (top left) .. +0.5 (bottom right)
+        g.set(x, y, String(Math.min(3, Math.max(0, Math.floor((lit + 0.5) * 4)))))
       }
     }
-    if (bubble) {
-      for (let y = 0; y < H; y++) for (let x = W - 5; x < W; x++) if ((x + 0.5 - (W - 2.2)) ** 2 + (y + 0.5 - H / 2) ** 2 <= 2.2 ** 2) g.set(x, y, 'T')
-    }
-    // cylinder-like shading: tone by row from the top, lit left edge and dark right edge of every row
-    const rows = ['h', 'L', 'L', 'T', 'T', 'M', 'M', 'S', 'S', 'D']
-    for (let y = 0; y < H; y++) {
-      const tone = rows[Math.min(rows.length - 1, Math.floor((y / H) * rows.length))]
-      let first = -1
-      let last = -1
-      for (let x = 0; x < W; x++) {
-        if (g.get(x, y) !== 'T') continue
-        if (first < 0) first = x
-        last = x
-        g.set(x, y, tone)
+    const k = 0.55 // art px per geometry unit
+    const plot = (ax: number, ay: number) => {
+      for (const [ox, oy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        const x = Math.round(R + ax * k - 0.5) + ox
+        const y = Math.round(R + ay * k - 0.5) + oy
+        if (g.get(x, y) !== '.') g.set(x, y, 'K')
       }
-      if (first >= 0) g.set(first, y, 'h')
-      if (last >= 0) g.set(last, y, 'D')
     }
-    return g.build(
-      {
-        h: '#8a97b8',
-        L: '#6f7ca2',
-        T: '#5a688f',
-        M: '#4a577d',
-        S: '#3c4768',
-        D: '#2e3752',
-        A: '#2e3752',
-      },
-      '#08080c',
-    )
+    const line = (a: Pt, b: Pt) => {
+      const steps = Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * k * 2))
+      for (let i = 0; i <= steps; i++) plot(a[0] + ((b[0] - a[0]) * i) / steps, a[1] + ((b[1] - a[1]) * i) / steps)
+    }
+    const geo = gateGeometry(shape)
+    for (const poly of geo.polys) for (let i = 0; i + 1 < poly.length; i++) line(poly[i], poly[i + 1])
+    for (const [cx, cy, r] of geo.circles) {
+      const pts = arc(cx, cy, r, 0, Math.PI * 2, 24)
+      for (let i = 0; i + 1 < pts.length; i++) line(pts[i], pts[i + 1])
+    }
+    return g.build({ '0': DISC_TONES[0], '1': DISC_TONES[1], '2': DISC_TONES[2], '3': DISC_TONES[3], K: '#23232b' }, '#08080c')
   })
 }

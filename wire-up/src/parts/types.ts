@@ -59,6 +59,8 @@ export interface PartDef {
   pinLabelPlace?: 'axis' | 'side' | 'lead' | 'above' | 'below'
   /** For `pinLabelPlace: 'lead'`: the direction (local frame, before rotation) pin `index` points away from the body. */
   pinLeadDir?(index: number): Vec
+  /** Per-pin override of `tipPastPin` (both looks). */
+  pinTipPast?(index: number, pixel: boolean): number
   /** How far the visible lead tip sticks out past the pin point, in the label's direction (world px). Default 0. */
   tipPastPin?: number
   /** Same as `tipPastPin` for the plain vector look (pixel look off). Defaults to `tipPastPin`. */

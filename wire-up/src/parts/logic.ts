@@ -1,9 +1,9 @@
-import { COL, drawText, leg, rrect } from '../render/draw.ts'
-import { drawSprite } from '../render/pixel.ts'
+import { COL, drawLabelAbove } from '../render/draw.ts'
+import { drawSprite, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, GATE } from '../sim/models.ts'
 import type { GateFn } from '../sim/solver.ts'
-import { gateSprite } from './art.ts'
+import { GATE_CENTRE, GATE_ORIGIN, GATE_UNIT, gateGeometry, gateSprite } from './art.ts'
 import { eid, stress } from './common.ts'
 import type { PartDef } from './types.ts'
 
@@ -21,15 +21,8 @@ const BLURBS: Record<GateFn, string> = {
   xnor: 'Y is high when A and B are the same.',
 }
 
-/** Gate body in local px: the sprite is 48 x 56 world px with its top left at (16, -8); legs run from the pins to its edge. */
-const BODY_X = 16
-const BODY_Y = -8
-const BODY_W = 48
-const BODY_H = 56
-
 function gate(fn: GateFn): PartDef {
   const two = fn !== 'not'
-  const inverting = fn === 'not' || fn === 'nand' || fn === 'nor' || fn === 'xnor'
   const name = NAMES[fn]
   return {
     type: `gate-${fn}`,
@@ -40,8 +33,8 @@ function gate(fn: GateFn): PartDef {
     pinLabelPlace: 'lead',
     // inputs point left out of the body, the output right
     pinLeadDir: (i) => ({ x: i === (two ? 2 : 1) ? 1 : -1, y: 0 }),
-    tipPastPin: 0,
-    tipPastPinVector: 2,
+    // the visible tip is the pin dot (3 px past an input pin on the rim) or, for the output and a lone NOT input, the rim itself
+    pinTipPast: (i, pixel) => (two && i < 2 ? (pixel ? 6 : 4) : pixel ? 6 : 5),
     defaults: () => ({}),
     // inputs on the left (A over B), output on the right at the middle row
     pins: () =>
@@ -55,7 +48,7 @@ function gate(fn: GateFn): PartDef {
             { x: 0, y: 1 },
             { x: 4, y: 1 },
           ],
-    bounds: () => ({ x: -10, y: BODY_Y - 4, w: 100, h: BODY_H + 8 }),
+    bounds: () => ({ x: -8, y: -28, w: 96, h: 96 }),
     build(p, ctx) {
       if (p.state.failed) return
       // a weak pull-down on every input: an unconnected input (or one behind an open switch's leakage) reads low
@@ -92,42 +85,59 @@ function gate(fn: GateFn): PartDef {
         ),
       }
     },
-    draw(c, _p, live) {
+    draw(c, p, live) {
       const high = (live.high ?? 0) > 0
-      const outX = 4 * 20
+      const pinsAt = two
+        ? [{ x: 0, y: 0 }, { x: 0, y: 40 }, { x: 80, y: 20 }]
+        : [{ x: 0, y: 20 }, { x: 80, y: 20 }]
       if (scene.pixel) {
-        c.fillStyle = COL.metal
-        c.fillRect(0, two ? -2 : 18, BODY_X + 8, 2)
-        c.fillRect(outX - 18, 18, 18, 2)
-        c.fillStyle = COL.metalDark
-        c.fillRect(0, two ? 0 : 20, BODY_X + 8, 2)
-        c.fillRect(outX - 18, 20, 18, 2)
-        if (two) {
-          c.fillStyle = COL.metal
-          c.fillRect(0, 38, BODY_X + 8, 2)
-          c.fillStyle = COL.metalDark
-          c.fillRect(0, 40, BODY_X + 8, 2)
-        }
-        drawSprite(c, gateSprite(fn), BODY_X, BODY_Y)
-        statusDot(c, inverting ? 36 : 40, 20, high)
+        const sprite = gateSprite(fn)
+        drawSprite(c, sprite, GATE_ORIGIN.x, GATE_ORIGIN.y)
+        pinDots(c, pinsAt)
+        statusDot(c, GATE_CENTRE.x, -9, high)
+        if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, spriteInk(sprite, GATE_ORIGIN.x, GATE_ORIGIN.y).top)
         return
       }
-      leg(c, 0, two ? 0 : 20, BODY_X + 8, two ? 0 : 20)
-      if (two) leg(c, 0, 40, BODY_X + 8, 40)
-      leg(c, outX - 18, 20, outX, 20)
-      c.fillStyle = '#4a577d'
-      rrect(c, BODY_X, BODY_Y, BODY_W - (inverting ? 8 : 0), BODY_H, 8)
+      c.fillStyle = '#f4f6fb'
+      c.strokeStyle = '#08080c'
+      c.lineWidth = 1.5
+      c.beginPath()
+      c.arc(GATE_CENTRE.x, GATE_CENTRE.y, 44, 0, Math.PI * 2)
       c.fill()
-      if (inverting) {
+      c.stroke()
+      const geo = gateGeometry(fn)
+      c.strokeStyle = '#23232b'
+      c.lineWidth = 3
+      c.lineJoin = 'round'
+      c.lineCap = 'round'
+      for (const poly of geo.polys) {
         c.beginPath()
-        c.arc(BODY_X + BODY_W - 4, 20, 4, 0, Math.PI * 2)
-        c.fill()
+        poly.forEach(([u, v], i) => (i === 0 ? c.moveTo(GATE_CENTRE.x + u * GATE_UNIT, GATE_CENTRE.y + v * GATE_UNIT) : c.lineTo(GATE_CENTRE.x + u * GATE_UNIT, GATE_CENTRE.y + v * GATE_UNIT)))
+        c.stroke()
       }
-      drawText(c, name, BODY_X + (BODY_W - (inverting ? 8 : 0)) / 2, 8, { color: '#b9b4e8', align: 'center', size: 6 })
-      statusDot(c, inverting ? 36 : 40, 20, high)
+      for (const [u, v, r] of geo.circles) {
+        c.beginPath()
+        c.arc(GATE_CENTRE.x + u * GATE_UNIT, GATE_CENTRE.y + v * GATE_UNIT, r * GATE_UNIT, 0, Math.PI * 2)
+        c.stroke()
+      }
+      c.lineJoin = 'miter'
+      c.lineCap = 'butt'
+      pinDots(c, pinsAt)
+      statusDot(c, GATE_CENTRE.x, -9, high)
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, -25)
     },
     fields: () => [],
     summary: () => `${name} gate, 5 V logic, switches at ${GATE.vth} V`,
+  }
+}
+
+/** The pin points: small grey squares on the rim of the disc. */
+function pinDots(c: CanvasRenderingContext2D, pts: { x: number; y: number }[]): void {
+  for (const q of pts) {
+    c.fillStyle = COL.metalDark
+    c.fillRect(q.x - 3, q.y - 3, 6, 6)
+    c.fillStyle = COL.metal
+    c.fillRect(q.x - 3, q.y - 3, 3, 3)
   }
 }
 
