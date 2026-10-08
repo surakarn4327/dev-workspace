@@ -6,11 +6,16 @@ import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
 import { defOf, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
 import { effectiveColors, socketKeys, tapEnds } from '../board/wireJoin.ts'
 import { paintBurnt, canBurn } from './burnt.ts'
+import { ringOf } from './outline.ts'
+import { PX } from './pixel.ts'
 import { COL, drawText, mix, radialGlow, rrect } from './draw.ts'
 import { straightMid } from '../board/wireEdit.ts'
 import { cableShape, drawCableBase, drawCableBody, drawCableCaps, pixelProbeHead } from './pixelwire.ts'
 import type { CableShape } from './pixelwire.ts'
 import { scene } from './scene.ts'
+
+/** Pin names shown on the pin label: an LED or diode lead reads + or - instead of A or K. */
+const PIN_SHOWN: Record<string, string | undefined> = { A: '+', K: '-' }
 
 export interface View {
   /** World coordinate at the top-left of the canvas. */
@@ -31,6 +36,8 @@ export interface Overlay {
   labelPart: string | null
   hoverPoint: Vec | null
   draft: Vec[] | null
+  /** The wire being drawn cannot be made (it would end inside a part or cut through one). */
+  draftBad: boolean
   ghost: { type: string; x: number; y: number } | null
   wireMode: boolean
 }
@@ -247,7 +254,7 @@ export class Renderer {
 
     if (ov.draft) {
       c.setLineDash([6, 5])
-      c.strokeStyle = COL.cyan
+      c.strokeStyle = ov.draftBad ? COL.red : COL.cyan
       c.lineWidth = 2
       this.tracePath(ov.draft)
       c.stroke()
@@ -478,20 +485,23 @@ export class Renderer {
     })
   }
 
+  /** Outline that follows the part's own shape, one art pixel thick, its dashes crawling round it. */
   private drawSelection(part: PartInstance, now: number): void {
     const c = this.ctx
-    const def = defOf(part.type)
-    const b = def.bounds(part)
+    const ring = ringOf(part, defOf(part.type))
+    const phase = Math.floor(now * 8)
     c.save()
     c.translate(part.x, part.y)
     c.rotate((part.rot * Math.PI) / 2)
-    c.strokeStyle = COL.cyan
-    c.lineWidth = 1.5
-    c.setLineDash([5, 4])
-    c.lineDashOffset = -now * 12
+    c.fillStyle = COL.cyan
     c.shadowColor = COL.cyan
     c.shadowBlur = 6
-    c.strokeRect(b.x - 3, b.y - 3, b.w + 6, b.h + 6)
+    c.beginPath()
+    for (const [x, y] of ring.cells) {
+      if (((x + y) / PX + phase) % 4 === 0) continue // a gap, so the line reads as dashes
+      c.rect(x, y, PX, PX)
+    }
+    c.fill()
     c.restore()
   }
 
@@ -501,10 +511,8 @@ export class Renderer {
     const c = this.ctx
     const pins = pinWorld(part)
     pins.forEach((p, i) => {
-      c.fillStyle = 'rgba(7,6,13,0.85)'
-      const label = def.pinLabels[i] ?? ''
-      c.fillRect(p.x - 7, p.y + 10, 14, 11)
-      drawText(c, label, p.x, p.y + 12, { color: COL.cyan, align: 'center' })
+      const label = PIN_SHOWN[def.pinLabels[i]] ?? def.pinLabels[i] ?? ''
+      drawText(c, label, p.x, p.y + 10, { align: 'center', size: 10, box: true })
     })
   }
 

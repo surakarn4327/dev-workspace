@@ -1,6 +1,8 @@
 // Grid wire router: right-angle paths that never run along another wire.
 // A* over grid nodes with a direction in the state, so bends cost extra and crossings are straight-through only.
 
+import { segmentHitsRect } from './obstacles.ts'
+import type { Rect } from './obstacles.ts'
 import { G, wirePath } from './world.ts'
 import type { Vec, Wire } from './world.ts'
 
@@ -112,8 +114,8 @@ function lShape(a: Vec, b: Vec): Vec[] {
   return [{ x: b.x, y: a.y }]
 }
 
-/** Bend points for a wire from a to b that stays off the other wires. */
-export function routeVia(a: Vec, b: Vec, others: Wire[]): Vec[] {
+/** Bend points for a wire from a to b that stays off the other wires and out of the `parts` rectangles. */
+export function routeVia(a: Vec, b: Vec, others: Wire[], parts: Rect[] = []): Vec[] {
   const sx = Math.round(a.x / G)
   const sy = Math.round(a.y / G)
   const ex = Math.round(b.x / G)
@@ -124,6 +126,14 @@ export function routeVia(a: Vec, b: Vec, others: Wire[]): Vec[] {
   const maxX = Math.max(sx, ex) + MARGIN
   const minY = Math.min(sy, ey) - MARGIN
   const maxY = Math.max(sy, ey) + MARGIN
+
+  // only the parts inside the search window matter
+  const near = parts.filter((r) => r.x1 > (minX - 1) * G && r.x0 < (maxX + 1) * G && r.y1 > (minY - 1) * G && r.y0 < (maxY + 1) * G)
+  const hitsPart = (x: number, y: number, x2: number, y2: number): boolean => {
+    const p = { x: x * G, y: y * G }
+    const q = { x: x2 * G, y: y2 * G }
+    return near.some((r) => segmentHitsRect(p, q, r))
+  }
 
   const best = new Map<string, number>()
   const prev = new Map<string, string>()
@@ -151,6 +161,7 @@ export function routeVia(a: Vec, b: Vec, others: Wire[]): Vec[] {
       const ny = cur.y + DIRS[nd][1]
       if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue
       if (occ.edges.has(ek(cur.x, cur.y, nx, ny))) continue
+      if (near.length > 0 && hitsPart(cur.x, cur.y, nx, ny)) continue
       const isGoal = nx === ex && ny === ey
       const key = nk(nx, ny)
       if (!isGoal && occ.blocked.has(key)) continue

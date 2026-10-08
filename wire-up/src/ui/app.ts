@@ -6,6 +6,7 @@ import { History } from '../save/history.ts'
 import { Inspector } from './inspector.ts'
 import { LessonPanel } from './lessonPanel.ts'
 import { buildToolbox } from './toolbox.ts'
+import { untangle } from '../board/untangle.ts'
 import { keyName } from './keys.ts'
 import { Workspace } from './workspace.ts'
 
@@ -31,8 +32,10 @@ export class App {
   constructor() {
     const canvas = $<HTMLCanvasElement>('canvas')
     const saved = loadLab()
-    if (saved) this.world.load(saved.data)
-    else this.starterScene()
+    if (saved) {
+      this.world.load(saved.data)
+      untangle(this.world)
+    } else this.starterScene()
     this.ws = new Workspace(canvas, this.world)
     if (saved?.view) this.ws.view = saved.view
     else window.setTimeout(() => this.ws.fitView(), 80)
@@ -119,6 +122,7 @@ export class App {
       }
       if (this.inLesson) this.lessons.exit()
       this.world.load(res.lab.data)
+      untangle(this.world)
       this.world.commit()
       this.ws.select(null)
       if (res.lab.view) this.ws.view = res.lab.view

@@ -6,6 +6,8 @@ import { clipWidth, copyOut, itemsInBox, normBox, pasteIn } from '../board/group
 import type { Clip } from '../board/group.ts'
 import { hitTest } from '../board/hit.ts'
 import type { Hit } from '../board/hit.ts'
+import { partObstacles, pathHitsRects, segmentHitsRect, insideRects } from '../board/obstacles.ts'
+import { untangle } from '../board/untangle.ts'
 import { routeVia } from '../board/router.ts'
 import { Simulation } from '../board/simulation.ts'
 import { branchesOfParts } from '../board/wireJoin.ts'
@@ -25,7 +27,7 @@ type Mode =
   | { t: 'lead'; part: PartInstance; index: number }
   | { t: 'dragEnd'; wire: Wire; end: 'a' | 'b'; plugOld: boolean; base: WireShape }
   | { t: 'bend'; wire: Wire; index: number; via0: Vec[] }
-  | { t: 'newWire'; a: Vec; b: Vec; via: Vec[]; clickWire?: string }
+  | { t: 'newWire'; a: Vec; b: Vec; via: Vec[]; clickWire?: string; bad?: boolean }
   | { t: 'box'; a: Vec; b: Vec; sx: number; sy: number; add: boolean; moved: boolean }
   | { t: 'group'; grab: Vec; sx: number; sy: number; moved: boolean; plan: FollowPlan; clickPart: string | null; clickWire: string | null }
 
@@ -126,6 +128,7 @@ export class Workspace {
       labelPart: this.hoverPart && performance.now() - this.hoverSince >= HOVER_LABEL_MS ? this.hoverPart : null,
       hoverPoint: this.hoverPoint,
       draft: m && m.t === 'newWire' ? [m.a, ...m.via, m.b] : null,
+      draftBad: !!(m && m.t === 'newWire' && m.bad),
       ghost: this.ghost,
       wireMode: this.wireMode,
     }
@@ -256,6 +259,7 @@ export class Workspace {
     if (def.freeLeads) part.leads = def.pins(part).map((v) => ({ x: part.x + v.x * G, y: part.y + v.y * G }))
     if (type.startsWith('breadboard')) this.world.parts.unshift(part)
     else this.world.parts.push(part)
+    untangle(this.world)
     this.world.commit()
     this.select(part.id)
     this.onEdit()
@@ -281,6 +285,7 @@ export class Workspace {
     if (s.parts.size + s.wires.size === 0) return
     const plan = planGroup(this.world, s.parts, s.wires)
     applyFollow(this.world, plan, gx * G, gy * G)
+    untangle(this.world)
     this.world.commit()
     this.onEdit()
   }
@@ -304,6 +309,7 @@ export class Workspace {
     const dx = hasBoard ? this.pasteCount * (clipWidth(this.clip) + 2 * G) : this.pasteCount * 2 * G
     const dy = hasBoard ? 0 : dx
     const made = pasteIn(this.world, this.clip, dx, dy)
+    untangle(this.world)
     this.world.commit()
     this.setSelection(made.parts, made.wires)
     this.onEdit()
@@ -432,6 +438,7 @@ export class Workspace {
     }
     if (this.wireMode && hit.kind !== 'wire') {
       const a = hit.kind === 'pin' || hit.kind === 'hole' ? hit.point : this.snapPt(w)
+      if (hit.kind !== 'pin' && hit.kind !== 'hole' && insideRects(a, partObstacles(this.world))) return // a wire cannot start inside a part
       this.mode = { t: 'newWire', a, b: a, via: [] }
       return
     }
@@ -485,6 +492,35 @@ export class Workspace {
     }
   }
 
+  /**
+   * May the wire take this shape? It must not run over itself or through the body of a part. A wire that already does
+   * (an old one) may still be reshaped.
+   */
+  private shapeOk(next: { a: Vec; via: Vec[]; b: Vec }, cur: Wire): boolean {
+    const rects = partObstacles(this.world)
+    const folds = (s: { a: Vec; via: Vec[]; b: Vec }) => wireOverlaps(s.a, s.via, s.b)
+    const cuts = (s: { a: Vec; via: Vec[]; b: Vec }) => pathHitsRects([s.a, ...s.via, s.b], rects)
+    return (!folds(next) || folds(cur)) && (!cuts(next) || cuts(cur))
+  }
+
+  /**
+   * The corners for `shape` with every stretch that would cut through a part sent around it instead (the router finds the
+   * way), so dragging a corner or an end across a part makes the wire wrap round it. Returns the shape unchanged when
+   * nothing is in the way; it may still end up not ok (a corner dropped inside a part has no way round).
+   */
+  private wrapAround<S extends { a: Vec; via: Vec[]; b: Vec }>(shape: S, cur: Wire): S {
+    const rects = partObstacles(this.world)
+    const pts = [shape.a, ...shape.via, shape.b]
+    if (!pathHitsRects(pts, rects)) return shape
+    const others = this.world.wires.filter((x) => x !== cur)
+    const out: Vec[] = [pts[0]]
+    for (let i = 0; i + 1 < pts.length; i++) {
+      if (rects.some((r) => segmentHitsRect(pts[i], pts[i + 1], r))) out.push(...routeVia(pts[i], pts[i + 1], others, rects))
+      out.push(pts[i + 1])
+    }
+    return { ...shape, via: out.slice(1, -1) }
+  }
+
   private move(e: PointerEvent): void {
     const w = this.world2(e)
     const m = this.mode
@@ -533,9 +569,9 @@ export class Workspace {
       }
       case 'bend': {
         const s = this.snapPt(w)
-        const next = moveBend(m.wire.a, m.via0, m.wire.b, m.index, s, m.wire.taps ?? [])
-        // a shape that would run the wire over itself is not taken (the wire stays as it last was)
-        if (!wireOverlaps(m.wire.a, next, m.wire.b) || wireOverlaps(m.wire.a, m.wire.via, m.wire.b)) m.wire.via = next
+        const next = this.wrapAround({ a: m.wire.a, via: moveBend(m.wire.a, m.via0, m.wire.b, m.index, s, m.wire.taps ?? []), b: m.wire.b }, m.wire)
+        // a shape that would run the wire over itself or through a part is not taken (the wire stays as it last was)
+        if (this.shapeOk(next, m.wire)) m.wire.via = next.via
         this.hoverPoint = s
         this.world.touch()
         break
@@ -543,8 +579,8 @@ export class Workspace {
       case 'dragEnd': {
         const s = this.snapPt(w)
         const plug = m.end === 'b' ? m.base.b : m.base.a
-        const use = s.x === plug.x && s.y === plug.y ? m.base : dragEnd(m.base, m.end, s, m.plugOld)
-        if (!wireOverlaps(use.a, use.via, use.b) || wireOverlaps(m.wire.a, m.wire.via, m.wire.b)) {
+        const use = this.wrapAround(s.x === plug.x && s.y === plug.y ? m.base : dragEnd(m.base, m.end, s, m.plugOld), m.wire)
+        if (this.shapeOk(use, m.wire)) {
           m.wire.a = use.a
           m.wire.b = use.b
           m.wire.via = use.via
@@ -558,8 +594,11 @@ export class Workspace {
         const hit = hitTest(this.world, w, this.view.zoom, null)
         const nb = hit.kind === 'pin' || hit.kind === 'hole' ? hit.point : this.snapPt(w)
         if (nb.x !== m.b.x || nb.y !== m.b.y) {
+          const rects = partObstacles(this.world)
           m.b = nb
-          m.via = routeVia(m.a, m.b, this.world.wires)
+          m.via = routeVia(m.a, m.b, this.world.wires, rects)
+          // an end inside a part, or no way round one, makes a wire that cannot be made: the draft turns red and is dropped
+          m.bad = insideRects(nb, rects) || pathHitsRects([m.a, ...m.via, m.b], rects)
         }
         this.hoverPoint = m.b
         break
@@ -579,6 +618,7 @@ export class Workspace {
           def.press(m.part, false)
           this.world.touch()
         } else if (m.moved) {
+          untangle(this.world) // a part dropped on a wire sends it round
           this.world.commit()
           this.onEdit()
         } else if (def.click && def.click(m.part, m.local)) {
@@ -597,6 +637,7 @@ export class Workspace {
         this.onEdit()
         break
       case 'newWire':
+        if (m.bad) break
         if (m.a.x !== m.b.x || m.a.y !== m.b.y) {
           const color = WIRE_COLORS[this.world.wires.length % 4]
           const wire = this.world.addWire(m.a, m.b, color, m.via)
@@ -623,6 +664,7 @@ export class Workspace {
       }
       case 'group':
         if (m.moved) {
+          untangle(this.world)
           this.world.commit()
           this.onEdit()
         } else if (m.clickPart) this.select(m.clickPart) // a click (no drag) on one member narrows the selection to it
