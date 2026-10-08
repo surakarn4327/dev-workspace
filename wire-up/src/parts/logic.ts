@@ -93,6 +93,7 @@ function gate(fn: GateFn): PartDef {
       if (scene.pixel) {
         const sprite = gateSprite(fn)
         drawSprite(c, sprite, GATE_ORIGIN.x, GATE_ORIGIN.y)
+        drawSymbol(c, fn)
         pinDots(c, pinsAt)
         statusDot(c, GATE_CENTRE.x, -9, high)
         if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, spriteInk(sprite, GATE_ORIGIN.x, GATE_ORIGIN.y).top)
@@ -105,23 +106,7 @@ function gate(fn: GateFn): PartDef {
       c.arc(GATE_CENTRE.x, GATE_CENTRE.y, 44, 0, Math.PI * 2)
       c.fill()
       c.stroke()
-      const geo = gateGeometry(fn)
-      c.strokeStyle = '#23232b'
-      c.lineWidth = 3
-      c.lineJoin = 'round'
-      c.lineCap = 'round'
-      for (const poly of geo.polys) {
-        c.beginPath()
-        poly.forEach(([u, v], i) => (i === 0 ? c.moveTo(GATE_CENTRE.x + u * GATE_UNIT, GATE_CENTRE.y + v * GATE_UNIT) : c.lineTo(GATE_CENTRE.x + u * GATE_UNIT, GATE_CENTRE.y + v * GATE_UNIT)))
-        c.stroke()
-      }
-      for (const [u, v, r] of geo.circles) {
-        c.beginPath()
-        c.arc(GATE_CENTRE.x + u * GATE_UNIT, GATE_CENTRE.y + v * GATE_UNIT, r * GATE_UNIT, 0, Math.PI * 2)
-        c.stroke()
-      }
-      c.lineJoin = 'miter'
-      c.lineCap = 'butt'
+      drawSymbol(c, fn)
       pinDots(c, pinsAt)
       statusDot(c, GATE_CENTRE.x, -9, high)
       if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, -25)
@@ -129,6 +114,28 @@ function gate(fn: GateFn): PartDef {
     fields: () => [],
     summary: () => `${name} gate, 5 V logic, switches at ${GATE.vth} V`,
   }
+}
+
+/** The gate symbol and its legs as smooth dark strokes inside the disc (not pixel art). */
+function drawSymbol(c: CanvasRenderingContext2D, fn: GateFn): void {
+  const geo = gateGeometry(fn)
+  const at = (u: number, v: number): [number, number] => [GATE_CENTRE.x + u * GATE_UNIT, GATE_CENTRE.y + v * GATE_UNIT]
+  c.save()
+  c.strokeStyle = '#23232b'
+  c.lineWidth = 3.4
+  c.lineJoin = 'round'
+  c.lineCap = 'round'
+  for (const poly of geo.polys) {
+    c.beginPath()
+    poly.forEach(([u, v], i) => (i === 0 ? c.moveTo(...at(u, v)) : c.lineTo(...at(u, v))))
+    c.stroke()
+  }
+  for (const [u, v, r] of geo.circles) {
+    c.beginPath()
+    c.arc(...at(u, v), r * GATE_UNIT, 0, Math.PI * 2)
+    c.stroke()
+  }
+  c.restore()
 }
 
 /** The pin points: small grey squares on the rim of the disc. */

@@ -1072,7 +1072,7 @@ export function gateGeometry(shape: GateShape): GateGeometry {
 
 const DISC_TONES = ['#ffffff', '#f3f5fa', '#e6e9f1', '#d6dae6']
 
-/** The white disc with the symbol in dark pixels (light from the top left); 44 x 44 art pixels. */
+/** The white disc only (light from the top left), 44 x 44 art pixels. The symbol is drawn on top as smooth strokes by the part. */
 export function gateSprite(shape: GateShape): Sprite {
   return sprite(`gate-${shape}`, () => {
     const N = GATE_ART
@@ -1087,24 +1087,6 @@ export function gateSprite(shape: GateShape): Sprite {
         g.set(x, y, String(Math.min(3, Math.max(0, Math.floor((lit + 0.5) * 4)))))
       }
     }
-    const k = 0.55 // art px per geometry unit
-    const plot = (ax: number, ay: number) => {
-      for (const [ox, oy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-        const x = Math.round(R + ax * k - 0.5) + ox
-        const y = Math.round(R + ay * k - 0.5) + oy
-        if (g.get(x, y) !== '.') g.set(x, y, 'K')
-      }
-    }
-    const line = (a: Pt, b: Pt) => {
-      const steps = Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * k * 2))
-      for (let i = 0; i <= steps; i++) plot(a[0] + ((b[0] - a[0]) * i) / steps, a[1] + ((b[1] - a[1]) * i) / steps)
-    }
-    const geo = gateGeometry(shape)
-    for (const poly of geo.polys) for (let i = 0; i + 1 < poly.length; i++) line(poly[i], poly[i + 1])
-    for (const [cx, cy, r] of geo.circles) {
-      const pts = arc(cx, cy, r, 0, Math.PI * 2, 24)
-      for (let i = 0; i + 1 < pts.length; i++) line(pts[i], pts[i + 1])
-    }
-    return g.build({ '0': DISC_TONES[0], '1': DISC_TONES[1], '2': DISC_TONES[2], '3': DISC_TONES[3], K: '#23232b' }, '#08080c')
+    return g.build({ '0': DISC_TONES[0], '1': DISC_TONES[1], '2': DISC_TONES[2], '3': DISC_TONES[3] }, '#08080c')
   })
 }
