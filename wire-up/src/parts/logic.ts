@@ -1,4 +1,4 @@
-import { COL, drawLabelAbove } from '../render/draw.ts'
+import { drawLabelAbove } from '../render/draw.ts'
 import { drawSprite, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, GATE } from '../sim/models.ts'
@@ -87,14 +87,10 @@ function gate(fn: GateFn): PartDef {
     },
     draw(c, p, live) {
       const high = (live.high ?? 0) > 0
-      const pinsAt = two
-        ? [{ x: 0, y: 0 }, { x: 0, y: 40 }, { x: 80, y: 20 }]
-        : [{ x: 0, y: 20 }, { x: 80, y: 20 }]
       if (scene.pixel) {
         const sprite = gateSprite(fn)
         drawSprite(c, sprite, GATE_ORIGIN.x, GATE_ORIGIN.y)
         drawSymbol(c, fn)
-        pinDots(c, pinsAt)
         statusDot(c, GATE_CENTRE.x, -16, high)
         if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, spriteInk(sprite, GATE_ORIGIN.x, GATE_ORIGIN.y).top)
         return
@@ -107,7 +103,6 @@ function gate(fn: GateFn): PartDef {
       c.fill()
       c.stroke()
       drawSymbol(c, fn)
-      pinDots(c, pinsAt)
       statusDot(c, GATE_CENTRE.x, -16, high)
       if (scene.labeled.has(p.id)) drawLabelAbove(c, name, GATE_CENTRE.x, -25)
     },
@@ -136,16 +131,6 @@ function drawSymbol(c: CanvasRenderingContext2D, fn: GateFn): void {
     c.stroke()
   }
   c.restore()
-}
-
-/** The pin points: small grey squares on the rim of the disc. */
-function pinDots(c: CanvasRenderingContext2D, pts: { x: number; y: number }[]): void {
-  for (const q of pts) {
-    c.fillStyle = COL.metalDark
-    c.fillRect(q.x - 3, q.y - 3, 6, 6)
-    c.fillStyle = COL.metal
-    c.fillRect(q.x - 3, q.y - 3, 3, 3)
-  }
 }
 
 /** Small lamp on the body: lit green while Y is high. */
