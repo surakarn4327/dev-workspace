@@ -70,6 +70,24 @@ export function cableShape(pts: PixelPoint[]): CableShape {
     body.add(key(x, y - 1))
     body.add(key(x, y + 1))
   }
+  return shapeOf(body)
+}
+
+/**
+ * The round dot where a branch wire joins the middle of another: a disc 5 art pixels across (the cable is 3 thick, so about
+ * 1.5 times its width), shaded and outlined exactly like a cable so the two merge. Draw its base with the cables' bases and its
+ * body after the cables' bodies.
+ */
+export function junctionShape(at: PixelPoint): CableShape {
+  const cx = Math.round(at.x / PX)
+  const cy = Math.round(at.y / PX)
+  const body = new Set<number>()
+  for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) if (Math.abs(dx) + Math.abs(dy) < 4) body.add(key(cx + dx, cy + dy))
+  return shapeOf(body)
+}
+
+/** Outline, shadow and shading for a set of body cells. */
+function shapeOf(body: Set<number>): CableShape {
   const bodyCells: Array<[number, number]> = []
   const outlineMap = new Map<number, [number, number]>()
   const unkey = (k: number): [number, number] => [Math.floor(k / 2097152) - OFF, (k % 2097152) - OFF]

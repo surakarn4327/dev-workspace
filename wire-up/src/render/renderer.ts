@@ -10,7 +10,7 @@ import { ringOf } from './outline.ts'
 import { PX } from './pixel.ts'
 import { COL, drawLabelAt, drawText, LABEL_GAP, labelBoxSize, mix, radialGlow, rrect } from './draw.ts'
 import { straightMid } from '../board/wireEdit.ts'
-import { cableShape, drawCableBase, drawCableBody, drawCableCaps, pixelProbeHead } from './pixelwire.ts'
+import { cableShape, drawCableBase, drawCableBody, drawCableCaps, junctionShape, pixelProbeHead } from './pixelwire.ts'
 import type { CableShape } from './pixelwire.ts'
 import { scene } from './scene.ts'
 
@@ -197,14 +197,30 @@ export class Renderer {
     const colors = effectiveColors(world, sockets)
     // every cable's shadow and outline first, then the bodies: a branch merges into its main wire with no dark seam
     const shapes = new Map<string, CableShape>()
+    // a round dot wherever a branch wire joins the middle of another (same colour as the main wire)
+    const dots: { at: Vec; color: string; shape?: CableShape }[] = []
+    for (const w of world.wires) for (const at of tapEnds(world, w, sockets)) dots.push({ at, color: colors.get(w.id) ?? w.color })
     if (this.pixelMode) {
       for (const w of world.wires) {
         const shape = cableShape(wirePath(w))
         shapes.set(w.id, shape)
         drawCableBase(c, shape, colors.get(w.id) ?? w.color)
       }
+      for (const d of dots) {
+        d.shape = junctionShape(d.at)
+        drawCableBase(c, d.shape, d.color)
+      }
     }
     for (const w of world.wires) this.drawWire(w, w.id === ov.selectedWire || ov.group.wires.has(w.id), colors.get(w.id) ?? w.color, shapes.get(w.id), tapEnds(world, w, sockets))
+    for (const d of dots) {
+      if (d.shape) drawCableBody(c, d.shape, d.color)
+      else {
+        c.fillStyle = d.color
+        c.beginPath()
+        c.arc(d.at.x, d.at.y, 3, 0, Math.PI * 2) // vector look: 6 px across, 1.5 x the 4 px wire
+        c.fill()
+      }
+    }
     for (const part of stack) if (layerOf(part.type) >= 4) this.drawPart(part, sim, now, 1)
     if (front) this.drawPart(front, sim, now, 1)
 
