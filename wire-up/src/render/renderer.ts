@@ -510,8 +510,16 @@ export class Renderer {
     if (def.pinLabels.length === 0 || def.type === 'resistor') return
     const c = this.ctx
     const pins = pinWorld(part)
+    const mid = { x: pins.reduce((s, p) => s + p.x, 0) / pins.length, y: pins.reduce((s, p) => s + p.y, 0) / pins.length }
     pins.forEach((p, i) => {
       const label = PIN_SHOWN[def.pinLabels[i]] ?? def.pinLabels[i] ?? ''
+      if (def.type === 'diode') {
+        // beside the lead: pushed outward along the part's axis, away from its centre
+        const dx = Math.sign(p.x - mid.x)
+        const dy = Math.sign(p.y - mid.y)
+        drawText(c, label, p.x + dx * 13, p.y + dy * 13 - 8, { align: 'center', size: 10, box: true })
+        return
+      }
       drawText(c, label, p.x, p.y + 10, { align: 'center', size: 10, box: true })
     })
   }

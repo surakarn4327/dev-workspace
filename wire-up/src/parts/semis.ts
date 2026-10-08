@@ -147,7 +147,7 @@ export const diode: PartDef = {
         c.fillStyle = COL.metalDark
         c.fillRect(x0, 0, x1 - x0, 2)
       }
-      if (scene.labeled.has(p.id)) drawText(c, '1N4007', cx, 15, { align: 'center', size: 11, box: true })
+      if (scene.labeled.has(p.id)) drawText(c, '1N4007', cx, -34, { align: 'center', size: 11, box: true })
       return
     }
     leg(c, 0, 0, 20, 0)
@@ -161,7 +161,7 @@ export const diode: PartDef = {
     c.fillRect(49, -10, 7, 20)
     c.fillStyle = 'rgba(0,0,0,0.25)'
     c.fillRect(54, -10, 2, 20)
-    if (scene.labeled.has(p.id)) drawText(c, '1N4007', 40, 14, { align: 'center', size: 11, box: true })
+    if (scene.labeled.has(p.id)) drawText(c, '1N4007', 40, -34, { align: 'center', size: 11, box: true })
   },
   fields: () => [LEG_FIELD],
   summary: () => `1N4007, ${DIODE.iMax} A, ${DIODE.vrMax} V`,
