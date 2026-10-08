@@ -389,6 +389,8 @@ export class Workspace {
 
   private down(e: PointerEvent): void {
     this.canvas.setPointerCapture(e.pointerId)
+    // pressing while the open hand is showing closes it at once, before anything has moved
+    if (this.canvas.style.cursor === 'grab') this.canvas.style.cursor = 'grabbing'
     const w = this.world2(e)
     if (e.button === 1 || e.button === 2 || this.space) {
       // middle or right button (or Space + left): drag the view
