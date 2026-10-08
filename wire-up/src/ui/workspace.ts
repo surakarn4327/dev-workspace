@@ -86,7 +86,13 @@ export class Workspace {
     this.sim = new Simulation(world)
     this.bind()
     this.renderer.resize()
+    // The canvas grows to the left when the toolbox hides. Keep what is on screen where it is (the right panel already behaves
+    // like this because the canvas keeps its left edge), by moving the camera by as much as the canvas edge moved.
+    let canvasLeft: number | null = null
     new ResizeObserver(() => {
+      const left = canvas.getBoundingClientRect().left
+      if (canvasLeft !== null) this.view.camX += (left - canvasLeft) / this.view.zoom
+      canvasLeft = left
       this.renderer.resize()
       this.redrawNow()
     }).observe(canvas)
