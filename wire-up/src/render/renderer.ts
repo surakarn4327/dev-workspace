@@ -15,6 +15,9 @@ import type { CableShape } from './pixelwire.ts'
 import { scene } from './scene.ts'
 
 /** Pin names shown on the pin label: an LED or diode lead reads + or - instead of A or K. */
+/** The dot grid never packs its dots closer than this many screen px (see drawGrid). */
+const GRID_MIN_PX = 24
+
 const PIN_SHOWN: Record<string, string | undefined> = { A: '+', K: '-' }
 
 export interface View {
@@ -272,14 +275,33 @@ export class Renderer {
     }
   }
 
+  /**
+   * Dot grid with level of detail: when zooming out the dots would pack closer than GRID_MIN_PX, so only every 2nd, 4th, 8th...
+   * grid point is drawn (always a multiple of the snap grid), and the dots of the finer level fade in as the coarse step grows.
+   */
   private drawGrid(view: View): void {
     const c = this.ctx
-    const step = G * view.zoom
-    if (step < 8) return
+    let mult = 1
+    while (G * view.zoom * mult < GRID_MIN_PX) mult *= 2
+    const half = (G * mult) / 2
+    const coarse = half * 2
+    const fine = mult > 1 ? Math.min(Math.max((coarse * view.zoom - GRID_MIN_PX) / GRID_MIN_PX, 0), 1) : 0
     c.fillStyle = COL.grid
-    const ox = -((view.camX * view.zoom) % step)
-    const oy = -((view.camY * view.zoom) % step)
-    for (let x = ox; x < this.width; x += step) for (let y = oy; y < this.height; y += step) c.fillRect(Math.round(x), Math.round(y), 2, 2)
+    const j0x = Math.floor(view.camX / half)
+    const j0y = Math.floor(view.camY / half)
+    const jx1 = Math.ceil((view.camX + this.width / view.zoom) / half)
+    const jy1 = Math.ceil((view.camY + this.height / view.zoom) / half)
+    const prev = c.globalAlpha
+    for (let jx = j0x; jx <= jx1; jx++) {
+      for (let jy = j0y; jy <= jy1; jy++) {
+        const isCoarse = jx % 2 === 0 && jy % 2 === 0
+        if (!isCoarse && fine === 0) continue
+        if (mult === 1 && !isCoarse) continue
+        c.globalAlpha = prev * (isCoarse ? 1 : fine)
+        c.fillRect(Math.round((jx * half - view.camX) * view.zoom), Math.round((jy * half - view.camY) * view.zoom), 2, 2)
+      }
+    }
+    c.globalAlpha = prev
   }
 
   private drawPart(part: PartInstance, sim: Simulation, now: number, alpha: number): void {
