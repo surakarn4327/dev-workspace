@@ -20,6 +20,7 @@ export const rockerSwitch: PartDef = {
   category: 'switch',
   blurb: 'Click it to flip. ON connects the two legs.',
   pinLabels: ['1', '2'],
+  pinLabelPlace: 'axis',
   defaults: () => ({ on: false }),
   pins: () => [
     { x: 0, y: 0 },
@@ -117,6 +118,7 @@ export const pushButton: PartDef = {
   category: 'switch',
   blurb: 'Tactile switch. Hold the mouse button down to press it.',
   pinLabels: ['1a', '1b', '2a', '2b'],
+  pinLabelPlace: 'axis',
   defaults: () => ({ pressed: false }),
   pins: () => [
     { x: 0, y: 0 },
