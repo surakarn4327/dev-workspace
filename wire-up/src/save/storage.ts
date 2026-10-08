@@ -13,6 +13,9 @@ export interface SavedLab {
   view: View | null
 }
 
+/** 2 = the toolbox floats over the canvas, so a saved view is measured from the window edge. Older saves (no marker) were measured from beside the toolbox, so their view is dropped and the board is fitted instead. */
+const VIEW_LAYOUT = 2
+
 function isView(v: unknown): v is View {
   const o = v as View
   return typeof o === 'object' && o !== null && Number.isFinite(o.camX) && Number.isFinite(o.camY) && Number.isFinite(o.zoom) && o.zoom > 0
@@ -20,7 +23,7 @@ function isView(v: unknown): v is View {
 
 export function saveLab(data: WorldData, view: View): boolean {
   try {
-    localStorage.setItem(LAB_KEY, JSON.stringify({ app: 'wire-up', data, view }))
+    localStorage.setItem(LAB_KEY, JSON.stringify({ app: 'wire-up', data, view, layout: VIEW_LAYOUT }))
     return true
   } catch {
     return false
@@ -39,11 +42,11 @@ export function loadLab(): SavedLab | null {
 
 /** Accepts both the autosave wrapper and a bare exported file. */
 export function parseSave(raw: unknown): SavedLab | null {
-  const o = raw as { data?: unknown; view?: unknown; version?: unknown }
+  const o = raw as { data?: unknown; view?: unknown; version?: unknown; layout?: unknown }
   const body = o && typeof o === 'object' && 'data' in o ? o.data : raw
   const data = validateWorldData(body, KNOWN_TYPES)
   if (typeof data === 'string') return null
-  return { data, view: isView(o?.view) ? o.view : null }
+  return { data, view: o?.layout === VIEW_LAYOUT && isView(o?.view) ? o.view : null }
 }
 
 export function parseImport(text: string): { ok: true; lab: SavedLab } | { ok: false; error: string } {

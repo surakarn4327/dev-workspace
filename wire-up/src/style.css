@@ -66,13 +66,13 @@ body {
   display: grid;
   --lw: 232px;
   --rw: 150px;
-  grid-template-columns: var(--lw) minmax(0, 1fr) var(--rw);
+  grid-template-columns: minmax(0, 1fr) var(--rw);
   transition: grid-template-columns 0.2s ease;
   grid-template-rows: 44px 1fr 26px;
   grid-template-areas:
-    'top top top'
-    'tools stage side'
-    'status status status';
+    'top top'
+    'stage side'
+    'status status';
   height: 100vh;
 }
 
@@ -154,17 +154,33 @@ button:disabled {
   min-width: 0;
 }
 
-#app.hide-left {
-  --lw: 0px;
+#app.hide-left .edge-toggle.left {
+  left: 0;
 }
 
 #app.hide-right {
   --rw: 0px;
 }
 
-#app.hide-left #toolbox,
 #app.hide-right #side {
   border-width: 0;
+}
+
+/* The toolbox floats over the left edge of the canvas (same grid cell as the stage), so hiding it never moves the board */
+#toolbox {
+  grid-area: stage;
+  justify-self: start;
+  width: var(--lw);
+  z-index: 3;
+  border-right: 1px solid var(--line);
+  transition: transform 0.2s ease;
+}
+
+#app.hide-left #toolbox {
+  transform: translateX(-100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.2s ease, visibility 0s 0.2s;
 }
 
 .edge-toggle {
@@ -181,7 +197,8 @@ button:disabled {
 }
 
 .edge-toggle.left {
-  left: 0;
+  left: var(--lw);
+  transition: left 0.2s ease;
   border-radius: 0 4px 4px 0;
   border-left: 0;
 }

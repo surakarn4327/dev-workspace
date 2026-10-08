@@ -53,6 +53,8 @@ export class Workspace {
   readonly renderer: Renderer
   readonly sim: Simulation
   view: View = { camX: -60, camY: -60, zoom: 1 }
+  /** Width of the toolbox floating over the left edge of the canvas: the part of the canvas that is covered. */
+  leftInset = 0
   selectedPart: string | null = null
   selectedWire: string | null = null
   /** Several parts/wires selected at once. Only used for 2 or more items; a single item is `selectedPart`/`selectedWire`. */
@@ -86,13 +88,7 @@ export class Workspace {
     this.sim = new Simulation(world)
     this.bind()
     this.renderer.resize()
-    // The canvas grows to the left when the toolbox hides. Keep what is on screen where it is (the right panel already behaves
-    // like this because the canvas keeps its left edge), by moving the camera by as much as the canvas edge moved.
-    let canvasLeft: number | null = null
     new ResizeObserver(() => {
-      const left = canvas.getBoundingClientRect().left
-      if (canvasLeft !== null) this.view.camX += (left - canvasLeft) / this.view.zoom
-      canvasLeft = left
       this.renderer.resize()
       this.redrawNow()
     }).observe(canvas)
@@ -205,14 +201,19 @@ export class Workspace {
     this.setSelection(new Set(this.world.parts.map((p) => p.id)), new Set(this.world.wires.map((w) => w.id)))
   }
 
+  /** The toolbox floats over the canvas: tell the view how much of the left side it covers (the board itself never moves). */
+  setLeftInset(px: number): void {
+    this.leftInset = px
+  }
+
   centerOfView(): Vec {
-    return this.renderer.toWorld(this.view, this.renderer.width / 2, this.renderer.height / 2)
+    return this.renderer.toWorld(this.view, this.leftInset + (this.renderer.width - this.leftInset) / 2, this.renderer.height / 2)
   }
 
   fitView(): void {
     const w = this.world
     if (w.parts.length === 0 && w.wires.length === 0) {
-      this.view = { camX: -80, camY: -80, zoom: 1 }
+      this.view = { camX: -80 - this.leftInset, camY: -80, zoom: 1 }
       return
     }
     let x0 = Infinity
@@ -233,12 +234,13 @@ export class Workspace {
       }
     }
     const pad = 60
-    const zw = this.renderer.width / (x1 - x0 + pad * 2)
+    const visibleW = this.renderer.width - this.leftInset
+    const zw = visibleW / (x1 - x0 + pad * 2)
     const zh = this.renderer.height / (y1 - y0 + pad * 2)
     const zoom = Math.min(Math.max(Math.min(zw, zh), 0.3), 1.4)
     this.view = {
       zoom,
-      camX: (x0 + x1) / 2 - this.renderer.width / zoom / 2,
+      camX: (x0 + x1) / 2 - (this.leftInset + visibleW / 2) / zoom,
       camY: (y0 + y1) / 2 - this.renderer.height / zoom / 2,
     }
   }
