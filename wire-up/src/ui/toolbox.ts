@@ -27,21 +27,63 @@ function icon(def: PartDef): HTMLCanvasElement {
 }
 
 export function buildToolbox(ws: Workspace, tabsEl: HTMLElement, itemsEl: HTMLElement): void {
-  let active: Category = 'power'
+  let active: Category | 'all' = 'all'
+  let query = ''
+  const labelOf = new Map(CATEGORY_LABELS)
+
+  // search box between the tabs and the list: it looks through every category, whichever tab is open
+  const search = document.createElement('input')
+  search.type = 'search'
+  search.id = 'tool-search'
+  search.placeholder = 'Search all parts'
+  search.autocomplete = 'off'
+  search.spellcheck = false
+  search.addEventListener('input', () => {
+    query = search.value
+    render()
+  })
+  search.addEventListener('keydown', (e) => {
+    e.stopPropagation() // typing here must not trigger canvas shortcuts (W, R, F, Del...)
+    if (e.key === 'Escape') {
+      search.value = ''
+      query = ''
+      search.blur()
+      render()
+    }
+  })
+  itemsEl.parentElement?.insertBefore(search, itemsEl)
+
+  const matches = (d: PartDef, words: string[]): boolean => {
+    const hay = `${d.name} ${d.type} ${d.blurb} ${labelOf.get(d.category) ?? ''}`.toLowerCase()
+    return words.every((w) => hay.includes(w))
+  }
+
   const render = () => {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+    const searching = words.length > 0
     tabsEl.innerHTML = ''
-    for (const [cat, label] of CATEGORY_LABELS) {
+    const tabs: [Category | 'all', string][] = [['all', 'All'], ...CATEGORY_LABELS]
+    for (const [cat, label] of tabs) {
       const b = document.createElement('button')
       b.textContent = label
-      b.className = cat === active ? 'active' : ''
+      b.className = !searching && cat === active ? 'active' : ''
       b.onclick = () => {
         active = cat
+        query = ''
+        search.value = ''
         render()
       }
       tabsEl.appendChild(b)
     }
     itemsEl.innerHTML = ''
-    for (const def of ALL_PARTS.filter((d) => d.category === active)) {
+    const shown = searching ? ALL_PARTS.filter((d) => matches(d, words)) : ALL_PARTS.filter((d) => active === 'all' || d.category === active)
+    if (searching && shown.length === 0) {
+      const none = document.createElement('div')
+      none.className = 'tool-none'
+      none.textContent = 'No parts match.'
+      itemsEl.appendChild(none)
+    }
+    for (const def of shown) {
       const el = document.createElement('div')
       el.className = 'tool'
       el.draggable = true
