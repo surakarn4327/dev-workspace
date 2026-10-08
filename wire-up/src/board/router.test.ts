@@ -111,3 +111,10 @@ describe('battery terminals', () => {
     expect(via[0]).toEqual({ x: 60, y: 160 })
   })
 })
+
+describe('switch legs', () => {
+  it('leaves a side lead sideways', () => {
+    const via = routeVia({ x: 40, y: 160 }, { x: 200, y: 60 }, [], [], [{ x: 40, y: 160, dx: -1, dy: 0 }])
+    expect(via[0]).toEqual({ x: 20, y: 160 })
+  })
+})

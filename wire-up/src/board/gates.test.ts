@@ -6,9 +6,10 @@ import { World } from './world.ts'
 import type { PartInstance } from './world.ts'
 
 /** 9 V battery -> rocker switch on input A of a gate, gate output Y -> 330 ohm -> LED -> back to battery -. All free wires, no board. */
-function build(type: string) {
+function build(type: string, strayBatteryFirst = false) {
   const w = new World()
   const b = new SceneBuilder(w)
+  if (strayBatteryFirst) b.place('battery', -400, 600, { volts: 9 }) // an unrelated battery placed before the one in use
   const bat = b.place('battery', -400, 0, { volts: 9 })
   const gate = b.place(type, 200, 0)
   const sw = b.place('switch', 40, 200)
@@ -60,12 +61,17 @@ describe('logic gates in a real circuit', () => {
     expect(nand.sim.live.get(nand.led.id)!.i).toBeGreaterThan(0.005)
   })
 
-  it('a 9 V input is over the 7 V limit and burns the gate with a clear reason', () => {
+  it('a gate works off the battery in its own circuit, not the first battery on the board', () => {
+    const t = build('gate-not', true)
+    flip(t.w, t.sw, false)
+    for (let k = 0; k < 10; k++) t.sim.step(0.016)
+    expect(t.sim.live.get(t.led.id)!.i).toBeGreaterThan(0.005)
+  })
+
+  it('a gate never burns, even with a 9 V input', () => {
     const t = build('gate-not')
     flip(t.w, t.sw, true)
     for (let k = 0; k < 300; k++) t.sim.step(0.016)
-    expect(t.gate.state.failed).toBe(true)
-    expect(t.gate.state.failMsg).toMatch(/input saw/)
-    expect(t.gate.state.failMsg).toMatch(/7 V/)
+    expect(t.gate.state.failed).toBe(false)
   })
 })

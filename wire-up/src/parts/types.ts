@@ -13,6 +13,8 @@ export interface Rect {
 export interface BuildCtx {
   /** Node number for each pin. */
   pins: number[]
+  /** Node a symbol-level part (a logic gate, which has no ground pin) measures against: the negative of the source in its own circuit. */
+  ref: number
   newNode(): number
   add(e: Element): void
   id(suffix: string): string
@@ -22,6 +24,8 @@ export type PartLive = Record<string, number>
 
 export interface Env {
   pins: number[]
+  /** See `BuildCtx.ref`. */
+  ref: number
   v(node: number): number
   cur(id: string): ElementCurrent | undefined
   ccIds: Set<string>

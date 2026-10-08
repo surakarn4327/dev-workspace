@@ -48,6 +48,8 @@ export interface Netlist {
   circuit: Circuit
   /** Node number of each pin, by part id. */
   partPins: Map<string, number[]>
+  /** Reference node of each logic gate (the negative of a source in its own circuit, else ground), by part id. */
+  partRef: Map<string, number>
   /** Point keys that have a pin or a wire end on them. */
   usedKeys: Set<string>
   nodeAt(p: Vec): number | undefined
@@ -126,13 +128,49 @@ export function buildNetlist(world: World): Netlist {
 
   const elements: Element[] = []
   const partPins = new Map<string, number[]>()
+  const partRef = new Map<string, number>()
   for (const part of world.parts) {
     const keys = pinKeys.get(part.id)
-    if (!keys) continue
-    const nodes = keys.map(nodeFor)
-    partPins.set(part.id, nodes)
+    if (keys) partPins.set(part.id, keys.map(nodeFor))
+  }
+
+  // A logic gate has no ground pin, so it measures against the negative of a source in its own circuit. "Own circuit" =
+  // nodes joined through the other parts (a resistor, an LED, a switch...); a source and a gate do not join anything.
+  const island = new Map<number, number>()
+  const islandOf = (n: number): number => {
+    let r = n
+    while (island.has(r) && island.get(r) !== r) r = island.get(r)!
+    return r
+  }
+  const isSource = (t: string) => t.startsWith('battery') || t === 'supply'
+  for (const part of world.parts) {
+    const pins = partPins.get(part.id)
+    if (!pins || pins.length < 2 || isSource(part.type) || part.type.startsWith('gate-')) continue
+    for (let i = 1; i < pins.length; i++) {
+      const a = islandOf(pins[0])
+      const b = islandOf(pins[i])
+      if (a !== b) island.set(a, b)
+      else if (!island.has(a)) island.set(a, a)
+    }
+  }
+  const sourceNegs = world.parts.flatMap((p) => {
+    const pins = partPins.get(p.id)
+    return pins && isSource(p.type) && !p.state.failed ? [pins[1]] : []
+  })
+  for (const part of world.parts) {
+    if (!part.type.startsWith('gate-')) continue
+    const pins = partPins.get(part.id)
+    if (!pins) continue
+    const mine = new Set(pins.map(islandOf))
+    partRef.set(part.id, sourceNegs.find((n) => mine.has(islandOf(n))) ?? 0)
+  }
+
+  for (const part of world.parts) {
+    const nodes = partPins.get(part.id)
+    if (!nodes) continue
     defOf(part.type).build(part, {
       pins: nodes,
+      ref: partRef.get(part.id) ?? 0,
       newNode: () => nodeCount++,
       add: (e) => elements.push(e),
       id: (s) => `${part.id}:${s}`,
@@ -152,6 +190,7 @@ export function buildNetlist(world: World): Netlist {
   return {
     circuit: { nodeCount, elements },
     partPins,
+    partRef,
     usedKeys,
     nodeAt(p) {
       const k = pointKey(p)

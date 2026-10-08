@@ -1065,7 +1065,17 @@ export function gateGeometry(shape: GateShape): GateGeometry {
       break
     }
   }
-  if (shape === 'not') polys.push([[inX, 0], [-22, 0]])
+  // centre the body (symbol plus output bubble, without legs) in the disc; only the legs get longer or shorter
+  let lo = Infinity
+  let hi = -Infinity
+  for (const poly of polys) for (const [x] of poly) (lo = Math.min(lo, x)), (hi = Math.max(hi, x))
+  for (const [x, , r] of circles) (lo = Math.min(lo, x - r)), (hi = Math.max(hi, x + r))
+  const shift = -(lo + hi) / 2
+  for (const poly of polys) for (const pt of poly) pt[0] += shift
+  for (const circle of circles) circle[0] += shift
+  backAt += shift
+  outFrom += shift
+  if (shape === 'not') polys.push([[inX, 0], [-22 + shift, 0]])
   else for (const y of [-inY, inY]) polys.push([[inX, y], [backAt, y]])
   polys.push([[outFrom, 0], [outX, 0]])
   return { polys, circles }

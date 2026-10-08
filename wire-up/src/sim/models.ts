@@ -77,7 +77,7 @@ export function ledIs(vf10: number): number {
 
 export const DIODE = { is: 1e-8, n: 1.8, rs: 0.04, iMax: 1, vrMax: 1000 }
 /** Logic gate (no supply pins): fixed 5 V logic high, switches at 1.4 V, output behind 60 ohm, 25 mA out, inputs up to 7 V, each input pulled to 0 V by 1 Mohm (an unconnected input reads low). */
-export const GATE = { vh: 5, vth: 1.4, w: 0.12, rout: 60, iMax: 0.025, vinMax: 7, rpull: 1e6 }
+export const GATE = { vh: 5, vth: 1.4, w: 0.12, rout: 60, rpull: 1e6 }
 export const BJT = { is: 1e-14, bf: 200, br: 5, icMax: 0.1, pdMax: 0.5, vceMax: 45, vebMax: 6 }
 
 export const BATTERY_TYPES: Record<string, { r: number; iMax: number; label: string }> = {

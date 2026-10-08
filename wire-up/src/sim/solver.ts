@@ -37,6 +37,8 @@ export interface GateElement {
   vth: number
   w: number
   rout: number
+  /** Node the gate measures its inputs against and drives Y relative to (default 0, ground). */
+  ref?: number
 }
 
 export interface Circuit {
@@ -275,8 +277,10 @@ class Problem {
           break
         }
         case 'G': {
-          const va = this.nv(x, e.a)
-          const vb = e.b === undefined ? 0 : this.nv(x, e.b)
+          const ref = e.ref ?? 0
+          const vr = this.nv(x, ref)
+          const va = this.nv(x, e.a) - vr
+          const vb = e.b === undefined ? 0 : this.nv(x, e.b) - vr
           const sa = step(va, e.vth, e.w)
           const sb = e.b === undefined ? 0 : step(vb, e.vth, e.w)
           const { f, da, db } = gateLogic(e.fn, sa, sb)
@@ -284,13 +288,22 @@ class Problem {
           const ta = amp * da * ((sa * (1 - sa)) / e.w)
           const tb = e.b === undefined ? 0 : amp * db * ((sb * (1 - sb)) / e.w)
           const g = 1 / Math.max(e.rout, 1e-6)
-          if (e.y > 0) {
-            const r = (e.y - 1) * n
-            A[r + (e.y - 1)] += g
-            if (e.a > 0) A[r + (e.a - 1)] -= g * ta
-            if (e.b !== undefined && e.b > 0) A[r + (e.b - 1)] -= g * tb
-            z[e.y - 1] += g * (amp * f - ta * va - tb * vb)
+          // current out of Y into the gate: g * (vy - vref - amp * f(va - vref, vb - vref)), linearised; the reference node gets the opposite
+          const rhs = g * (amp * f - ta * va - tb * vb)
+          const stamp = (row: number, sign: number) => {
+            if (row <= 0) return
+            const r = (row - 1) * n
+            const put = (col: number, v: number) => {
+              if (col > 0) A[r + (col - 1)] += sign * v
+            }
+            put(e.y, g)
+            put(ref, -g + g * ta + (e.b === undefined ? 0 : g * tb))
+            put(e.a, -g * ta)
+            if (e.b !== undefined) put(e.b, -g * tb)
+            z[row - 1] += sign * rhs
           }
+          stamp(e.y, 1)
+          stamp(ref, -1)
           break
         }
         case 'Q': {
@@ -366,11 +379,12 @@ class Problem {
           break
         }
         case 'G': {
-          const sa = step(nv(e.a), e.vth, e.w)
-          const sb = e.b === undefined ? 0 : step(nv(e.b), e.vth, e.w)
+          const vr = nv(e.ref ?? 0)
+          const sa = step(nv(e.a) - vr, e.vth, e.w)
+          const sb = e.b === undefined ? 0 : step(nv(e.b) - vr, e.vth, e.w)
           const { f } = gateLogic(e.fn, sa, sb)
           // current the gate pushes out of Y into the circuit
-          out.set(e.id, { i: (e.vh * f - nv(e.y)) / Math.max(e.rout, 1e-6) })
+          out.set(e.id, { i: (e.vh * f - (nv(e.y) - vr)) / Math.max(e.rout, 1e-6) })
           break
         }
         case 'Q': {

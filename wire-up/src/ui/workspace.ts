@@ -16,7 +16,7 @@ import type { WireShape } from '../board/wireEdit.ts'
 import { G, snap, unrotVec, WIRE_COLORS } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
 import { holeNear } from '../parts/breadboard.ts'
-import { defOf, newPart, pinWorld, rotatePart } from '../parts/index.ts'
+import { defOf, isRuntimeState, newPart, pinWorld, rotatePart } from '../parts/index.ts'
 import { keyName } from './keys.ts'
 import { Renderer } from '../render/renderer.ts'
 import type { Overlay, View } from '../render/renderer.ts'
@@ -65,6 +65,8 @@ export class Workspace {
   /** Called when selection or any user edit happens. */
   onSelect: () => void = () => {}
   onEdit: () => void = () => {}
+  /** Something changed that is saved but is not an undo step (a switch flipped). */
+  onRuntime: () => void = () => {}
   onHover: (info: HoverInfo) => void = () => {}
   onFrame: (dt: number) => void = () => {}
   draggingType: string | null = null
@@ -633,12 +635,17 @@ export class Workspace {
           def.press(m.part, false)
           this.world.touch()
         } else if (m.moved) {
-          untangle(this.world) // a part dropped on a wire sends it round
+          untangle(this.world) // only fixes wires leaving a lead pin the wrong way; wires under a dropped part stay put
           this.world.commit()
           this.onEdit()
         } else if (def.click && def.click(m.part, m.local)) {
-          this.world.commit()
-          this.onEdit()
+          if (isRuntimeState(m.part, 'on')) {
+            this.world.touch() // a flipped switch is not an undo step
+            this.onRuntime()
+          } else {
+            this.world.commit()
+            this.onEdit()
+          }
           this.onSelect()
         }
         break

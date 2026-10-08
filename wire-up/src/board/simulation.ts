@@ -57,6 +57,7 @@ export class Simulation {
       if (!pins) continue
       const ev = defOf(part.type).evaluate(part, {
         pins,
+        ref: this.net.partRef.get(part.id) ?? 0,
         v: (n) => res.v[n] ?? 0,
         cur: (id) => res.cur.get(id),
         ccIds: res.ccIds,

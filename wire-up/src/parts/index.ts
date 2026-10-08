@@ -42,6 +42,11 @@ const byType = new Map<string, PartDef>(ALL_PARTS.map((d) => [d.type, d]))
 
 export const KNOWN_TYPES = new Set(byType.keys())
 
+/** Switch position is a live action like pressing a button on a real board: it is saved, but never an undo / redo step. */
+export function isRuntimeState(p: PartInstance, key: string): boolean {
+  return defOf(p.type).category === 'switch' && key === 'on'
+}
+
 export function defOf(type: string): PartDef {
   const d = byType.get(type)
   if (!d) throw new Error(`Unknown part type: ${type}`)

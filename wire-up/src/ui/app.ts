@@ -3,6 +3,7 @@ import type { WorldData } from '../board/world.ts'
 import { SceneBuilder } from '../lessons/lessons.ts'
 import { exportFile, loadLab, parseImport, saveLab } from '../save/storage.ts'
 import { History } from '../save/history.ts'
+import { isRuntimeState } from '../parts/index.ts'
 import { Inspector } from './inspector.ts'
 import { LessonPanel } from './lessonPanel.ts'
 import { buildToolbox } from './toolbox.ts'
@@ -54,6 +55,7 @@ export class App {
       $('btn-wire').classList.toggle('on', this.ws.wireMode)
     }
     this.ws.onEdit = () => this.afterEdit()
+    this.ws.onRuntime = () => this.scheduleSave()
     this.ws.onHover = (h) => {
       $('status-text').textContent = h.text || 'Drag parts from the left onto the board. Drag from any hole or pin to pull a wire.'
     }
@@ -244,7 +246,10 @@ export class App {
 
   private restore(json: string | null): void {
     if (!json) return
+    // switches keep the position they have now: undo and redo only walk through edits, not through flipped switches
+    const switches = new Map(this.world.parts.filter((p) => isRuntimeState(p, 'on')).map((p) => [p.id, p.params.on === true]))
     this.world.load(JSON.parse(json) as WorldData)
+    for (const p of this.world.parts) if (switches.has(p.id) && isRuntimeState(p, 'on')) p.params.on = switches.get(p.id) === true
     this.ws.select(null)
     this.lastRev = this.world.revision
     this.inspector.rebuild()

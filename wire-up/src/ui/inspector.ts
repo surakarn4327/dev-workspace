@@ -1,6 +1,6 @@
 import { effectiveColors, rootWire } from '../board/wireJoin.ts'
 import { WIRE_COLORS } from '../board/world.ts'
-import { defOf } from '../parts/index.ts'
+import { defOf, isRuntimeState } from '../parts/index.ts'
 import type { Field } from '../parts/types.ts'
 import { eng } from '../sim/models.ts'
 import type { Workspace } from './workspace.ts'
@@ -136,7 +136,11 @@ export class Inspector {
     wrap.appendChild(label)
     const set = (v: number | string | boolean, commit: boolean) => {
       part.params[f.key] = v
-      if (commit) {
+      if (commit && isRuntimeState(part, f.key)) {
+        ws.world.touch() // a flipped switch is not an undo step
+        ws.onRuntime()
+        this.rebuild()
+      } else if (commit) {
         ws.world.commit()
         ws.onEdit()
         this.rebuild()
