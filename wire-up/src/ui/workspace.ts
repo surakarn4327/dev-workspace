@@ -717,7 +717,7 @@ export class Workspace {
         break
       case 'bend':
         this.hoverPoint = hit.point
-        cursor = 'grab'
+        cursor = 'pointer'
         text = hit.index === -1 ? 'Drag the middle of the wire to bend it.' : 'Wire corner: drag to reshape the wire.'
         break
       case 'pin':
