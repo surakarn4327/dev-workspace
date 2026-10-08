@@ -18,7 +18,7 @@ import { scene } from './scene.ts'
 /** The dot grid never packs its dots closer than this many screen px (see drawGrid). */
 const GRID_MIN_PX = 24
 /** Overall strength of the dot grid (1 = full `COL.grid`). */
-const GRID_ALPHA = 0.65
+const GRID_ALPHA = 0.5
 
 const PIN_SHOWN: Record<string, string | undefined> = { A: '+', K: '-' }
 
