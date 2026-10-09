@@ -10,14 +10,14 @@ import type { PartDef } from './types.ts'
 
 /** Segment name and where it is drawn in one digit (art pixels from the left edge of that digit's 50 pixel wide cell). */
 export const SEGMENTS: { name: string; x: number; y: number; w: number; h: number }[] = [
-  { name: 'a', x: 9, y: 5, w: 30, h: 6 },
-  { name: 'b', x: 36, y: 10, w: 6, h: 23 },
-  { name: 'c', x: 36, y: 37, w: 6, h: 23 },
-  { name: 'd', x: 9, y: 59, w: 30, h: 6 },
-  { name: 'e', x: 6, y: 37, w: 6, h: 23 },
-  { name: 'f', x: 6, y: 10, w: 6, h: 23 },
-  { name: 'g', x: 9, y: 32, w: 30, h: 6 },
-  { name: 'dp', x: 43, y: 59, w: 6, h: 6 },
+  { name: 'a', x: 11, y: 6, w: 27, h: 5 },
+  { name: 'b', x: 36, y: 9, w: 5, h: 25 },
+  { name: 'c', x: 36, y: 35, w: 5, h: 25 },
+  { name: 'd', x: 11, y: 58, w: 27, h: 5 },
+  { name: 'e', x: 8, y: 35, w: 5, h: 25 },
+  { name: 'f', x: 8, y: 9, w: 5, h: 25 },
+  { name: 'g', x: 11, y: 32, w: 27, h: 5 },
+  { name: 'dp', x: 43, y: 58, w: 5, h: 5 },
 ]
 export const DIGIT_W = 50 // art pixels per digit
 const OY = 10
@@ -43,14 +43,12 @@ function drawSegment(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENT
     const px = (x: number, y: number, w: number, h: number) => g.fillRect(x, y, w, h)
     if (s.name === 'dp') {
       // a round dot
-      px(2, 0, 2, 1)
-      px(1, 1, 4, 1)
-      px(0, 2, 6, 2)
-      px(1, 4, 4, 1)
-      px(2, 5, 2, 1)
+      px(1, 0, 3, 1)
+      px(0, 1, 5, 3)
+      px(1, 4, 3, 1)
     } else {
-      // a bar 6 pixels thick whose two ends are cut at 45 degrees to a point, like the picture the user sent
-      const inset = [2, 1, 0, 0, 1, 2]
+      // a bar 5 pixels thick whose two ends are cut at 45 degrees to a point, like the picture the user sent
+      const inset = [2, 1, 0, 1, 2]
       if (s.w > s.h) inset.forEach((k, r) => px(k, r, s.w - 2 * k, 1))
       else inset.forEach((k, col) => px(col, k, 1, s.h - 2 * k))
     }
@@ -165,7 +163,7 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
             const i = live[`i_${d}_${s.name}`] ?? 0
             // an LED looks bright well below its full current: about half of the brightness is reached at a quarter of 12 mA
             const b = i > 1e-5 ? Math.min(1, Math.sqrt(i / 0.012)) : 0
-            drawSegment(c, dx, s, '#f2f0ea')
+            drawSegment(c, dx, s, '#d8d6d3')
             if (b > 0) {
               c.globalAlpha = Math.min(1, 0.3 + 0.8 * b)
               drawSegment(c, dx, s, '#ff3b4a')
@@ -187,7 +185,7 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
       for (let d = 0; d < digits; d++) {
         for (const s of SEGMENTS) {
           const on = (live[`i_${d}_${s.name}`] ?? 0) > 1e-5
-          c.fillStyle = on ? '#ff3b4a' : '#f2f0ea'
+          c.fillStyle = on ? '#ff3b4a' : '#d8d6d3'
           c.fillRect(ox + d * DIGIT_W * 2 + s.x * 2, OY + s.y * 2, s.w * 2, s.h * 2)
         }
       }

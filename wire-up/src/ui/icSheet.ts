@@ -125,7 +125,7 @@ function drawSegSheet(c: CanvasRenderingContext2D, type: string): void {
   const h = 165 * k
   c.strokeRect(x, y, w, h)
   // each digit: every segment as the same pointed bar the part draws (art pixels x 2 x k), centred in its cell
-  const oy = y + (h - 120 * k) / 2 - 10 * k
+  const oy = y + (h - 114 * k) / 2 - 12 * k
   for (let d = 0; d < info.digits; d++) {
     const cellX = x + d * 100 * k
     for (const s of SEGMENTS) {
