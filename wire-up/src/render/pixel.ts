@@ -174,23 +174,46 @@ function paintLegCells(c: CanvasRenderingContext2D, cells: LegCells): void {
   let y0 = Infinity
   let x1 = -Infinity
   let y1 = -Infinity
-  for (const k of cells.keys()) {
+  const key: string[] = []
+  for (const [k, tone] of cells) {
     const [ax, ay] = k.split(',').map(Number)
     x0 = Math.min(x0, ax)
     x1 = Math.max(x1, ax)
     y0 = Math.min(y0, ay)
     y1 = Math.max(y1, ay)
+    key.push(k + tone)
   }
-  c.fillStyle = 'rgba(0,0,0,0.38)'
-  for (let ay = y0 - 1; ay <= y1 + 2; ay++) for (let ax = x0 - 1; ax <= x1 + 2; ax++) if (!solid(ax, ay) && solid(ax - 1, ay - 1)) c.fillRect(ax * PX, ay * PX, PX, PX)
-  c.fillStyle = '#07070a'
-  for (let ay = y0 - 1; ay <= y1 + 1; ay++) for (let ax = x0 - 1; ax <= x1 + 1; ax++) if (solid(ax, ay) && !has(ax, ay)) c.fillRect(ax * PX, ay * PX, PX, PX)
-  for (const [k, tone] of cells) {
-    const [ax, ay] = k.split(',').map(Number)
-    c.fillStyle = tone === 'L' ? '#c9ced6' : '#7d838f'
-    c.fillRect(ax * PX, ay * PX, PX, PX)
+  // like the sprites, the leg is made once as a tiny bitmap (one pixel per art pixel) and drawn with no smoothing: drawing
+  // each cell as its own rectangle leaves hairline seams between cells at fractional zoom
+  const id = key.sort().join(';')
+  let bmp = legCache.get(id)
+  const ox = x0 - 1
+  const oy = y0 - 1
+  const w = x1 - x0 + 4
+  const h = y1 - y0 + 4
+  if (!bmp) {
+    bmp = document.createElement('canvas')
+    bmp.width = w
+    bmp.height = h
+    const g = bmp.getContext('2d')!
+    g.fillStyle = 'rgba(0,0,0,0.38)'
+    for (let ay = oy; ay < oy + h; ay++) for (let ax = ox; ax < ox + w; ax++) if (!solid(ax, ay) && solid(ax - 1, ay - 1)) g.fillRect(ax - ox, ay - oy, 1, 1)
+    g.fillStyle = '#07070a'
+    for (let ay = oy; ay < oy + h; ay++) for (let ax = ox; ax < ox + w; ax++) if (solid(ax, ay) && !has(ax, ay)) g.fillRect(ax - ox, ay - oy, 1, 1)
+    for (const [k, tone] of cells) {
+      const [ax, ay] = k.split(',').map(Number)
+      g.fillStyle = tone === 'L' ? '#c9ced6' : '#7d838f'
+      g.fillRect(ax - ox, ay - oy, 1, 1)
+    }
+    legCache.set(id, bmp)
   }
+  const smooth = c.imageSmoothingEnabled
+  c.imageSmoothingEnabled = false
+  c.drawImage(bmp, ox * PX, oy * PX, w * PX, h * PX)
+  c.imageSmoothingEnabled = smooth
 }
+
+const legCache = new Map<string, HTMLCanvasElement>()
 
 /** A vertical leg centred on world x, from `top` to `bottom` (even numbers), light on the left, shaded on the right. */
 export function pxLeg(c: CanvasRenderingContext2D, x: number, top: number, bottom: number): void {
