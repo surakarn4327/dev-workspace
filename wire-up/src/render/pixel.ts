@@ -166,12 +166,17 @@ export function spriteInk(s: Sprite, x: number, y: number): { left: number; top:
  * adds 2 world px below `bottom`, so a label under the leg needs `tipPastPin` 2 more than for a bare leg.
  */
 export function pxLeg(c: CanvasRenderingContext2D, x: number, top: number, bottom: number): void {
-  // the same 1 art pixel drop shadow, down and to the right, that PixelGrid.build gives every sprite
+  // work on the art pixel grid (2 world px) so the outline and shadow come out exactly as `PixelGrid.build` makes them for the chip pins
+  const a0 = (x - 2) / PX
+  const a1 = a0 + 1
+  const t = top / PX
+  const b = bottom / PX - 1
+  const leg = (ax: number, ay: number): boolean => ax >= a0 && ax <= a1 && ay >= t && ay <= b
+  const solid = (ax: number, ay: number): boolean => leg(ax, ay) || leg(ax - 1, ay) || leg(ax + 1, ay) || leg(ax, ay - 1) || leg(ax, ay + 1)
   c.fillStyle = 'rgba(0,0,0,0.38)'
-  c.fillRect(x + 4, top + 2, 2, bottom - top + 2)
-  c.fillRect(x - 2, bottom + 2, 8, 2)
+  for (let ay = t - 1; ay <= b + 3; ay++) for (let ax = a0 - 1; ax <= a1 + 2; ax++) if (!solid(ax, ay) && solid(ax - 1, ay - 1)) c.fillRect(ax * PX, ay * PX, PX, PX)
   c.fillStyle = '#07070a'
-  c.fillRect(x - 4, top, 8, bottom - top + 2)
+  for (let ay = t - 1; ay <= b + 1; ay++) for (let ax = a0 - 1; ax <= a1 + 1; ax++) if (solid(ax, ay) && !leg(ax, ay)) c.fillRect(ax * PX, ay * PX, PX, PX)
   c.fillStyle = '#c9ced6'
   c.fillRect(x - 2, top, 2, bottom - top)
   c.fillStyle = '#7d838f'
