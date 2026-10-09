@@ -120,5 +120,13 @@ export function groupCollides(world: World, partIds: Set<string>, wireIds: Set<s
     const w = world.getWire(id)
     if (w && [w.a, w.b, ...(w.taps ?? [])].some((v) => foreign.has(pointKey(v)) || foreignPins.has(pointKey(v)))) return true
   }
+  // a wire end resting on the body of a wire of the other side joins it too (the branch rule), whichever side the end belongs to:
+  // a pasted circuit laid over the original used to pick up such joins, and dragging it away then stretched a wire between the two
+  const sockets = socketKeys(world)
+  const restsOn = (w: Wire, other: Wire): boolean =>
+    [w.a, w.b].some((end) => !sockets.has(pointKey(end)) && pointKey(other.a) !== pointKey(end) && pointKey(other.b) !== pointKey(end) && onPath(end, other))
+  const group = world.wires.filter((w) => wireIds.has(w.id))
+  const others = world.wires.filter((w) => !wireIds.has(w.id))
+  for (const g of group) for (const o of others) if (restsOn(g, o) || restsOn(o, g)) return true
   return false
 }

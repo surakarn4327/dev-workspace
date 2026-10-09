@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { newPart } from '../parts/index.ts'
 import { applyFollow, planGroup } from './follow.ts'
+import { groupCollides } from './wireJoin.ts'
 import { copyOut, itemsInBox, partBox, pasteIn } from './group.ts'
 import { G, World } from './world.ts'
 
@@ -60,6 +61,29 @@ describe('group move', () => {
     expect(b.a).toEqual({ x: 120 + 2 * G, y: 200 + G }) // end slid along with the main wire
     expect(b.b).toEqual({ x: 120, y: 140 }) // far end stays put
     expect(m.a.y).toBe(200 + G)
+  })
+})
+
+describe('a pasted group laid over a wire', () => {
+  it('is held apart when one of its wire ends rests on the body of a foreign wire', () => {
+    const w = new World()
+    w.addWire({ x: 0, y: 0 }, { x: 200, y: 0 }, '#ff4a4a')
+    const copy = w.addWire({ x: 100, y: 60 }, { x: 100, y: 0 }, '#2f6fe0') // its end sits in the middle of the other wire
+    expect(groupCollides(w, new Set(), new Set([copy.id]))).toBe(true)
+  })
+
+  it('is held apart when a foreign wire end rests on the body of one of its wires', () => {
+    const w = new World()
+    const copy = w.addWire({ x: 0, y: 0 }, { x: 200, y: 0 }, '#ff4a4a')
+    w.addWire({ x: 100, y: 60 }, { x: 100, y: 0 }, '#2f6fe0')
+    expect(groupCollides(w, new Set(), new Set([copy.id]))).toBe(true)
+  })
+
+  it('is not held when the wires only cross or lie apart', () => {
+    const w = new World()
+    w.addWire({ x: 0, y: 0 }, { x: 200, y: 0 }, '#ff4a4a')
+    const crossing = w.addWire({ x: 100, y: -60 }, { x: 100, y: 60 }, '#2f6fe0')
+    expect(groupCollides(w, new Set(), new Set([crossing.id]))).toBe(false)
   })
 })
 
