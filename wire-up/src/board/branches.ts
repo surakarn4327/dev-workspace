@@ -117,16 +117,18 @@ function reattach(w: Wire, end: 'a' | 'b', to: Vec): void {
  * shorter than the way to it, or went away) turns one corner to get there.
  */
 export function carryBranches(world: World, ends: BranchEnd[], oldPath: Vec[], newPath: Vec[]): void {
-  for (const be of ends) {
-    const w = world.getWire(be.wire)
-    if (!w) continue
-    const to = slideEnd(be.at, oldPath, newPath)
-    if (to.x === w[be.end].x && to.y === w[be.end].y) continue
-    const path = wirePath(w)
-    const near = be.end === 'a' ? path[1] : path[path.length - 2]
-    // the branch's first stretch keeps its direction when the end moves along it: it just gets longer or shorter
-    const keepsDirection = (near.x === be.at.x && to.x === be.at.x) || (near.y === be.at.y && to.y === be.at.y)
-    if (keepsDirection) w[be.end] = to
-    else reattach(w, be.end, to)
-  }
+  for (const be of ends) moveBranchEnd(world, be, slideEnd(be.at, oldPath, newPath))
+}
+
+/** Bring one branch end to `to`: along its own first stretch if it can, else with one extra corner. */
+export function moveBranchEnd(world: World, be: BranchEnd, to: Vec): void {
+  const w = world.getWire(be.wire)
+  if (!w) return
+  if (to.x === w[be.end].x && to.y === w[be.end].y) return
+  const path = wirePath(w)
+  const near = be.end === 'a' ? path[1] : path[path.length - 2]
+  // the branch's first stretch keeps its direction when the end moves along it: it just gets longer or shorter
+  const keepsDirection = (near.x === be.at.x && to.x === be.at.x) || (near.y === be.at.y && to.y === be.at.y)
+  if (keepsDirection) w[be.end] = to
+  else reattach(w, be.end, to)
 }

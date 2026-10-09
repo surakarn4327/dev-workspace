@@ -3,7 +3,7 @@
 
 import { boardHoles } from '../parts/breadboard.ts'
 import { defOf, pinWorld } from '../parts/index.ts'
-import { branchMap, carryBranches } from './branches.ts'
+import { branchMap, carryBranches, moveBranchEnd } from './branches.ts'
 import type { BranchEnd } from './branches.ts'
 import { tidy, unfold } from './wireEdit.ts'
 import { pointKey } from './world.ts'
@@ -178,6 +178,7 @@ export function applyFollow(world: World, plan: FollowPlan, dx: number, dy: numb
     if (s?.leads) p.leads = s.leads.map((l) => (plan.moving.has(pointKey(l)) ? { x: l.x + dx, y: l.y + dy } : clonePoint(l)))
   }
   const moved: [Wire, Wire][] = []
+  const wholeMoved: Wire[] = []
   for (const base of plan.wires) {
     const w = world.getWire(base.id)
     if (!w || plan.skip?.has(base.id)) continue
@@ -187,6 +188,7 @@ export function applyFollow(world: World, plan: FollowPlan, dx: number, dy: numb
       w.b = shift(base.b)
       w.via = base.via.map(shift)
       w.taps = base.taps && base.taps.length > 0 ? base.taps.map(shift) : undefined
+      wholeMoved.push(base)
       continue
     }
     const next = followWire(base, plan.moving, dx, dy)
@@ -196,9 +198,18 @@ export function applyFollow(world: World, plan: FollowPlan, dx: number, dy: numb
     w.taps = next.taps && next.taps.length > 0 ? next.taps : undefined
     moved.push([base, w])
   }
+  // a wire that moved bodily takes the branches resting on it along: their ends shift by the same step
+  for (const base of wholeMoved) {
+    for (const e of plan.branches?.get(base.id) ?? []) {
+      if (plan.whole.has(e.wire) || plan.skip?.has(e.wire)) continue
+      moveBranchEnd(world, e, { x: e.at.x + dx, y: e.at.y + dy })
+    }
+  }
   // branch wires follow the stretches of the wires they rest on (after every wire has its new shape, so none is overwritten)
   for (const [base, w] of moved) {
     const ends = plan.branches?.get(base.id)
-    if (ends) carryBranches(world, ends, [base.a, ...base.via, base.b], [w.a, ...w.via, w.b])
+    // branches that move as a whole themselves (or are held apart) already have their place
+    const free = ends?.filter((e) => !plan.whole.has(e.wire) && !plan.skip?.has(e.wire))
+    if (free && free.length > 0) carryBranches(world, free, [base.a, ...base.via, base.b], [w.a, ...w.via, w.b])
   }
 }

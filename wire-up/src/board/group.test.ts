@@ -48,6 +48,19 @@ describe('group move', () => {
     expect(w.getWire(w2.id)!.a.y).toBe(pin.y) // end stays on the pin of the moved part
     expect(w.getWire(wire)).toBeDefined()
   })
+
+  it('carries an unselected branch resting on a selected wire', () => {
+    const w = new World()
+    const main = w.addWire({ x: 100, y: 200 }, { x: 160, y: 200 }, '#ff4a4a')
+    const branch = w.addWire({ x: 120, y: 200 }, { x: 120, y: 140 }, '#2f6fe0')
+    const plan = planGroup(w, new Set(), new Set([main.id]))
+    applyFollow(w, plan, 2 * G, G)
+    const m = w.getWire(main.id)!
+    const b = w.getWire(branch.id)!
+    expect(b.a).toEqual({ x: 120 + 2 * G, y: 200 + G }) // end slid along with the main wire
+    expect(b.b).toEqual({ x: 120, y: 140 }) // far end stays put
+    expect(m.a.y).toBe(200 + G)
+  })
 })
 
 describe('copy and paste', () => {
