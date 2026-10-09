@@ -1,7 +1,7 @@
 import type { PartInstance } from '../board/world.ts'
-import { COL, drawLabelAbove, drawText, leg, radialGlow, rrect } from '../render/draw.ts'
+import { drawLabelAbove, drawText, leg, radialGlow, rrect } from '../render/draw.ts'
 import { CAP, CERAMIC_CAP_VALUES, ELECTRO_CAP_VALUES, eiaCode, eng, fmtFarads, fmtOhms, ldrResistance, ntcResistance, resistorBands, RESISTOR_VALUES } from '../sim/models.ts'
-import { drawSprite, pxLeg, pxLine, pxRect, spriteInk } from '../render/pixel.ts'
+import { drawSprite, pxLeg, pxLegH, pxLine, pxRect, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { ceramicCapSprite, electroCapSprite, ldrSprite, ntcSprite, potSprite, resistorSprite } from './art.ts'
 import { eid, legDrop, legGrid, LEG_FIELD, num, spreadOf, stress, U } from './common.ts'
@@ -47,16 +47,10 @@ export const resistor: PartDef = {
     const cx = s / 2
     if (scene.pixel) {
       const body = resistorSprite(resistorBands(num(p, 'value', 330)))
+      // legs first (they end under the body), then the body over them
+      pxLegH(c, 0, 0, cx - 18)
+      pxLegH(c, 0, cx + 18, s)
       drawSprite(c, body, cx - 24, -11)
-      for (const [x0, x1] of [
-        [0, cx - 26],
-        [cx + 26, s],
-      ]) {
-        c.fillStyle = '#c9ced6'
-        c.fillRect(x0, -2, x1 - x0, 2)
-        c.fillStyle = '#7d838f'
-        c.fillRect(x0, 0, x1 - x0, 2)
-      }
       if (scene.labeled.has(p.id)) drawLabelAbove(c, fmtOhms(num(p, 'value', 330)), cx, spriteInk(body, cx - 24, -11).top)
       return
     }
@@ -106,7 +100,7 @@ export const potentiometer: PartDef = {
   wheelKey: 'pos',
   pinLabels: ['1', 'W', '2'],
   pinLabelPlace: 'below',
-  tipPastPin: 4,
+  tipPastPin: 6,
   tipPastPinVector: 2,
   defaults: () => ({ value: 10000, pos: 0.5, legs: 1 }),
   pins: (p) => [
@@ -143,12 +137,7 @@ export const potentiometer: PartDef = {
   draw(c, p) {
     const pos = num(p, 'pos', 0.5)
     if (scene.pixel) {
-      for (let k = 0; k < 3; k++) {
-        c.fillStyle = COL.metal
-        c.fillRect(k * U - 2, -10, 2, 14 + legDrop(p))
-        c.fillStyle = COL.metalDark
-        c.fillRect(k * U, -10, 2, 14 + legDrop(p))
-      }
+      for (let k = 0; k < 3; k++) pxLeg(c, k * U, -10, 4 + legDrop(p))
       drawSprite(c, potSprite(), -10, -62)
       // groove across the knob with a lit pointer at the end the setting points to
       const a = (-135 + 270 * pos) * (Math.PI / 180)
@@ -212,7 +201,7 @@ export const ldr: PartDef = {
   blurb: 'Resistance falls as light gets brighter.',
   pinLabels: ['1', '2'],
   pinLabelPlace: 'below',
-  tipPastPin: 4,
+  tipPastPin: 6,
   tipPastPinVector: 2,
   wheelKey: 'lux',
   defaults: () => ({ lux: 100, legs: 1 }),
@@ -282,7 +271,7 @@ export const ntc: PartDef = {
   blurb: '10 k at 25 C. Resistance falls as it warms up.',
   pinLabels: ['1', '2'],
   pinLabelPlace: 'below',
-  tipPastPin: 4,
+  tipPastPin: 6,
   tipPastPinVector: 2,
   wheelKey: 'temp',
   defaults: () => ({ temp: 25, legs: 1 }),
@@ -342,17 +331,8 @@ export const ntc: PartDef = {
 // ---------------------------------------------------------------- capacitors
 
 /** Two straight legs, one hole apart, running up from the pins to `top` and hidden behind the body (LDR, NTC, ceramic disc). */
-function straightLegs(c: CanvasRenderingContext2D, p: PartInstance, top: number, outlined = false): void {
-  for (const x of [0, 20]) {
-    if (outlined) {
-      pxLeg(c, x, top, 4 + legDrop(p))
-      continue
-    }
-    c.fillStyle = COL.metal
-    c.fillRect(x - 2, top, 2, 4 - top + legDrop(p))
-    c.fillStyle = COL.metalDark
-    c.fillRect(x, top, 2, 4 - top + legDrop(p))
-  }
+function straightLegs(c: CanvasRenderingContext2D, p: PartInstance, top: number): void {
+  for (const x of [0, 20]) pxLeg(c, x, top, 4 + legDrop(p))
 }
 
 function capEval(p: PartInstance, env: Env, esr: number, stressOf: (v: number) => Stress): Eval {
@@ -386,7 +366,7 @@ export const ceramicCap: PartDef = {
     ),
   draw(c, p) {
     if (scene.pixel) {
-      straightLegs(c, p, -6, true)
+      straightLegs(c, p, -6)
       c.save()
       c.translate(-10, 0)
       drawSprite(c, ceramicCapSprite(), -2, -52)

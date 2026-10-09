@@ -1,6 +1,6 @@
 import { COL, drawLabelAbove, drawText, leg, mix, radialGlow, rrect } from '../render/draw.ts'
 import { BJT, DIODE, eng, LED_COLORS, LED_I_MAX, LED_I_RATED, LED_N, LED_RS, LED_VR_MAX, ledIs } from '../sim/models.ts'
-import { drawSprite, pxLeg, pxLine, spriteInk } from '../render/pixel.ts'
+import { drawSprite, pxLeg, pxLegDiag, pxLegH, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { diodeSprite, ledSprite, to92Sprite } from './art.ts'
 import { eid, legDrop, legGrid, LEG_FIELD, spreadOf, str, stress, U } from './common.ts'
@@ -107,6 +107,7 @@ export const diode: PartDef = {
   blurb: 'One-way valve for current. Band marks the cathode.',
   pinLabels: ['A', 'K'],
   pinLabelPlace: 'axis',
+  tipPastPin: 2,
   tipPastPinVector: 2,
   defaults: () => ({ legs: 1 }),
   pins: (p) => [
@@ -136,16 +137,10 @@ export const diode: PartDef = {
       const sp = spreadOf(p) * U
       const cx = sp / 2
       const body = diodeSprite()
+      // legs first (they end under the body), then the body over them
+      pxLegH(c, 0, 0, cx - 16)
+      pxLegH(c, 0, cx + 16, sp)
       drawSprite(c, body, cx - 22, -10)
-      for (const [x0, x1] of [
-        [0, cx - 24],
-        [cx + 24, sp],
-      ]) {
-        c.fillStyle = COL.metal
-        c.fillRect(x0, -2, x1 - x0, 2)
-        c.fillStyle = COL.metalDark
-        c.fillRect(x0, 0, x1 - x0, 2)
-      }
       if (scene.labeled.has(p.id)) drawLabelAbove(c, '1N4007', cx, spriteInk(body, cx - 22, -10).top)
       return
     }
@@ -184,7 +179,7 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
       : 'PNP: conducts when the base is pulled LOW relative to the emitter.',
     pinLabels: ['C', 'B', 'E'],
     pinLabelPlace: 'below',
-    tipPastPin: 4,
+    tipPastPin: 6,
     tipPastPinVector: 2,
     defaults: () => ({ legs: 1 }),
     pins: (p) => [
@@ -223,18 +218,12 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
     draw(c, p, live) {
       if (scene.pixel) {
         // middle leg straight; outer legs go up from the pins, then slant in under the body (art-pixel diagonals)
-        for (let k = 0; k < 3; k++) {
-          c.fillStyle = COL.metal
-          c.fillRect(k * U - 2, k === 1 ? -10 : 0, 2, (k === 1 ? 14 : 4) + legDrop(p))
-          c.fillStyle = COL.metalDark
-          c.fillRect(k * U, k === 1 ? -10 : 0, 2, (k === 1 ? 14 : 4) + legDrop(p))
-        }
+        for (let k = 0; k < 3; k++) pxLeg(c, k * U, k === 1 ? -10 : 0, 4 + legDrop(p))
         for (const [x, tx] of [
           [0, 5],
           [40, 15],
         ]) {
-          pxLine(c, 0, 0, x / 2 - 1, 0, tx - 1, -7, COL.metal)
-          pxLine(c, 0, 0, x / 2, 0, tx, -7, COL.metalDark)
+          pxLegDiag(c, x / 2, 0, tx, -7)
         }
         drawSprite(c, to92Sprite(), 0, -44)
         drawText(c, label, 20, -24, { color: '#8e8aa8', align: 'center' })

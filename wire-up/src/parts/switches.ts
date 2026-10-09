@@ -1,6 +1,6 @@
 import { COL, drawText, leg, radialGlow, rrect } from '../render/draw.ts'
 import { eng } from '../sim/models.ts'
-import { drawSprite, pxLine, pxRect } from '../render/pixel.ts'
+import { drawSprite, pxLegDiag, pxRect } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { ROCKER_I, ROCKER_O, rockerSwitchSprite, slideSwitchSprite, tactSprite } from './art.ts'
 import { eid, flag, stress } from './common.ts'
@@ -123,7 +123,7 @@ export const pushButton: PartDef = {
   blurb: 'Tactile switch. Hold the mouse button down to press it.',
   pinLabels: ['1a', '1b', '2a', '2b'],
   pinLabelPlace: 'side',
-  tipPastPin: 2,
+  tipPastPin: 4,
   defaults: () => ({ pressed: false }),
   pins: () => [
     { x: 0, y: 0 },
@@ -153,8 +153,7 @@ export const pushButton: PartDef = {
         [30, 0, 26, 4],
         [30, 30, 26, 26],
       ]) {
-        pxLine(c, 0, 0, px - 1, py, tx - 1, ty, COL.metal)
-        pxLine(c, 0, 0, px, py, tx, ty, COL.metalDark)
+        pxLegDiag(c, px, py, tx, ty)
       }
       drawSprite(c, tactSprite(down), 4, 4)
       return
