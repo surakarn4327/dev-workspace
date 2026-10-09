@@ -31,7 +31,7 @@ const segCache = new Map<string, HTMLCanvasElement>()
  * as a tiny bitmap and drawn with no smoothing, like the sprites: drawing it row by row left hairline seams between the rows when
  * the board is zoomed to an odd size, so the bar looked like several strips side by side.
  */
-function drawSegment(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENTS)[number], color: string): void {
+function segBitmap(s: (typeof SEGMENTS)[number], color: string): HTMLCanvasElement {
   const key = `${s.name === 'dp' ? 'dp' : s.w > s.h ? 'h' : 'v'}${s.w}x${s.h}${color}`
   let bmp = segCache.get(key)
   if (!bmp) {
@@ -54,9 +54,62 @@ function drawSegment(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENT
     }
     segCache.set(key, bmp)
   }
+  return bmp
+}
+
+function drawSegment(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENTS)[number], color: string): void {
   const smooth = c.imageSmoothingEnabled
   c.imageSmoothingEnabled = false
-  c.drawImage(bmp, ox + s.x * PX, OY + s.y * PX, s.w * PX, s.h * PX)
+  c.drawImage(segBitmap(s, color), ox + s.x * PX, OY + s.y * PX, s.w * PX, s.h * PX)
+  c.imageSmoothingEnabled = smooth
+}
+
+/** How far the glow of a lit segment reaches, in art pixels: about one bar thickness. */
+const GLOW_R = 5
+const glowCache = new Map<string, HTMLCanvasElement>()
+
+/**
+ * The light spilling from a lit segment: a stepped halo in the shape of the segment itself (not a circle), strongest at the edge of
+ * the bar and fading out over `GLOW_R` art pixels. One pixel per art pixel, drawn with no smoothing like everything else.
+ */
+function glowBitmap(s: (typeof SEGMENTS)[number]): HTMLCanvasElement {
+  const key = `${s.name === 'dp' ? 'dp' : s.w > s.h ? 'h' : 'v'}${s.w}x${s.h}`
+  let bmp = glowCache.get(key)
+  if (!bmp) {
+    const shape = segBitmap(s, '#000000')
+    const mask = shape.getContext('2d')!.getImageData(0, 0, s.w, s.h).data
+    const lit = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < s.w && y < s.h && mask[(y * s.w + x) * 4 + 3] > 0
+    const W = s.w + 2 * GLOW_R
+    const H = s.h + 2 * GLOW_R
+    bmp = document.createElement('canvas')
+    bmp.width = W
+    bmp.height = H
+    const g = bmp.getContext('2d')!
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const sx = x - GLOW_R
+        const sy = y - GLOW_R
+        if (lit(sx, sy)) continue
+        // distance to the nearest pixel of the bar
+        let best = Infinity
+        for (let dy = -GLOW_R; dy <= GLOW_R; dy++) for (let dx = -GLOW_R; dx <= GLOW_R; dx++) if (lit(sx + dx, sy + dy)) best = Math.min(best, Math.hypot(dx, dy))
+        if (best > GLOW_R) continue
+        const t = 1 - (best - 0.5) / (GLOW_R + 0.5)
+        g.fillStyle = `rgba(255,59,74,${(0.55 * t * t).toFixed(3)})`
+        g.fillRect(x, y, 1, 1)
+      }
+    }
+    glowCache.set(key, bmp)
+  }
+  return bmp
+}
+
+function drawGlow(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENTS)[number], strength: number): void {
+  const smooth = c.imageSmoothingEnabled
+  c.imageSmoothingEnabled = false
+  c.globalAlpha = strength
+  c.drawImage(glowBitmap(s), ox + (s.x - GLOW_R) * PX, OY + (s.y - GLOW_R) * PX, (s.w + 2 * GLOW_R) * PX, (s.h + 2 * GLOW_R) * PX)
+  c.globalAlpha = 1
   c.imageSmoothingEnabled = smooth
 }
 
@@ -157,12 +210,23 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
         }
         const body = digits > 1 ? seg4DisplaySprite() : segDisplaySprite()
         drawSprite(c, body, ox, OY)
+        const brightness = (d: number, name: string): number => {
+          const i = live[`i_${d}_${name}`] ?? 0
+          // an LED looks bright well below its full current: about half of the brightness is reached at a quarter of 12 mA
+          return i > 1e-5 ? Math.min(1, Math.sqrt(i / 0.012)) : 0
+        }
+        // the light of every lit segment first (so it lies under the bars), then the bars
         for (let d = 0; d < digits; d++) {
           const dx = ox + d * DIGIT_W * 2
           for (const s of SEGMENTS) {
-            const i = live[`i_${d}_${s.name}`] ?? 0
-            // an LED looks bright well below its full current: about half of the brightness is reached at a quarter of 12 mA
-            const b = i > 1e-5 ? Math.min(1, Math.sqrt(i / 0.012)) : 0
+            const b = brightness(d, s.name)
+            if (b > 0) drawGlow(c, dx, s, b)
+          }
+        }
+        for (let d = 0; d < digits; d++) {
+          const dx = ox + d * DIGIT_W * 2
+          for (const s of SEGMENTS) {
+            const b = brightness(d, s.name)
             drawSegment(c, dx, s, '#d8d6d3')
             if (b > 0) {
               c.globalAlpha = Math.min(1, 0.3 + 0.8 * b)
