@@ -1230,15 +1230,15 @@ export function electroCapSprite(): Sprite {
 // ---------------------------------------------------------------- seven-segment display
 
 /**
- * Single-digit LED display seen from the front (reference: Wikimedia Commons "FND500.jpg"): a red translucent block with a dark
- * smoked window for the digit. 50 x 46 art pixels, grid cell (0, 0) at world (-10, 14); the 10 pins (two rows of 5, x = 0..80,
- * y = 0 and 120) are drawn by the part. The lit segments, the text and the glow are drawn on top by the part, in the window
- * (art pixels 5..44 across, 4..41 down).
+ * Single-digit LED display seen from the front, drawn like the pinout picture the user sent 2026-10-09: a portrait body (real
+ * 0.56 inch parts are 12.6 x 19 mm) with a black face and off-white sides. 50 x 70 art pixels, grid cell (0, 0) at world
+ * (-10, 10); the 10 pins (two rows of 5, x = 0..80, y = 0 and 160) are drawn by the part, and so are the 8 segments (pale grey
+ * bars when dark, red when lit) on the face (art pixels 3..46 across, 3..66 down).
  */
 export function segDisplaySprite(): Sprite {
   return sprite('seg7', () => {
     const W = 50
-    const H = 46
+    const H = 70
     const g = new PixelGrid(W, H)
     g.rrect(0, 0, W, H, 3, 'T')
     const cells: Array<[number, number]> = []
@@ -1247,21 +1247,21 @@ export function segDisplaySprite(): Sprite {
       const lit = g.get(x - 1, y) === '.' || g.get(x, y - 1) === '.'
       const dark = g.get(x + 1, y) === '.' || g.get(x, y + 1) === '.'
       const lit2 = g.get(x - 2, y) === '.' || g.get(x, y - 2) === '.'
-      const base = y < 14 ? 'T' : y < 30 ? 'M' : 'S'
+      const base = y < 22 ? 'T' : y < 46 ? 'M' : 'S'
       g.set(x, y, lit && !dark ? 'h' : dark && !lit ? 'D' : lit2 ? 'L' : base)
     }
-    // the smoked window: dark, with a shaded top-left edge and a lit bottom-right lip
-    g.rect(5, 4, 40, 38, 'K')
-    g.rect(5, 4, 40, 1, 'k')
-    g.rect(5, 4, 1, 38, 'k')
-    g.rect(6, 41, 39, 1, 'J')
-    g.rect(44, 5, 1, 37, 'J')
-    // a soft reflection in the top left of the window
-    g.rect(7, 6, 6, 1, 'g')
-    g.rect(7, 7, 1, 3, 'g')
+    // the black face, with a shaded top-left edge and a faint lit lip at the bottom right
+    g.rrect(3, 3, 44, 64, 2, 'K')
+    g.rect(3, 3, 44, 1, 'k')
+    g.rect(3, 3, 1, 64, 'k')
+    g.rect(4, 66, 43, 1, 'J')
+    g.rect(46, 4, 1, 63, 'J')
+    // a soft reflection in the top left of the face
+    g.rect(5, 5, 5, 1, 'g')
+    g.rect(5, 6, 1, 2, 'g')
     return g.build(
-      { h: '#e0545e', L: '#c43a46', T: '#a52a35', M: '#86202a', S: '#6a1820', D: '#4e1017', K: '#210508', k: '#120204', J: '#8a2430', g: '#5a2026' },
-      '#2a0508',
+      { h: '#f4f2e8', L: '#e2dfd2', T: '#d0ccbd', M: '#bab6a6', S: '#a39f90', D: '#8a8679', K: '#17171c', k: '#0b0b0f', J: '#2c2c35', g: '#3a3a45' },
+      '#2a2a2c',
     )
   })
 }

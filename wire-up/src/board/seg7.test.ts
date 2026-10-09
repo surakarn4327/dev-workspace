@@ -3,14 +3,14 @@ import { SceneBuilder } from '../lessons/lessons.ts'
 import { Simulation } from './simulation.ts'
 import { World } from './world.ts'
 
-/** The display at (200, 100): segment A is pin 7 at (260, 100), a COM pin is pin 3 at (240, 220). */
+/** The display at (200, 100): segment A is pin 7 at (260, 100), a COM pin is pin 3 at (240, 260). */
 function lab(common: 'cathode' | 'anode', ohms: number | null): { w: World; sim: Simulation; id: string } {
   const w = new World()
   const b = new SceneBuilder(w)
   const bat = b.place('battery', -320, 80, { volts: 5 })
   const disp = b.place('seg7', 200, 100, { common })
   const segA = { x: 260, y: 100 }
-  const com = { x: 240, y: 220 }
+  const com = { x: 240, y: 260 }
   const plus = { x: 0, y: 0 }
   if (ohms !== null) b.place('resistor', 0, 0, { value: ohms, legs: 2 })
   // cathode: + -> resistor -> segment A, COM -> -; anode: + -> COM, segment A -> resistor -> -

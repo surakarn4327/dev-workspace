@@ -1,4 +1,4 @@
-import { COL, drawLabelAbove, drawText, rrect } from '../render/draw.ts'
+import { COL, drawLabelAbove, rrect } from '../render/draw.ts'
 import { drawSprite, pxLeg, pxRect } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, LED_COLORS, LED_I_MAX, LED_N, LED_RS, LED_VR_MAX, ledIs } from '../sim/models.ts'
@@ -10,34 +10,61 @@ import type { PartDef } from './types.ts'
 
 /** Segment name, the pin (0-based) it is wired to, and where it is drawn in the window (art pixels from the sprite's corner). */
 const SEGMENTS: { name: string; pin: number; x: number; y: number; w: number; h: number }[] = [
-  { name: 'a', pin: 6, x: 15, y: 9, w: 20, h: 3 },
-  { name: 'b', pin: 5, x: 35, y: 12, w: 3, h: 10 },
-  { name: 'c', pin: 3, x: 35, y: 25, w: 3, h: 10 },
-  { name: 'd', pin: 1, x: 15, y: 34, w: 20, h: 3 },
-  { name: 'e', pin: 0, x: 12, y: 25, w: 3, h: 10 },
-  { name: 'f', pin: 8, x: 12, y: 12, w: 3, h: 10 },
-  { name: 'g', pin: 9, x: 15, y: 22, w: 20, h: 3 },
-  { name: 'dp', pin: 4, x: 40, y: 34, w: 3, h: 3 },
+  { name: 'a', pin: 6, x: 12, y: 6, w: 23, h: 5 },
+  { name: 'b', pin: 5, x: 36, y: 12, w: 5, h: 19 },
+  { name: 'c', pin: 3, x: 36, y: 38, w: 5, h: 19 },
+  { name: 'd', pin: 1, x: 12, y: 58, w: 23, h: 5 },
+  { name: 'e', pin: 0, x: 6, y: 38, w: 5, h: 19 },
+  { name: 'f', pin: 8, x: 6, y: 12, w: 5, h: 19 },
+  { name: 'g', pin: 9, x: 12, y: 32, w: 23, h: 5 },
+  { name: 'dp', pin: 4, x: 42, y: 59, w: 4, h: 4 },
 ]
 const COM_PINS = [2, 7]
 const PIN_NAMES = ['E', 'D', 'COM', 'C', 'DP', 'B', 'A', 'COM', 'F', 'G']
 /** Origin of the sprite in the part's own frame. */
 const OX = -10
-const OY = 14
+const OY = 10
 
 const red = LED_COLORS.red
+
+/** One segment as a pixel bar with chamfered ends (the dot is a small round blob): `color` body, `core` a lighter line along it. */
+function drawSegment(c: CanvasRenderingContext2D, s: (typeof SEGMENTS)[number], color: string, core: string): void {
+  const px = (x: number, y: number, w: number, h: number, col: string) => pxRect(c, OX, OY, s.x + x, s.y + y, w, h, col)
+  if (s.name === 'dp') {
+    // a round dot
+    px(1, 0, 2, 1, color)
+    px(0, 1, 4, 2, color)
+    px(1, 3, 2, 1, color)
+    px(1, 1, 1, 1, core)
+  } else if (s.w > s.h) {
+    // a flat bar whose ends are cut to a point
+    px(3, 0, s.w - 6, 1, color)
+    px(2, 1, s.w - 4, 1, color)
+    px(0, 2, s.w, 1, color)
+    px(2, 3, s.w - 4, 1, color)
+    px(3, 4, s.w - 6, 1, color)
+    px(3, 1, s.w - 6, 1, core)
+  } else {
+    px(0, 3, 1, s.h - 6, color)
+    px(1, 2, 1, s.h - 4, color)
+    px(2, 0, 1, s.h, color)
+    px(3, 2, 1, s.h - 4, color)
+    px(4, 3, 1, s.h - 6, color)
+    px(1, 3, 1, s.h - 8, core)
+  }
+}
 
 export const seg7: PartDef = {
   type: 'seg7',
   name: '7-segment display',
   category: 'logic',
   blurb:
-    'One-digit LED display, 10 pins (like the FND500). Each segment is an LED: give it a resistor. Pins 1-5 bottom row left to right: E D COM C DP; 6-10 top row right to left: B A COM F G. Both COM pins are joined inside.',
+    'One-digit LED display, 10 pins (like the common 0.56 inch ones). Each segment is an LED: give it a resistor. Pins 1-5 bottom row left to right: E D COM C DP; 6-10 top row right to left: B A COM F G (the rows are drawn 8 holes apart, wider than the real 6, so the legs show like in the pinout picture). Both COM pins are joined inside.',
   pinLabels: PIN_NAMES,
   hidePinLabels: true, // a real display has no printed pin names; the pinout is in the description
   defaults: () => ({ common: 'cathode' }),
-  pins: () => Array.from({ length: 10 }, (_, i) => (i < 5 ? { x: i, y: 6 } : { x: 4 - (i - 5), y: 0 })),
-  bounds: () => ({ x: -12, y: -4, w: 104, h: 130 }),
+  pins: () => Array.from({ length: 10 }, (_, i) => (i < 5 ? { x: i, y: 8 } : { x: 4 - (i - 5), y: 0 })),
+  bounds: () => ({ x: -12, y: -4, w: 104, h: 170 }),
   build(p, ctx) {
     if (p.state.failed) return
     const anode = str(p, 'common', 'cathode') === 'anode'
@@ -99,40 +126,36 @@ export const seg7: PartDef = {
       // pins first (they end under the body), then the block over them
       for (let i = 0; i < 5; i++) {
         pxLeg(c, i * 20, 0, 18)
-        pxLeg(c, i * 20, 102, 120)
+        pxLeg(c, i * 20, 142, 160)
       }
       const body = segDisplaySprite()
       drawSprite(c, body, OX, OY)
       for (const s of SEGMENTS) {
         const i = live[`i_${s.name}`] ?? 0
         const b = i > 1e-5 ? Math.min(1, i / 0.012) : 0
-        pxRect(c, OX, OY, s.x, s.y, s.w, s.h, '#4a0d12')
+        drawSegment(c, s, '#d8d6cd', '#efede6')
         if (b > 0) {
           c.globalAlpha = Math.min(1, 0.25 + b)
-          pxRect(c, OX, OY, s.x, s.y, s.w, s.h, '#ff3b4a')
-          // a lighter core down the middle of each bar
-          if (s.w > s.h) pxRect(c, OX, OY, s.x + 1, s.y + 1, s.w - 2, 1, '#ff9aa2')
-          else if (s.h > s.w) pxRect(c, OX, OY, s.x + 1, s.y + 1, 1, s.h - 2, '#ff9aa2')
+          drawSegment(c, s, '#ff3b4a', '#ff9aa2')
           c.globalAlpha = 1
         }
       }
-      drawText(c, 'FND500', 40, 97, { color: '#e8c8cc', align: 'center' })
       if (scene.labeled.has(p.id)) drawLabelAbove(c, label, 40, -2) // above the top row of pins (their outline reaches 2 above the pin point)
       return
     }
     for (let i = 0; i < 5; i++) {
       c.fillStyle = COL.metal
       c.fillRect(i * 20 - 2, 0, 4, 18)
-      c.fillRect(i * 20 - 2, 102, 4, 18)
+      c.fillRect(i * 20 - 2, 142, 4, 18)
     }
-    c.fillStyle = '#86202a'
-    rrect(c, OX, OY, 100, 92, 6)
+    c.fillStyle = '#d0ccbd'
+    rrect(c, OX, OY, 100, 140, 6)
     c.fill()
-    c.fillStyle = '#210508'
-    c.fillRect(OX + 10, OY + 8, 80, 76)
+    c.fillStyle = '#17171c'
+    c.fillRect(OX + 6, OY + 6, 88, 128)
     for (const s of SEGMENTS) {
       const on = (live[`i_${s.name}`] ?? 0) > 1e-5
-      c.fillStyle = on ? '#ff3b4a' : '#4a0d12'
+      c.fillStyle = on ? '#ff3b4a' : '#cfcfc6'
       c.fillRect(OX + s.x * 2, OY + s.y * 2, s.w * 2, s.h * 2)
     }
     if (scene.labeled.has(p.id)) drawLabelAbove(c, label, 40, 0)
