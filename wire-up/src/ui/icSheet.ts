@@ -103,7 +103,8 @@ function drawSheet(c: CanvasRenderingContext2D, info: ChipInfo): void {
 
 // ---------------------------------------------------------------- seven-segment display
 
-const SEG = { W: 200, H: 250, pkg: { x: 40, y: 46, w: 100, h: 165 }, pitch: 20, x0: 50 }
+// the canvas hugs the drawing (the panel anchors it by its right edge, like the chip sheet), so no empty margin pushes it away from the edge
+const SEG = { W: 124, H: 244, pkg: { x: 12, y: 38, w: 100, h: 165 }, pitch: 20, x0: 22 }
 
 /** Pin k (1..10): column x and whether it is on the top row (pins 1-5 along the bottom, 6-10 back along the top). */
 function segPin(k: number): { x: number; top: boolean } {
