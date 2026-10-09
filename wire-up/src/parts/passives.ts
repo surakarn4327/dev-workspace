@@ -1,6 +1,6 @@
 import type { PartInstance } from '../board/world.ts'
-import { COL, drawLabelAbove, leg, radialGlow, rrect } from '../render/draw.ts'
-import { CAP, CERAMIC_CAP_VALUES, ELECTRO_CAP_VALUES, eng, fmtFarads, fmtOhms, ldrResistance, ntcResistance, resistorBands, RESISTOR_VALUES } from '../sim/models.ts'
+import { COL, drawLabelAbove, drawText, leg, radialGlow, rrect } from '../render/draw.ts'
+import { CAP, CERAMIC_CAP_VALUES, ELECTRO_CAP_VALUES, eiaCode, eng, fmtFarads, fmtOhms, ldrResistance, ntcResistance, resistorBands, RESISTOR_VALUES } from '../sim/models.ts'
 import { drawSprite, pxLine, pxRect, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { ceramicCapSprite, electroCapSprite, ldrSprite, ntcSprite, potSprite, resistorSprite } from './art.ts'
@@ -359,8 +359,10 @@ function slantLegs(c: CanvasRenderingContext2D, p: PartInstance, inner: [number,
     c.fillRect(x - 2, 0, 2, 4 + legDrop(p))
     c.fillStyle = COL.metalDark
     c.fillRect(x, 0, 2, 4 + legDrop(p))
-    pxLine(c, 0, 0, x / 2 - 1, 0, tx - 1, -7, COL.metal)
-    pxLine(c, 0, 0, x / 2, 0, tx, -7, COL.metalDark)
+    // from the top of the straight stretch, slanting in to the bulge under the disc
+    // (pxLine works in art pixels, 2 world px each)
+    pxLine(c, 0, 0, x / 2 - 1, 0, tx / 2 - 1, -3, COL.metal)
+    pxLine(c, 0, 0, x / 2, 0, tx / 2, -3, COL.metalDark)
   }
 }
 
@@ -382,7 +384,7 @@ export const ceramicCap: PartDef = {
   tipPastPinVector: 2,
   defaults: () => ({ value: 1e-7, legs: 1 }),
   pins: (p) => pinsTwo(2, legGrid(p)),
-  bounds: (p) => ({ x: -12, y: -48, w: 64, h: 56 + legDrop(p) }),
+  bounds: (p) => ({ x: -12, y: -54, w: 64, h: 62 + legDrop(p) }),
   build(p, ctx) {
     if (p.state.failed) return
     const mid = ctx.newNode()
@@ -396,8 +398,10 @@ export const ceramicCap: PartDef = {
   draw(c, p) {
     if (scene.pixel) {
       slantLegs(c, p, [12, 28])
-      drawSprite(c, ceramicCapSprite(), 0, -46)
-      if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-7))}F`, 20, spriteInk(ceramicCapSprite(), 0, -46).top)
+      drawSprite(c, ceramicCapSprite(), -2, -52)
+      // the code printed on the disc, as on the real part
+      drawText(c, eiaCode(num(p, 'value', 1e-7)), 20, -37, { color: '#5a3410', align: 'center' })
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-7))}F`, 20, spriteInk(ceramicCapSprite(), -2, -52).top)
       return
     }
     leg(c, 0, 0, 14, -10)
@@ -405,12 +409,12 @@ export const ceramicCap: PartDef = {
     if (legDrop(p) > 0) for (const x of [0, 40]) leg(c, x, 4, x, legDrop(p))
     c.fillStyle = '#e8a73f'
     c.beginPath()
-    c.arc(20, -26, 19, 0, Math.PI * 2)
+    c.arc(20, -30, 19, 0, Math.PI * 2)
     c.fill()
     c.strokeStyle = '#3d2408'
     c.lineWidth = 2
     c.stroke()
-    if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-7))}F`, 20, -46)
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-7))}F`, 20, -50)
   },
   fields: () => [
     { kind: 'select', key: 'value', label: 'Capacitance (F)', options: CERAMIC_CAP_VALUES.map((v) => ({ value: v, label: `${fmtFarads(v)}F` })) },
@@ -429,8 +433,8 @@ export const electroCap: PartDef = {
   tipPastPin: 4,
   tipPastPinVector: 2,
   defaults: () => ({ value: 1e-4, legs: 1 }),
-  pins: (p) => pinsTwo(2, legGrid(p)),
-  bounds: (p) => ({ x: -12, y: -42, w: 64, h: 50 + legDrop(p) }),
+  pins: (p) => pinsTwo(1, legGrid(p)),
+  bounds: (p) => ({ x: -16, y: -90, w: 52, h: 98 + legDrop(p) }),
   build(p, ctx) {
     if (p.state.failed) return
     const mid = ctx.newNode()
@@ -446,21 +450,33 @@ export const electroCap: PartDef = {
       ),
     ),
   draw(c, p) {
+    const value = `${fmtFarads(num(p, 'value', 1e-4))}F`
     if (scene.pixel) {
-      slantLegs(c, p, [12, 28])
-      drawSprite(c, electroCapSprite(), 6, -40)
-      if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-4))}F`, 20, spriteInk(electroCapSprite(), 6, -40).top)
+      // the legs come straight down from the bottom of the can
+      for (const x of [0, 20]) {
+        c.fillStyle = COL.metal
+        c.fillRect(x - 2, -8, 2, 12 + legDrop(p))
+        c.fillStyle = COL.metalDark
+        c.fillRect(x, -8, 2, 12 + legDrop(p))
+      }
+      drawSprite(c, electroCapSprite(), -14, -88)
+      // the value and voltage printed up the sleeve, on the lit side
+      c.save()
+      c.translate(-2, -48)
+      c.rotate(-Math.PI / 2)
+      drawText(c, `${value.replace('F', '')} ${CAP.electroVmax}V`, 0, -6, { color: '#c9ced6', align: 'center' })
+      c.restore()
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, value, 10, spriteInk(electroCapSprite(), -14, -88).top)
       return
     }
-    leg(c, 0, 0, 12, -8)
-    leg(c, 40, 0, 28, -8)
-    if (legDrop(p) > 0) for (const x of [0, 40]) leg(c, x, 4, x, legDrop(p))
-    c.fillStyle = '#2d4a94'
-    rrect(c, 6, -40, 28, 32, 4)
+    leg(c, 0, -8, 0, legDrop(p))
+    leg(c, 20, -8, 20, legDrop(p))
+    c.fillStyle = '#4a4a5c'
+    rrect(c, -14, -88, 48, 80, 6)
     c.fill()
-    c.fillStyle = '#d9dde4'
-    c.fillRect(26, -38, 6, 28)
-    if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-4))}F`, 20, -40)
+    c.fillStyle = '#c9ced6'
+    c.fillRect(16, -82, 12, 68)
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, value, 10, -88)
   },
   fields: () => [
     { kind: 'select', key: 'value', label: 'Capacitance (F)', options: ELECTRO_CAP_VALUES.map((v) => ({ value: v, label: `${fmtFarads(v)}F` })) },

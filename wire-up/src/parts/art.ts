@@ -1143,48 +1143,80 @@ export function dipSprite(): Sprite {
 // ---------------------------------------------------------------- capacitors
 
 /**
- * Ceramic disc capacitor seen from the front: a dipped orange-tan disc. 20 x 20 art pixels, grid cell (0, 0) at world (0, -46),
- * centre (20, -26): the same spot as the NTC bead, so its legs slant in the same way.
+ * Ceramic disc capacitor seen from the front (reference: Wikimedia Commons "Electronic-Component-Ceramic-Capacitor.jpg"):
+ * a flat orange-tan disc, 5.5 mm across, with two small bulges at the bottom where the legs come out. 22 x 24 art pixels,
+ * grid cell (0, 0) at world (-2, -52), disc centre (20, -30). The EIA code is drawn on top by the part.
  */
 export function ceramicCapSprite(): Sprite {
   return sprite('cap-ceramic', () => {
-    const g = new PixelGrid(20, 20)
-    g.disc(10, 10, 9.5, 'e')
-    for (let y = 0; y < 20; y++) {
-      for (let x = 0; x < 20; x++) {
+    const g = new PixelGrid(22, 24)
+    g.disc(11, 11, 10.5, 'f')
+    // the two bulges at the bottom edge, one over each leg
+    g.rect(6, 20, 3, 4, 'f')
+    g.rect(14, 20, 3, 4, 'f')
+    for (let y = 0; y < 24; y++) {
+      for (let x = 0; x < 22; x++) {
         if (g.get(x, y) === '.') continue
-        const d = Math.hypot(x + 0.5 - 7, y + 0.5 - 7)
-        g.set(x, y, d < 2.6 ? 'a' : d < 5.6 ? 'b' : d < 9.4 ? 'c' : d < 13 ? 'd' : d < 16.2 ? 'e' : 'f')
+        // shade by distance from the light spot at the upper left; the bulges are in the shade
+        const d = y >= 21 ? 99 : Math.hypot(x + 0.5 - 7.5, y + 0.5 - 7.5)
+        g.set(x, y, d < 2.4 ? 'a' : d < 5 ? 'b' : d < 8.2 ? 'c' : d < 11.6 ? 'd' : d < 14.6 ? 'e' : d < 17.2 ? 'f' : 'g')
       }
     }
     g.rect(4, 4, 3, 1, 'w')
     g.rect(4, 5, 1, 2, 'w')
-    return g.build({ a: '#fff1c9', b: '#f7cf7a', c: '#e8a73f', d: '#cf8a26', e: '#a96d1a', f: '#82511a', w: '#ffffff' }, '#3d2408')
+    return g.build(
+      { a: '#ffe9b0', b: '#f6c76a', c: '#e9a23b', d: '#d58a2a', e: '#b8701f', f: '#965816', g: '#6f410f', w: '#ffffff' },
+      '#3d2408',
+    )
   })
 }
 
 /**
- * Radial electrolytic capacitor standing on its legs: a dark blue sleeve with a pale stripe of minus signs down the negative side
- * (the right), a silver top with a groove under it. 14 x 16 art pixels, grid cell (0, 0) at world (6, -40).
+ * Radial electrolytic capacitor standing on its legs (reference: Wikimedia Commons "CAPE-TH-X-UF100-VA (16237030527).jpg" and
+ * "47uf Electrolytic Capacitor.jpg"): a glossy black sleeve, 6 mm wide and 10 mm tall, a wide silver stripe down the negative
+ * side (the right) with minus signs and arrows pointing at the negative leg, a lit strip on the left, and the dark rubber
+ * seal narrowing the bottom. 24 x 40 art pixels, grid cell (0, 0) at world (-14, -88): the legs (x = 0 and 20) come straight
+ * down from the bottom edge (y = -8). The value is printed on the sleeve by the part.
  */
 export function electroCapSprite(): Sprite {
   return sprite('cap-electro', () => {
-    const W = 14
-    const H = 16
+    const W = 24
+    const H = 40
     const g = new PixelGrid(W, H)
-    g.rrect(0, 0, W, H, 2, 'T')
-    const cols = ['h', 'L', 'L', 'T', 'T', 'M', 'M', 'S', 'S', 'I', 'I', 'J', 'J', 'D']
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g.get(x, y) !== '.') g.set(x, y, cols[x])
-    // silver top, a groove under it, and a dark base
-    g.paint(0, 0, W, 1, 'A', 'hLTMSIJD')
-    g.paint(0, 1, W, 1, 'B', 'hLTMSIJD')
-    g.paint(0, 2, W, 1, 'D', 'hLTMSIJD')
-    g.paint(0, H - 1, W, 1, 'D', 'hLTMSIJD')
-    // minus signs on the stripe
-    for (const y of [5, 8, 11]) g.rect(10, y, 2, 1, 'K')
+    g.rrect(0, 0, W, H, 4, 'T')
+    // sleeve: a lit strip on the left falling off to the right, one tone per column
+    const cols = 'DSMTLhhLTTMMSSSMMTTTSSD'
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g.get(x, y) !== '.') g.set(x, y, cols[Math.min(x, cols.length - 1)])
+    // the sleeve stops short of the bottom: a narrower rubber seal under it
+    g.rect(0, 36, W, 4, '.')
+    g.rect(1, 36, W - 2, 4, 'R')
+    g.rect(1, 36, W - 2, 1, 'B')
+    g.rect(1, 39, W - 2, 1, 'N')
+    g.paint(0, 0, W, 1, 'U', 'DSMTLh')
+    g.paint(2, 1, W - 4, 1, 'U', 'DSMTLh')
+    g.paint(0, 3, W, 1, 'N', 'DSMTLh') // the crimp groove under the top
+    // silver stripe on the negative side, shaded like the sleeve
+    const stripe = ['I', 'J', 'K', 'P', 'Q', 'O']
+    for (let y = 5; y < 36; y++) for (let i = 0; i < 6; i++) g.set(15 + i, y, stripe[i])
+    // minus signs and arrows pointing at the negative leg
+    for (const y of [8, 17, 26]) {
+      g.rect(16, y, 4, 1, 'X')
+      g.set(16, y + 3, 'X')
+      g.set(19, y + 3, 'X')
+      g.set(17, y + 4, 'X')
+      g.set(18, y + 4, 'X')
+    }
+    // the shine: a thin broken strip on the lit side
+    for (let y = 6; y < 33; y++) if (y % 9 !== 8) g.set(4, y, 'g')
+    for (let y = 8; y < 31; y++) if (y % 9 !== 8) g.set(5, y, 'G')
     return g.build(
-      { h: '#4d6fc0', L: '#3b5bab', T: '#2d4a94', M: '#243c7a', S: '#1b2d5c', D: '#131f40', A: '#e6eaf0', B: '#aab1bd', I: '#d9dde4', J: '#aeb4bf', K: '#2a2f3a' },
-      '#0a1020',
+      {
+        h: '#5a5a66', L: '#44444f', T: '#32323b', M: '#25252c', S: '#1b1b21', D: '#121217', N: '#0b0b0f',
+        U: '#4b4b57', g: '#9a9aaa', G: '#6c6c7a',
+        R: '#2a2018', B: '#46382b',
+        I: '#e6eaf0', J: '#cfd4dc', K: '#b4bac5', P: '#989faa', Q: '#7c8390', O: '#5f6572', X: '#2a2f3a',
+      },
+      '#05050a',
     )
   })
 }

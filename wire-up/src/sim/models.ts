@@ -151,3 +151,16 @@ export function fmtFarads(f: number): string {
   if (f >= 1e-9) return `${Number((f * 1e9).toPrecision(3))}n`
   return `${Number((f * 1e12).toPrecision(3))}p`
 }
+
+/** The three-digit EIA code printed on a ceramic capacitor: 100 nF = "104" (10, then four zeros, in pF); below 100 pF the plain number. */
+export function eiaCode(farads: number): string {
+  const pf = farads * 1e12
+  if (pf < 100) return String(Math.round(pf))
+  let e = Math.floor(Math.log10(pf)) - 1
+  let sig = Math.round(pf / 10 ** e)
+  if (sig >= 100) {
+    sig = 10
+    e += 1
+  }
+  return `${sig}${e}`
+}

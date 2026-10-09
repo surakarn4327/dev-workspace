@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BJT, ledIs, LED_COLORS, LED_N, LED_RS } from './models.ts'
+import { BJT, eiaCode, ledIs, LED_COLORS, LED_N, LED_RS } from './models.ts'
 import { advance, solve, transientStep } from './solver.ts'
 import type { Circuit } from './solver.ts'
 
@@ -300,5 +300,18 @@ describe('capacitors', () => {
   it('picks a step from the fastest RC', () => {
     near(transientStep(rc()), 0.0025, 1e-9)
     expect(transientStep({ nodeCount: 2, elements: [{ kind: 'R', id: 'r', a: 1, b: 0, r: 5 }] })).toBe(Infinity)
+  })
+})
+
+describe('capacitor markings', () => {
+  it('prints the EIA code of a ceramic capacitor', () => {
+    expect(eiaCode(1e-9)).toBe('102')
+    expect(eiaCode(4.7e-9)).toBe('472')
+    expect(eiaCode(1e-8)).toBe('103')
+    expect(eiaCode(2.2e-8)).toBe('223')
+    expect(eiaCode(1e-7)).toBe('104')
+    expect(eiaCode(3.3e-7)).toBe('334')
+    expect(eiaCode(1e-6)).toBe('105')
+    expect(eiaCode(47e-12)).toBe('47')
   })
 })
