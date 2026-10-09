@@ -5,6 +5,7 @@
 import { CHIP_INFO } from '../parts/ic.ts'
 import type { ChipInfo } from '../parts/ic.ts'
 import { gateGeometry } from '../parts/art.ts'
+import { PIN_NAMES, SEGMENTS } from '../parts/display.ts'
 import { drawText } from '../render/draw.ts'
 import type { PartInstance } from '../board/world.ts'
 import type { GateFn } from '../sim/solver.ts'
@@ -100,25 +101,85 @@ function drawSheet(c: CanvasRenderingContext2D, info: ChipInfo): void {
   drawText(c, 'GND', pinCol(7).x - BOX / 2, CHIP.y + CHIP.h + BOX + 4, { color: SHEET.ink, size: 10 })
 }
 
-/** Show the pinout for the selected chip, or hide it when anything else (or nothing) is selected. */
+// ---------------------------------------------------------------- seven-segment display
+
+const SEG = { W: 200, H: 250, pkg: { x: 40, y: 46, w: 100, h: 165 }, pitch: 20, x0: 50 }
+
+/** Pin k (1..10): column x and whether it is on the top row (pins 1-5 along the bottom, 6-10 back along the top). */
+function segPin(k: number): { x: number; top: boolean } {
+  return k <= 5 ? { x: SEG.x0 + (k - 1) * SEG.pitch, top: false } : { x: SEG.x0 + (10 - k) * SEG.pitch, top: true }
+}
+
+/** The seven-segment pinout: the black package, the eight segments with their letters, numbered pin boxes and the pin names. */
+function drawSegSheet(c: CanvasRenderingContext2D, anode: boolean): void {
+  c.strokeStyle = SHEET.ink
+  c.lineWidth = 1.5
+  c.lineCap = 'square'
+  c.lineJoin = 'miter'
+  const { x, y, w, h } = SEG.pkg
+  c.strokeRect(x, y, w, h)
+  // the digit: each segment as the same pointed bar the part draws (art pixels x 2), centred in the package
+  const ox = x + (w - 60) / 2 - 20
+  const oy = y + (h - 110) / 2 - 16
+  for (const s of SEGMENTS) {
+    const sx = ox + s.x * 2
+    const sy = oy + s.y * 2
+    const sw = s.w * 2
+    const sh = s.h * 2
+    if (s.name === 'dp') {
+      c.beginPath()
+      c.arc(sx + sw / 2, sy + sh / 2, sw / 2, 0, Math.PI * 2)
+      c.stroke()
+      drawText(c, 'dp', sx + sw / 2, sy + sh / 2 - 4, { color: SHEET.ink, align: 'center', size: 7 })
+      continue
+    }
+    const t = Math.min(sw, sh) / 2
+    const pts: [number, number][] =
+      sw > sh
+        ? [[sx + t, sy], [sx + sw - t, sy], [sx + sw, sy + t], [sx + sw - t, sy + sh], [sx + t, sy + sh], [sx, sy + t]]
+        : [[sx + t, sy], [sx + sw, sy + t], [sx + sw, sy + sh - t], [sx + t, sy + sh], [sx, sy + sh - t], [sx, sy + t]]
+    c.beginPath()
+    pts.forEach(([px, py], i) => (i === 0 ? c.moveTo(px, py) : c.lineTo(px, py)))
+    c.closePath()
+    c.stroke()
+    drawText(c, s.name, sx + sw / 2, sy + sh / 2 - 5, { color: SHEET.ink, align: 'center', size: 9 })
+  }
+  // numbered pin boxes with the pin names beyond them, and the sign the common pin takes
+  for (let k = 1; k <= 10; k++) {
+    const p = segPin(k)
+    const by = p.top ? y - BOX : y + h
+    c.strokeRect(p.x - BOX / 2, by, BOX, BOX)
+    drawText(c, String(k), p.x, by + 3, { color: SHEET.ink, align: 'center', size: 10 })
+    const name = PIN_NAMES[k - 1]
+    drawText(c, name, p.x, p.top ? by - 14 : by + BOX + 3, { color: SHEET.ink, align: 'center', size: 9 })
+    if (name === 'COM') drawText(c, anode ? '+' : '-', p.x, p.top ? y + 4 : y + h - 14, { color: SHEET.ink, align: 'center', size: 10 })
+  }
+}
+
+/** Show the pinout for the selected chip or display, or hide it when anything else (or nothing) is selected. */
 export function updateChipSheet(canvas: HTMLCanvasElement, part: PartInstance | undefined): void {
   const info = part ? CHIP_INFO.get(part.type) : undefined
-  if (!info) {
+  const seg = part?.type === 'seg7'
+  if (!info && !seg) {
     canvas.style.display = 'none'
     canvas.dataset.chip = ''
     return
   }
   canvas.style.display = 'block'
-  if (canvas.dataset.chip === part!.type) return
-  canvas.dataset.chip = part!.type
+  const anode = seg && part!.params.common === 'anode'
+  const key = seg ? `seg7:${anode ? 'anode' : 'cathode'}` : part!.type
+  if (canvas.dataset.chip === key) return
+  canvas.dataset.chip = key
+  const size = seg ? { w: SEG.W, h: SEG.H } : { w: W, h: H }
   const dpr = window.devicePixelRatio || 1
-  canvas.width = Math.round(W * dpr)
-  canvas.height = Math.round(H * dpr)
-  canvas.style.width = `${W}px`
-  canvas.style.height = `${H}px`
+  canvas.width = Math.round(size.w * dpr)
+  canvas.height = Math.round(size.h * dpr)
+  canvas.style.width = `${size.w}px`
+  canvas.style.height = `${size.h}px`
   const c = canvas.getContext('2d')
   if (!c) return
   c.setTransform(dpr, 0, 0, dpr, 0, 0)
-  c.clearRect(0, 0, W, H)
-  drawSheet(c, info)
+  c.clearRect(0, 0, size.w, size.h)
+  if (seg) drawSegSheet(c, anode)
+  else drawSheet(c, info!)
 }

@@ -9,7 +9,7 @@ import type { PartDef } from './types.ts'
 // ---------------------------------------------------------------- seven-segment display
 
 /** Segment name, the pin (0-based) it is wired to, and where it is drawn in the window (art pixels from the sprite's corner). */
-const SEGMENTS: { name: string; pin: number; x: number; y: number; w: number; h: number }[] = [
+export const SEGMENTS: { name: string; pin: number; x: number; y: number; w: number; h: number }[] = [
   { name: 'a', pin: 6, x: 13, y: 8, w: 24, h: 5 },
   { name: 'b', pin: 5, x: 35, y: 11, w: 5, h: 24 },
   { name: 'c', pin: 3, x: 35, y: 36, w: 5, h: 24 },
@@ -20,7 +20,7 @@ const SEGMENTS: { name: string; pin: number; x: number; y: number; w: number; h:
   { name: 'dp', pin: 4, x: 42, y: 58, w: 4, h: 4 },
 ]
 const COM_PINS = [2, 7]
-const PIN_NAMES = ['E', 'D', 'COM', 'C', 'DP', 'B', 'A', 'COM', 'F', 'G']
+export const PIN_NAMES = ['E', 'D', 'COM', 'C', 'DP', 'B', 'A', 'COM', 'F', 'G']
 /** Origin of the sprite in the part's own frame. */
 const OX = -10
 const OY = 10
