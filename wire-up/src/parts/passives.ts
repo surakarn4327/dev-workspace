@@ -287,7 +287,7 @@ export const ntc: PartDef = {
   wheelKey: 'temp',
   defaults: () => ({ temp: 25, legs: 1 }),
   pins: (p) => pinsTwo(1, legGrid(p)),
-  bounds: (p) => ({ x: -22, y: -48, w: 64, h: 56 + legDrop(p) }),
+  bounds: (p) => ({ x: -22, y: -54, w: 64, h: 62 + legDrop(p) }),
   build(p, ctx) {
     if (p.state.failed) return
     ctx.add({ kind: 'R', id: ctx.id('r'), a: ctx.pins[0], b: ctx.pins[1], r: ntcResistance(num(p, 'temp', 25)) })
@@ -301,13 +301,13 @@ export const ntc: PartDef = {
     const t = num(p, 'temp', 25)
     if (scene.pixel) {
       const hotGlow = Math.min(Math.max((t - 40) / 100, 0), 1)
-      radialGlow(c, 10, -26, 38, '#ff6a2a', hotGlow * 0.6)
+      radialGlow(c, 10, -30, 38, '#ff6a2a', hotGlow * 0.6)
       // straight legs one hole apart, hidden behind the bead (same as the LDR)
-      straightLegs(c, p, -4)
+      straightLegs(c, p, -6)
       c.save()
       c.translate(-10, 0)
-      drawSprite(c, ntcSprite(), -2, -48)
-      if (scene.labeled.has(p.id)) drawLabelAbove(c, `${t.toFixed(0)}C`, 20, spriteInk(ntcSprite(), -2, -48).top)
+      drawSprite(c, ntcSprite(), -2, -52)
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, `${t.toFixed(0)}C`, 20, spriteInk(ntcSprite(), -2, -52).top)
       c.restore()
       return
     }
@@ -317,7 +317,7 @@ export const ntc: PartDef = {
     c.translate(-10, 0)
     const hot = Math.min(Math.max((t - 40) / 100, 0), 1)
     radialGlow(c, 20, -20, 32, '#ff6a2a', hot * 0.6)
-    c.fillStyle = '#1f6fd0'
+    c.fillStyle = '#44444f'
     c.beginPath()
     c.arc(20, -20, 14, 0, Math.PI * 2)
     c.fill()
@@ -325,7 +325,7 @@ export const ntc: PartDef = {
     c.beginPath()
     c.arc(15, -25, 5, 0, Math.PI * 2)
     c.fill()
-    c.strokeStyle = '#123f80'
+    c.strokeStyle = '#8a8a9a'
     c.lineWidth = 1.5
     c.beginPath()
     c.arc(20, -20, 14, 0, Math.PI * 2)

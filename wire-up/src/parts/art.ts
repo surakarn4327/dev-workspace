@@ -400,20 +400,26 @@ export function ldrSprite(): Sprite {
  */
 export function ntcSprite(): Sprite {
   return sprite('ntc', () => {
-    const g = new PixelGrid(22, 22)
-    g.disc(11, 11, 10.5, 'e')
-    for (let y = 0; y < 22; y++) {
+    const g = new PixelGrid(22, 24)
+    g.disc(11, 11, 10.5, 'f')
+    // the drip of epoxy at the bottom where each leg comes out
+    g.rect(5, 20, 3, 4, 'f')
+    g.rect(15, 20, 3, 4, 'f')
+    for (let y = 0; y < 24; y++) {
       for (let x = 0; x < 22; x++) {
         if (g.get(x, y) === '.') continue
-        const d = Math.hypot(x + 0.5 - 7.5, y + 0.5 - 7.5)
-        g.set(x, y, d < 2.8 ? 'a' : d < 6.2 ? 'b' : d < 10.3 ? 'c' : d < 14.4 ? 'd' : d < 17.9 ? 'e' : 'f')
+        // glossy black epoxy: light from the upper left, the drips in the shade
+        const d = y >= 21 ? 99 : Math.hypot(x + 0.5 - 7.5, y + 0.5 - 7.5)
+        g.set(x, y, d < 2.4 ? 'a' : d < 5 ? 'b' : d < 8.2 ? 'c' : d < 11.6 ? 'd' : d < 14.6 ? 'e' : d < 17.2 ? 'f' : 'g')
       }
     }
-    g.rect(5, 5, 3, 1, 'w')
-    g.rect(5, 6, 1, 2, 'w')
+    // the shine: a soft spot and a short streak
+    g.rect(4, 4, 3, 1, 'w')
+    g.rect(4, 5, 1, 2, 'w')
+    g.rect(7, 3, 2, 1, 'W')
     return g.build(
-      { a: '#cfe4ff', b: '#7fb2ff', c: '#3f86e8', d: '#2b69c4', e: '#1f4f98', f: '#173b75', w: '#ffffff' },
-      '#0a1d3f',
+      { a: '#7a7a8a', b: '#5a5a68', c: '#44444f', d: '#34343e', e: '#27272f', f: '#1c1c23', g: '#111116', w: '#e4e4f0', W: '#9a9aaa' },
+      '#06060a',
     )
   })
 }
