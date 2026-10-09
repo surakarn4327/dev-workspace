@@ -79,7 +79,7 @@ export const rockerSwitch: PartDef = {
     c.fillRect(kx + 9, -9, 1, 18)
     drawText(c, on ? 'ON' : 'OFF', 20, 20, { color: on ? COL.green : COL.dim, align: 'center', size: 11 })
   },
-  fields: () => [{ kind: 'toggle', key: 'on', label: 'Switch is ON' }],
+  fields: () => [], // the switch is flipped by clicking it on the board, nothing to set in the Inspector (user rule 2026-10-09)
   summary: (p) => (p.state.failed ? 'welded shut' : flag(p, 'on') ? 'ON (closed)' : 'OFF (open)'),
   click(p) {
     if (p.state.failed) return false
