@@ -1,5 +1,5 @@
 import { COL, drawLabelAbove, rrect } from '../render/draw.ts'
-import { drawSprite, pxLeg, pxRect } from '../render/pixel.ts'
+import { drawSprite, PX, pxLeg } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, LED_COLORS, LED_I_MAX, LED_N, LED_RS, LED_VR_MAX, ledIs } from '../sim/models.ts'
 import { seg4DisplaySprite, segDisplaySprite } from './art.ts'
@@ -24,20 +24,40 @@ const OY = 10
 
 const red = LED_COLORS.red
 
-/** One segment as a flat pixel bar in one colour, with chamfered ends (the dot is a small round blob). */
+const segCache = new Map<string, HTMLCanvasElement>()
+
+/**
+ * One segment as a flat pixel bar in one colour, with ends cut at 45 degrees to a point (the dot is a small round blob). Made once
+ * as a tiny bitmap and drawn with no smoothing, like the sprites: drawing it row by row left hairline seams between the rows when
+ * the board is zoomed to an odd size, so the bar looked like several strips side by side.
+ */
 function drawSegment(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENTS)[number], color: string): void {
-  const px = (x: number, y: number, w: number, h: number) => pxRect(c, ox, OY, s.x + x, s.y + y, w, h, color)
-  if (s.name === 'dp') {
-    // a round dot
-    px(1, 0, 2, 1)
-    px(0, 1, 4, 2)
-    px(1, 3, 2, 1)
-    return
+  const key = `${s.name === 'dp' ? 'dp' : s.w > s.h ? 'h' : 'v'}${s.w}x${s.h}${color}`
+  let bmp = segCache.get(key)
+  if (!bmp) {
+    bmp = document.createElement('canvas')
+    bmp.width = s.w
+    bmp.height = s.h
+    const g = bmp.getContext('2d')!
+    g.fillStyle = color
+    const px = (x: number, y: number, w: number, h: number) => g.fillRect(x, y, w, h)
+    if (s.name === 'dp') {
+      // a round dot
+      px(1, 0, 2, 1)
+      px(0, 1, 4, 2)
+      px(1, 3, 2, 1)
+    } else {
+      // a bar 5 pixels thick whose two ends are cut at 45 degrees to a point, like the picture the user sent
+      const inset = [2, 1, 0, 1, 2]
+      if (s.w > s.h) inset.forEach((k, r) => px(k, r, s.w - 2 * k, 1))
+      else inset.forEach((k, col) => px(col, k, 1, s.h - 2 * k))
+    }
+    segCache.set(key, bmp)
   }
-  // a bar 5 pixels thick whose two ends are cut at 45 degrees to a point, like the picture the user sent
-  const inset = [2, 1, 0, 1, 2]
-  if (s.w > s.h) inset.forEach((k, r) => px(k, r, s.w - 2 * k, 1))
-  else inset.forEach((k, col) => px(col, k, 1, s.h - 2 * k))
+  const smooth = c.imageSmoothingEnabled
+  c.imageSmoothingEnabled = false
+  c.drawImage(bmp, ox + s.x * PX, OY + s.y * PX, s.w * PX, s.h * PX)
+  c.imageSmoothingEnabled = smooth
 }
 
 /** What differs between the one-digit and the four-digit display. */

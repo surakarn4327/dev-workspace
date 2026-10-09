@@ -1246,8 +1246,7 @@ function segBodySprite(key: string, W: number): Sprite {
       const lit = g.get(x - 1, y) === '.' || g.get(x, y - 1) === '.'
       const dark = g.get(x + 1, y) === '.' || g.get(x, y + 1) === '.'
       const lit2 = g.get(x - 2, y) === '.' || g.get(x, y - 2) === '.'
-      const base = y < 22 ? 'T' : y < 46 ? 'M' : 'S'
-      g.set(x, y, lit && !dark ? 'h' : dark && !lit ? 'D' : lit2 ? 'L' : base)
+      g.set(x, y, lit && !dark ? 'h' : dark && !lit ? 'D' : lit2 ? 'L' : 'M') // one flat tone inside, shading only on the edges
     }
     // a soft reflection in the top left of the black plastic
     g.rect(4, 4, 6, 1, 'g')
