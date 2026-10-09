@@ -83,6 +83,7 @@
 | `gate-xor` | draft | `gateSprite` | สัญลักษณ์ ไม่มีขาไฟเลี้ยง |
 | `gate-xnor` | draft | `gateSprite` | สัญลักษณ์ ไม่มีขาไฟเลี้ยง |
 | `seg7` | approved | `segDisplaySprite` | จอ 7-segment 1 หลัก ใหม่ 2026-10-09 รอผู้ใช้ชม |
+| `seg7x4` | draft | `seg4DisplaySprite` | จอ 7-segment 4 หลัก ใหม่ 2026-10-09 รอผู้ใช้ชม |
 | `ic-74hc00` | draft | `dipSprite` |  |
 | `ic-74hc02` | draft | `dipSprite` |  |
 | `ic-74hc04` | draft | `dipSprite` |  |

@@ -24,10 +24,10 @@ describe('seven-segment display', () => {
     const { sim, id } = lab(330)
     sim.step(0.016)
     const live = sim.live.get(id)!
-    expect(live.i_a).toBeGreaterThan(0.008)
-    expect(live.i_a).toBeLessThan(0.011)
-    expect(Math.abs(live.i_b)).toBeLessThan(1e-6)
-    expect(Math.abs(live.i_g)).toBeLessThan(1e-6)
+    expect(live.i_0_a).toBeGreaterThan(0.008)
+    expect(live.i_0_a).toBeLessThan(0.011)
+    expect(Math.abs(live.i_0_b)).toBeLessThan(1e-6)
+    expect(Math.abs(live.i_0_g)).toBeLessThan(1e-6)
   })
 
   it('a segment without a resistor burns the display and says which segment', () => {

@@ -5,7 +5,7 @@
 import { CHIP_INFO } from '../parts/ic.ts'
 import type { ChipInfo } from '../parts/ic.ts'
 import { gateGeometry } from '../parts/art.ts'
-import { PIN_NAMES, SEGMENTS } from '../parts/display.ts'
+import { SEG_INFO, SEGMENTS } from '../parts/display.ts'
 import { drawText } from '../render/draw.ts'
 import type { PartInstance } from '../board/world.ts'
 import type { GateFn } from '../sim/solver.ts'
@@ -101,76 +101,86 @@ function drawSheet(c: CanvasRenderingContext2D, info: ChipInfo): void {
   drawText(c, 'GND', pinCol(7).x - BOX / 2, CHIP.y + CHIP.h + BOX + 4, { color: SHEET.ink, size: 10 })
 }
 
-// ---------------------------------------------------------------- seven-segment display
+// ---------------------------------------------------------------- seven-segment displays
 
-// the canvas hugs the drawing (the panel anchors it by its right edge, like the chip sheet), so no empty margin pushes it away from the edge
-const SEG = { W: 124, H: 244, pkg: { x: 12, y: 38, w: 100, h: 165 }, pitch: 20, x0: 22 }
+const SEG_M = { x: 12, y: 38 } // margins round the package: the canvas hugs the drawing so the panel's right edge anchor puts it as close as the chip sheet
 
-/** Pin k (1..10): column x and whether it is on the top row (pins 1-5 along the bottom, 6-10 back along the top). */
-function segPin(k: number): { x: number; top: boolean } {
-  return k <= 5 ? { x: SEG.x0 + (k - 1) * SEG.pitch, top: false } : { x: SEG.x0 + (10 - k) * SEG.pitch, top: true }
+/** Size of the pinout canvas for a display with this many digits (one digit drawn at full size, four digits at 0.6). */
+function segSize(digits: number): { w: number; h: number; k: number } {
+  const k = digits === 1 ? 1 : 0.6
+  return { w: Math.round(digits * 100 * k + 2 * SEG_M.x), h: Math.round(165 * k + 79), k }
 }
 
-/** The seven-segment pinout: the black package, the eight segments with their letters, numbered pin boxes and the pin names. */
-function drawSegSheet(c: CanvasRenderingContext2D): void {
+/** The pinout of a seven-segment display: the black package, the digits with their segment letters, numbered pin boxes and the pin names. */
+function drawSegSheet(c: CanvasRenderingContext2D, type: string): void {
+  const info = SEG_INFO.get(type)!
+  const { w: sheetW, k } = segSize(info.digits)
   c.strokeStyle = SHEET.ink
   c.lineWidth = 1.5
   c.lineCap = 'square'
   c.lineJoin = 'miter'
-  const { x, y, w, h } = SEG.pkg
+  const x = SEG_M.x
+  const y = SEG_M.y
+  const w = sheetW - 2 * SEG_M.x
+  const h = 165 * k
   c.strokeRect(x, y, w, h)
-  // the digit: each segment as the same pointed bar the part draws (art pixels x 2), centred in the package
-  const ox = x + (w - 60) / 2 - 20
-  const oy = y + (h - 110) / 2 - 16
-  for (const s of SEGMENTS) {
-    const sx = ox + s.x * 2
-    const sy = oy + s.y * 2
-    const sw = s.w * 2
-    const sh = s.h * 2
-    if (s.name === 'dp') {
+  // each digit: every segment as the same pointed bar the part draws (art pixels x 2 x k), centred in its cell
+  const oy = y + (h - 110 * k) / 2 - 16 * k
+  for (let d = 0; d < info.digits; d++) {
+    const cellX = x + d * 100 * k
+    for (const s of SEGMENTS) {
+      const sx = cellX + s.x * 2 * k
+      const sy = oy + s.y * 2 * k
+      const sw = s.w * 2 * k
+      const sh = s.h * 2 * k
+      if (s.name === 'dp') {
+        c.beginPath()
+        c.arc(sx + sw / 2, sy + sh / 2, sw / 2, 0, Math.PI * 2)
+        c.stroke()
+        continue
+      }
+      const t = Math.min(sw, sh) / 2
+      const pts: [number, number][] =
+        sw > sh
+          ? [[sx + t, sy], [sx + sw - t, sy], [sx + sw, sy + t], [sx + sw - t, sy + sh], [sx + t, sy + sh], [sx, sy + t]]
+          : [[sx + t, sy], [sx + sw, sy + t], [sx + sw, sy + sh - t], [sx + t, sy + sh], [sx, sy + sh - t], [sx, sy + t]]
       c.beginPath()
-      c.arc(sx + sw / 2, sy + sh / 2, sw / 2, 0, Math.PI * 2)
+      pts.forEach(([px, py], i) => (i === 0 ? c.moveTo(px, py) : c.lineTo(px, py)))
+      c.closePath()
       c.stroke()
-      drawText(c, 'dp', sx + sw / 2, sy + sh / 2 - 4, { color: SHEET.ink, align: 'center', size: 7 })
-      continue
+      if (info.digits === 1) drawText(c, s.name, sx + sw / 2, sy + sh / 2 - 5, { color: SHEET.ink, align: 'center', size: 9 })
     }
-    const t = Math.min(sw, sh) / 2
-    const pts: [number, number][] =
-      sw > sh
-        ? [[sx + t, sy], [sx + sw - t, sy], [sx + sw, sy + t], [sx + sw - t, sy + sh], [sx + t, sy + sh], [sx, sy + t]]
-        : [[sx + t, sy], [sx + sw, sy + t], [sx + sw, sy + sh - t], [sx + t, sy + sh], [sx, sy + sh - t], [sx, sy + t]]
-    c.beginPath()
-    pts.forEach(([px, py], i) => (i === 0 ? c.moveTo(px, py) : c.lineTo(px, py)))
-    c.closePath()
-    c.stroke()
-    drawText(c, s.name, sx + sw / 2, sy + sh / 2 - 5, { color: SHEET.ink, align: 'center', size: 9 })
   }
-  // numbered pin boxes with the pin names beyond them, and the minus sign on the common pins (common cathode)
-  for (let k = 1; k <= 10; k++) {
-    const p = segPin(k)
-    const by = p.top ? y - BOX : y + h
-    c.strokeRect(p.x - BOX / 2, by, BOX, BOX)
-    drawText(c, String(k), p.x, by + 3, { color: SHEET.ink, align: 'center', size: 10 })
-    const name = PIN_NAMES[k - 1]
-    drawText(c, name, p.x, p.top ? by - 14 : by + BOX + 3, { color: SHEET.ink, align: 'center', size: 9 })
-    if (name === 'COM') drawText(c, '-', p.x, p.top ? y + 4 : y + h - 14, { color: SHEET.ink, align: 'center', size: 10 })
+  // numbered pin boxes (1..perRow along the bottom left to right, the rest back along the top) with the pin names beyond them
+  const n = info.pinNames.length
+  const x0 = x + w / 2 - ((info.perRow - 1) * 20) / 2
+  const commons = new Set(info.comPins.flat())
+  for (let i = 0; i < n; i++) {
+    const top = i >= info.perRow
+    const px = x0 + (top ? info.perRow - 1 - (i - info.perRow) : i) * 20
+    const by = top ? y - BOX : y + h
+    c.strokeRect(px - BOX / 2, by, BOX, BOX)
+    drawText(c, String(i + 1), px, by + 3, { color: SHEET.ink, align: 'center', size: 10 })
+    drawText(c, info.pinNames[i], px, top ? by - 14 : by + BOX + 3, { color: SHEET.ink, align: 'center', size: 9 })
+    // the common pins go to minus (common cathode)
+    if (commons.has(i)) drawText(c, '-', px, top ? y + 4 : y + h - 14, { color: SHEET.ink, align: 'center', size: 10 })
   }
 }
 
 /** Show the pinout for the selected chip or display, or hide it when anything else (or nothing) is selected. */
 export function updateChipSheet(canvas: HTMLCanvasElement, part: PartInstance | undefined): void {
   const info = part ? CHIP_INFO.get(part.type) : undefined
-  const seg = part?.type === 'seg7'
+  const seg = part ? SEG_INFO.has(part.type) : false
   if (!info && !seg) {
     canvas.style.display = 'none'
     canvas.dataset.chip = ''
     return
   }
   canvas.style.display = 'block'
-  const key = seg ? 'seg7' : part!.type
+  const key = part!.type
   if (canvas.dataset.chip === key) return
   canvas.dataset.chip = key
-  const size = seg ? { w: SEG.W, h: SEG.H } : { w: W, h: H }
+  const size = seg ? segSize(SEG_INFO.get(key)!.digits) : { w: W, h: H }
   const dpr = window.devicePixelRatio || 1
   canvas.width = Math.round(size.w * dpr)
   canvas.height = Math.round(size.h * dpr)
@@ -180,6 +190,6 @@ export function updateChipSheet(canvas: HTMLCanvasElement, part: PartInstance | 
   if (!c) return
   c.setTransform(dpr, 0, 0, dpr, 0, 0)
   c.clearRect(0, 0, size.w, size.h)
-  if (seg) drawSegSheet(c)
+  if (seg) drawSegSheet(c, key)
   else drawSheet(c, info!)
 }

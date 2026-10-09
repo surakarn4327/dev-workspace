@@ -1235,9 +1235,8 @@ export function electroCapSprite(): Sprite {
  * (two rows of 5, x = 0..80, y = 0 and 160) are drawn by the part, and so are the 8 segments (pale grey bars when dark, red when
  * lit), centred on the body.
  */
-export function segDisplaySprite(): Sprite {
-  return sprite('seg7', () => {
-    const W = 50
+function segBodySprite(key: string, W: number): Sprite {
+  return sprite(key, () => {
     const H = 70
     const g = new PixelGrid(W, H)
     g.rrect(0, 0, W, H, 3, 'T')
@@ -1255,4 +1254,13 @@ export function segDisplaySprite(): Sprite {
     g.rect(4, 5, 1, 3, 'g')
     return g.build({ h: '#4a4a55', L: '#2f2f38', T: '#23232a', M: '#1d1d23', S: '#17171c', D: '#101014', g: '#3a3a45' }, '#08080b')
   })
+}
+
+export function segDisplaySprite(): Sprite {
+  return segBodySprite('seg7', 50)
+}
+
+/** The four-digit display: the same black body, four digit cells wide (200 x 70 art pixels), grid cell (0, 0) at world (-150, 10). */
+export function seg4DisplaySprite(): Sprite {
+  return segBodySprite('seg7x4', 200)
 }
