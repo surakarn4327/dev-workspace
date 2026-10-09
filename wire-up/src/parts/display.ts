@@ -227,7 +227,7 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
           const dx = ox + d * DIGIT_W * 2
           for (const s of SEGMENTS) {
             const b = brightness(d, s.name)
-            drawSegment(c, dx, s, '#d8d6d3')
+            drawSegment(c, dx, s, '#a9a7a4')
             if (b > 0) {
               c.globalAlpha = Math.min(1, 0.3 + 0.8 * b)
               drawSegment(c, dx, s, '#ff3b4a')
@@ -249,7 +249,7 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
       for (let d = 0; d < digits; d++) {
         for (const s of SEGMENTS) {
           const on = (live[`i_${d}_${s.name}`] ?? 0) > 1e-5
-          c.fillStyle = on ? '#ff3b4a' : '#d8d6d3'
+          c.fillStyle = on ? '#ff3b4a' : '#a9a7a4'
           c.fillRect(ox + d * DIGIT_W * 2 + s.x * 2, OY + s.y * 2, s.w * 2, s.h * 2)
         }
       }
