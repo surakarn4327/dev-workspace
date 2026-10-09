@@ -10,14 +10,14 @@ import type { PartDef } from './types.ts'
 
 /** Segment name, the pin (0-based) it is wired to, and where it is drawn in the window (art pixels from the sprite's corner). */
 const SEGMENTS: { name: string; pin: number; x: number; y: number; w: number; h: number }[] = [
-  { name: 'a', pin: 6, x: 10, y: 8, w: 24, h: 5 },
-  { name: 'b', pin: 5, x: 32, y: 11, w: 5, h: 24 },
-  { name: 'c', pin: 3, x: 32, y: 36, w: 5, h: 24 },
-  { name: 'd', pin: 1, x: 10, y: 58, w: 24, h: 5 },
-  { name: 'e', pin: 0, x: 7, y: 36, w: 5, h: 24 },
-  { name: 'f', pin: 8, x: 7, y: 11, w: 5, h: 24 },
-  { name: 'g', pin: 9, x: 10, y: 33, w: 24, h: 5 },
-  { name: 'dp', pin: 4, x: 40, y: 58, w: 4, h: 4 },
+  { name: 'a', pin: 6, x: 13, y: 8, w: 24, h: 5 },
+  { name: 'b', pin: 5, x: 35, y: 11, w: 5, h: 24 },
+  { name: 'c', pin: 3, x: 35, y: 36, w: 5, h: 24 },
+  { name: 'd', pin: 1, x: 13, y: 58, w: 24, h: 5 },
+  { name: 'e', pin: 0, x: 10, y: 36, w: 5, h: 24 },
+  { name: 'f', pin: 8, x: 10, y: 11, w: 5, h: 24 },
+  { name: 'g', pin: 9, x: 13, y: 33, w: 24, h: 5 },
+  { name: 'dp', pin: 4, x: 42, y: 58, w: 4, h: 4 },
 ]
 const COM_PINS = [2, 7]
 const PIN_NAMES = ['E', 'D', 'COM', 'C', 'DP', 'B', 'A', 'COM', 'F', 'G']
@@ -143,11 +143,9 @@ export const seg7: PartDef = {
       c.fillRect(i * 20 - 2, 0, 4, 18)
       c.fillRect(i * 20 - 2, 142, 4, 18)
     }
-    c.fillStyle = '#d0ccbd'
+    c.fillStyle = '#1d1d23'
     rrect(c, OX, OY, 100, 140, 6)
     c.fill()
-    c.fillStyle = '#17171c'
-    c.fillRect(OX + 6, OY + 6, 88, 128)
     for (const s of SEGMENTS) {
       const on = (live[`i_${s.name}`] ?? 0) > 1e-5
       c.fillStyle = on ? '#ff3b4a' : '#cfcfc6'

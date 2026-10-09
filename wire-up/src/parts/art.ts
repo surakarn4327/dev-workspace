@@ -1231,9 +1231,9 @@ export function electroCapSprite(): Sprite {
 
 /**
  * Single-digit LED display seen from the front, drawn like the pinout picture the user sent 2026-10-09: a portrait body (real
- * 0.56 inch parts are 12.6 x 19 mm) with a black face and off-white sides. 50 x 70 art pixels, grid cell (0, 0) at world
- * (-10, 10); the 10 pins (two rows of 5, x = 0..80, y = 0 and 160) are drawn by the part, and so are the 8 segments (pale grey
- * bars when dark, red when lit) on the face (art pixels 3..46 across, 3..66 down).
+ * 0.56 inch parts are 12.6 x 19 mm) that is black all over. 50 x 70 art pixels, grid cell (0, 0) at world (-10, 10); the 10 pins
+ * (two rows of 5, x = 0..80, y = 0 and 160) are drawn by the part, and so are the 8 segments (pale grey bars when dark, red when
+ * lit), centred on the body.
  */
 export function segDisplaySprite(): Sprite {
   return sprite('seg7', () => {
@@ -1250,18 +1250,9 @@ export function segDisplaySprite(): Sprite {
       const base = y < 22 ? 'T' : y < 46 ? 'M' : 'S'
       g.set(x, y, lit && !dark ? 'h' : dark && !lit ? 'D' : lit2 ? 'L' : base)
     }
-    // the black face, with a shaded top-left edge and a faint lit lip at the bottom right
-    g.rrect(3, 3, 44, 64, 2, 'K')
-    g.rect(3, 3, 44, 1, 'k')
-    g.rect(3, 3, 1, 64, 'k')
-    g.rect(4, 66, 43, 1, 'J')
-    g.rect(46, 4, 1, 63, 'J')
-    // a soft reflection in the top left of the face
-    g.rect(5, 5, 5, 1, 'g')
-    g.rect(5, 6, 1, 2, 'g')
-    return g.build(
-      { h: '#f4f2e8', L: '#e2dfd2', T: '#d0ccbd', M: '#bab6a6', S: '#a39f90', D: '#8a8679', K: '#17171c', k: '#0b0b0f', J: '#2c2c35', g: '#3a3a45' },
-      '#2a2a2c',
-    )
+    // a soft reflection in the top left of the black plastic
+    g.rect(4, 4, 6, 1, 'g')
+    g.rect(4, 5, 1, 3, 'g')
+    return g.build({ h: '#4a4a55', L: '#2f2f38', T: '#23232a', M: '#1d1d23', S: '#17171c', D: '#101014', g: '#3a3a45' }, '#08080b')
   })
 }
