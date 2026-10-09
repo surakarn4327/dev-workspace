@@ -401,6 +401,18 @@ export class Workspace {
     this.syncIsolated()
   }
 
+  /** The groups held apart right now, for an undo step to remember: stepping back to a paste must find the copy still held. */
+  exportHolds(): { parts: string[]; wires: string[] }[] {
+    return [...this.holdGroups.values()].map((g) => ({ parts: [...g.parts], wires: [...g.wires] }))
+  }
+
+  /** Put back the groups a snapshot remembers (those that no longer sit on anything are released again on the next frame). */
+  importHolds(list: { parts: string[]; wires: string[] }[]): void {
+    this.holdGroups.clear()
+    for (const g of list) this.holdGroups.set(`h${++this.holdCount}`, { parts: new Set(g.parts), wires: new Set(g.wires) })
+    this.syncIsolated()
+  }
+
   /** Parts of groups still sitting on something they were not drawn to (red); groups that moved clear are released. */
   private currentBadParts(): string[] {
     for (const [id, g] of this.holdGroups) {
