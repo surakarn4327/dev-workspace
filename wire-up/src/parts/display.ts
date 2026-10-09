@@ -84,15 +84,16 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
       if (p.state.failed) return
       info.comPins.forEach((pins, d) => {
         // the common pins of one digit are one wire inside the package
-        for (let k = 1; k < pins.length; k++) ctx.add({ kind: 'R', id: ctx.id(`com${d}_${k}`), a: ctx.pins[pins[0]], b: ctx.pins[pins[k]], r: 0.01 })
+        for (let k = 1; k < pins.length; k++) ctx.add({ kind: 'R', id: ctx.id(`com${d}_${k}`), a: ctx.pins[pins[0]], b: ctx.pins[pins[k]], r: 0.01, pinA: pins[0], pinB: pins[k] })
         const com = ctx.pins[pins[0]]
         for (const s of SEGMENTS) {
           const mid = ctx.newNode()
           // common cathode: current flows from the segment pin through the LED into the digit's common
-          ctx.add({ kind: 'R', id: ctx.id(`rs_${d}_${s.name}`), a: ctx.pins[info.segPin[s.name]], b: mid, r: LED_RS })
-          ctx.add({ kind: 'D', id: ctx.id(`d_${d}_${s.name}`), a: mid, b: com, is: ledIs(red.vf10), n: LED_N })
+          // pinA / pinB tell the wire-current code which pin each current belongs to when the user wires pins together
+          ctx.add({ kind: 'R', id: ctx.id(`rs_${d}_${s.name}`), a: ctx.pins[info.segPin[s.name]], b: mid, r: LED_RS, pinA: info.segPin[s.name] })
+          ctx.add({ kind: 'D', id: ctx.id(`d_${d}_${s.name}`), a: mid, b: com, is: ledIs(red.vf10), n: LED_N, pinB: pins[0] })
           // the plastic is not a perfect insulator: 10 Mohm between a segment pin and its common keeps a lone wired segment solvable (a common left unwired used to leave the solver spinning)
-          ctx.add({ kind: 'R', id: ctx.id(`leak_${d}_${s.name}`), a: ctx.pins[info.segPin[s.name]], b: com, r: 1e7 })
+          ctx.add({ kind: 'R', id: ctx.id(`leak_${d}_${s.name}`), a: ctx.pins[info.segPin[s.name]], b: com, r: 1e7, pinA: info.segPin[s.name], pinB: pins[0] })
         }
       })
     },

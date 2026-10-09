@@ -6,7 +6,8 @@ const GMIN = 1e-12
 const MAX_ITER = 150
 
 export type Element =
-  | { kind: 'R'; id: string; a: number; b: number; r: number }
+  /** `pinA` / `pinB`: which pin of its part terminal a / b is, when it is a pin: lets the wire currents charge a pin its own current when several pins are wired to one node. */
+  | { kind: 'R'; id: string; a: number; b: number; r: number; pinA?: number; pinB?: number }
   /** Ideal voltage source. a = +, b = -. Optional current limit (constant-current mode). */
   | { kind: 'V'; id: string; a: number; b: number; v: number; iLimit?: number }
   /** Real battery: ideal EMF with series resistance (Norton form). a = +, b = -. */
@@ -14,7 +15,7 @@ export type Element =
   /** Current source. Current flows a -> b through the element. */
   | { kind: 'I'; id: string; a: number; b: number; i: number }
   /** Junction diode. a = anode, b = cathode. */
-  | { kind: 'D'; id: string; a: number; b: number; is: number; n: number }
+  | { kind: 'D'; id: string; a: number; b: number; is: number; n: number; pinA?: number; pinB?: number }
   /** Bipolar transistor (Ebers-Moll). pol = +1 NPN, -1 PNP. */
   | { kind: 'Q'; id: string; c: number; b: number; e: number; pol: 1 | -1; is: number; bf: number; br: number }
   /** Capacitor. Open circuit in a plain DC solve; in a transient step a conductance `c / dt` plus a source holding last step's voltage. */

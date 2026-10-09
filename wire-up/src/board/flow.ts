@@ -13,8 +13,8 @@ import { socketKeys, tapTarget } from './wireJoin.ts'
 import { pointKey, wirePath } from './world.ts'
 import type { Vec, World } from './world.ts'
 
-/** (circuit node, current drawn from that node into the element) for every terminal of an element. */
-function draws(e: Element, res: SolveResult): [number, number][] {
+/** (circuit node, current drawn from that node into the element, the part pin it is, when the element says) for every terminal of an element. */
+function draws(e: Element, res: SolveResult): [number, number, number?][] {
   const c = res.cur.get(e.id)
   if (!c) return []
   switch (e.kind) {
@@ -24,6 +24,9 @@ function draws(e: Element, res: SolveResult): [number, number][] {
       return [[e.y, -c.i], [e.ref ?? 0, c.i]] // the symbol gate pushes c.i out of Y and takes it back from its reference
     case 'C':
       return [[e.y, c.i + (c.ib ?? 0)], [e.vcc, -c.i], [e.gnd, -(c.ib ?? 0)]] // a chip gate: in through VCC, out through GND
+    case 'R':
+    case 'D':
+      return [[e.a, c.i, e.pinA], [e.b, -c.i, e.pinB]]
     default:
       return [[e.a, c.i], [e.b, -c.i]]
   }
@@ -76,10 +79,10 @@ export function computeFlow(world: World, net: Netlist, res: SolveResult): FlowR
     if (!nodes || world.isolated.has(part.id)) continue
     const keys = pinWorld(part).map((v) => nodeOf(pointKey(v)))
     for (const e of byPart.get(part.id) ?? []) {
-      for (const [n, i] of draws(e, res)) {
+      for (const [n, i, hint] of draws(e, res)) {
         // several pins can share a node (an input wired straight to +): a chip's supply current belongs to its VCC / GND pin
         const supplyPin = e.kind === 'C' ? (n === e.vcc ? 13 : n === e.gnd ? 6 : -1) : -1
-        const pin = supplyPin >= 0 && nodes[supplyPin] === n ? supplyPin : nodes.indexOf(n)
+        const pin = hint !== undefined && nodes[hint] === n ? hint : supplyPin >= 0 && nodes[supplyPin] === n ? supplyPin : nodes.indexOf(n)
         if (pin >= 0) add(keys[pin], i)
         else if (anyPinAt.has(n)) add(anyPinAt.get(n)!, i)
       }

@@ -115,4 +115,29 @@ describe('wire flow', () => {
     // the two loads draw nearly the same, so the wire between their pins carries only the small difference the wire lengths make
     expect(Math.abs(sim.flow.get(b.id)!)).toBeLessThan(0.002)
   })
+
+  it('charges each pin of a display its own current when the pins are wired together', () => {
+    // + -> 330 ohm -> segment E; segment D is tied to E by a wire; COM -> -. Segment D draws its own current at its own pin, so the tie
+    // wire carries about half of the total (it used to read zero because both currents were charged to the first pin on the node)
+    const w = new World()
+    const bat = newPart(w.nextId('p'), 'battery', -400, 0)
+    bat.params.volts = 9
+    const r = newPart(w.nextId('p'), 'resistor', 0, 0)
+    r.params.value = 1000
+    const d = newPart(w.nextId('p'), 'seg7', 200, 300)
+    w.parts.push(bat, r, d)
+    const [plus, minus] = pinWorld(bat)
+    const rp = pinWorld(r)
+    const dp = pinWorld(d) // pin 1 = E, pin 2 = D, pin 3 = COM
+    w.addWire(plus, rp[0], '#ff4a4a')
+    w.addWire(rp[1], dp[0], '#ff4a4a')
+    const tie = w.addWire(dp[0], dp[1], '#2f6fe0')
+    w.addWire(dp[2], minus, '#4a7aff')
+    const sim = new Simulation(w)
+    sim.step(0.016)
+    const total = Math.abs(sim.live.get(d.id)!.i)
+    expect(total).toBeGreaterThan(0.002)
+    expect(Math.abs(sim.flow.get(tie.id) ?? 0)).toBeGreaterThan(total * 0.35)
+    expect(Math.abs(sim.flow.get(tie.id) ?? 0)).toBeLessThan(total * 0.65)
+  })
 })
