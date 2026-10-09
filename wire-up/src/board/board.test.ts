@@ -123,4 +123,19 @@ describe('save format', () => {
     const p = newPart('p1', 'resistor', 20, 20)
     expect(p.x).toBe(20)
   })
+
+  it('does not burn anything on a solve that did not converge', () => {
+    // a battery shorted by a wire would burn in a moment; with an untrustworthy solve nothing may burn
+    const w = new World()
+    const b = new SceneBuilder(w)
+    const bat = b.place('battery', -320, 80, { volts: 9 })
+    b.connect(bat, { x: 0, y: 0 }, { x: 100, y: 0 })
+    b.wire({ x: 0, y: 0 }, { x: 100, y: 0 })
+    const sim = new Simulation(w)
+    sim.refresh()
+    sim.result = { ...sim.result!, converged: false }
+    for (let k = 0; k < 200; k++) sim.step(0.016)
+    expect(w.getPart(bat.id)!.state.failed).toBe(false)
+    expect(w.getPart(bat.id)!.state.heat).toBe(0)
+  })
 })

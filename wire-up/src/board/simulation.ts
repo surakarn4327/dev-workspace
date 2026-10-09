@@ -96,8 +96,11 @@ export class Simulation {
     // capacitors charge and discharge in real time
     if (this.hasCaps && dt > 0) this.show(advance(this.net.circuit, this.charge, Math.min(dt, 0.25), this.warm))
     let failedNow = false
+    // a solve that did not converge gives numbers that mean nothing (a cold start after loading a file, or a wiring change that
+    // the solver could not follow): never heat or burn a part on them, wait for a solve that did converge
+    const trusted = this.result?.converged !== false
     for (const part of this.world.parts) {
-      if (part.state.failed) continue
+      if (part.state.failed || !trusted) continue
       const s = this.stress.get(part.id)
       const ratio = s ? s.ratio : 0
       if (ratio > 1) part.state.heat += (ratio - 1) * HEAT_RATE * dt
