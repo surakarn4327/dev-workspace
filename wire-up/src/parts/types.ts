@@ -17,6 +17,10 @@ export interface BuildCtx {
   ref: number
   /** Is anything else on this pin's net? (a chip's supply pin with nothing wired to it reads false) */
   wired(pin: number): boolean
+  /** Seconds on the simulation clock when this circuit was built (for parts whose behaviour wanders with time). */
+  time: number
+  /** Call when the part needs rebuilding as time passes (a floating input drifts): the simulation re-solves every few tenths of a second. */
+  animate(): void
   newNode(): number
   add(e: Element): void
   id(suffix: string): string

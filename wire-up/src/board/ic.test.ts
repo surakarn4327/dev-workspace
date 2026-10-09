@@ -136,3 +136,74 @@ describe('wires on a chip', () => {
     expect([turned.dx, turned.dy]).toEqual([1, 0])
   })
 })
+
+describe('74HC inputs', () => {
+  /** 74HC08 powered from a battery of `volts`; input 1A to + through a switch (or left alone), 1B tied to +; Y -> 330 ohm -> LED. */
+  function rig(volts: number, input: 'floating' | 'plus' | 'minus' | 'nine') {
+    const w = new World()
+    const b = new SceneBuilder(w)
+    const bat = b.place('battery', -400, 200, { volts })
+    const big = b.place('battery', -400, 400, { volts: 9 })
+    const chip = b.place('ic-74hc08', 0, 0)
+    const r = b.place('resistor', 300, 200, { value: 330, legs: 2 })
+    const led = b.place('led', 460, 200, { color: 'green' })
+    const [plus, minus] = pinWorld(bat)
+    const [nine] = pinWorld(big)
+    const [, nineMinus] = pinWorld(big)
+    const p = pinWorld(chip)
+    const rp = pinWorld(r)
+    const lp = pinWorld(led)
+    b.wire(plus, p[13])
+    b.wire(minus, p[6])
+    b.wire(plus, p[1])
+    if (input === 'plus') b.wire(plus, p[0])
+    if (input === 'minus') b.wire(minus, p[0])
+    if (input === 'nine') {
+      b.wire(nine, p[0])
+      b.wire(nineMinus, minus) // common ground, so the 9 V really is 9 V above the chip's GND
+    }
+    b.wire(p[2], rp[0])
+    b.wire(rp[1], lp[0])
+    b.wire(lp[1], minus)
+    return { w, chip, led, sim: new Simulation(w) }
+  }
+
+  it('a floating input wanders: the LED flickers on and off, then settles once the pin is tied low', () => {
+    const t = rig(4.5, 'floating')
+    const lit: boolean[] = []
+    for (let k = 0; k < 600; k++) {
+      t.sim.step(0.05) // 30 s
+      if (k % 10 === 0) lit.push((t.sim.live.get(t.led.id)!.i ?? 0) > 0.004)
+    }
+    expect(lit.some((x) => x)).toBe(true)
+    expect(lit.some((x) => !x)).toBe(true)
+    expect(t.chip.state.failed).toBe(false) // wandering is harmless, only unreliable
+    const tied = rig(4.5, 'minus')
+    for (let k = 0; k < 100; k++) tied.sim.step(0.05)
+    expect(tied.sim.live.get(tied.led.id)!.i).toBeLessThan(0.0005)
+  })
+
+  it('a tied input stays steady', () => {
+    const t = rig(4.5, 'plus')
+    const seen = new Set<boolean>()
+    for (let k = 0; k < 200; k++) {
+      t.sim.step(0.05)
+      seen.add((t.sim.live.get(t.led.id)!.i ?? 0) > 0.004)
+    }
+    expect([...seen]).toEqual([true])
+  })
+
+  it('an input driven far above the supply burns through its protection diode, with the numbers', () => {
+    const t = rig(3, 'nine')
+    for (let k = 0; k < 300; k++) t.sim.step(0.016)
+    expect(t.chip.state.failed).toBe(true)
+    expect(t.chip.state.failMsg).toMatch(/protection diode/)
+    expect(t.chip.state.failMsg).toMatch(/pin 1 was driven/)
+  })
+
+  it('an input inside the supply does not trouble the diodes', () => {
+    const t = rig(4.5, 'plus')
+    for (let k = 0; k < 100; k++) t.sim.step(0.016)
+    expect(t.chip.state.failed).toBe(false)
+  })
+})

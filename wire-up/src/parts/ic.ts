@@ -8,7 +8,7 @@ import { eng, HC } from '../sim/models.ts'
 import type { GateFn } from '../sim/solver.ts'
 import { DIP_COLORS, dipSprite } from './art.ts'
 import { eid, stress } from './common.ts'
-import type { PartDef } from './types.ts'
+import type { BuildCtx, PartDef } from './types.ts'
 
 /** Pin number (1..14) of each gate's inputs and output: [A, B, Y], or [A, Y] for an inverter. */
 type Layout = number[][]
@@ -54,6 +54,41 @@ function pinNames(layout: Layout): string[] {
   return names
 }
 
+/** A hash of a string to 0..1, steady for the same text. */
+function unit(text: string): number {
+  let h = 2166136261
+  for (let k = 0; k < text.length; k++) h = Math.imul(h ^ text.charCodeAt(k), 16777619)
+  return ((h >>> 0) % 100000) / 100000
+}
+
+/**
+ * Where a floating input sits as time passes: wandering across the middle of the supply (and often beyond the switching
+ * point either way), like an antenna picking up the room. A smooth sum of a few slow waves, different for every pin.
+ */
+function drift(owner: string, pinNo: number, time: number): number {
+  const s = `${owner}#${pinNo}`
+  const wave = (k: number, rate: number, depth: number) => depth * Math.sin(2 * Math.PI * (rate * time + unit(`${s}/${k}`)))
+  return Math.min(Math.max(0.5 + wave(1, 0.37, 0.3) + wave(2, 0.91, 0.22) + wave(3, 2.3, 0.12), 0.03), 0.97)
+}
+
+/**
+ * One input pin: wired, it is held by a huge pull-down (nothing but the switch or wire that drives it matters) and by the
+ * chip's two protection diodes (up to VCC, down from GND). Left unconnected it is not pulled anywhere: it floats, a
+ * divider of two million ohms that wanders with time, so the gate's output flickers until the pin is tied to + or -.
+ */
+function input(ctx: BuildCtx, owner: string, pinNo: number, tag: string, node: number, vcc: number, gnd: number): void {
+  if (ctx.wired(pinNo - 1)) {
+    ctx.add({ kind: 'R', id: ctx.id(`pd${tag}`), a: node, b: gnd, r: HC.rIn })
+  } else {
+    const u = drift(owner, pinNo, ctx.time)
+    ctx.add({ kind: 'R', id: ctx.id(`fu${tag}`), a: vcc, b: node, r: HC.rFloat * (1 - u) * 2 })
+    ctx.add({ kind: 'R', id: ctx.id(`fd${tag}`), a: node, b: gnd, r: HC.rFloat * u * 2 })
+    ctx.animate()
+  }
+  ctx.add({ kind: 'D', id: ctx.id(`cu${tag}`), a: node, b: vcc, is: HC.diodeIs, n: 1 })
+  ctx.add({ kind: 'D', id: ctx.id(`cd${tag}`), a: gnd, b: node, is: HC.diodeIs, n: 1 })
+}
+
 function makeChip(type: string, chip: string, what: string, fn: GateFn, layout: Layout): PartDef {
   CHIP_INFO.set(type, { chip, what, fn, layout })
   const pinout = layout
@@ -81,8 +116,8 @@ function makeChip(type: string, chip: string, what: string, fn: GateFn, layout: 
         const b = g.length === 3 ? g[1] : undefined
         const y = g[g.length - 1]
         ctx.add({ kind: 'C', id: ctx.id(`g${i}`), fn, a: pin(a), b: b === undefined ? undefined : pin(b), y: pin(y), vcc, gnd, rout: HC.rout, w: HC.w })
-        ctx.add({ kind: 'R', id: ctx.id(`ia${i}`), a: pin(a), b: gnd, r: HC.rIn })
-        if (b !== undefined) ctx.add({ kind: 'R', id: ctx.id(`ib${i}`), a: pin(b), b: gnd, r: HC.rIn })
+        const inputs: [number, string][] = b === undefined ? [[a, 'a']] : [[a, 'a'], [b, 'b']]
+        for (const [pinNo, tag] of inputs) input(ctx, p.id, pinNo, `${i}${tag}`, pin(pinNo), vcc, gnd)
       })
       ctx.add({ kind: 'R', id: ctx.id('leak'), a: vcc, b: gnd, r: HC.rLeak })
       // the substrate diode: a supply wired the wrong way round drives a large current straight through the chip
@@ -104,13 +139,33 @@ function makeChip(type: string, chip: string, what: string, fn: GateFn, layout: 
         }
       })
       const sub = Math.abs(env.cur(eid(p, 'sub'))?.i ?? 0)
+      // the protection diodes of each input: current into VCC or out of GND through them
+      let clamp = 0
+      let clampPin = 0
+      layout.forEach((g, i) => {
+        const pins = g.length === 3 ? [[g[0], 'a'], [g[1], 'b']] as [number, string][] : [[g[0], 'a']] as [number, string][]
+        for (const [pinNo, tag] of pins) {
+          const iu = Math.abs(env.cur(eid(p, `cu${i}${tag}`))?.i ?? 0)
+          const id = Math.abs(env.cur(eid(p, `cd${i}${tag}`))?.i ?? 0)
+          if (Math.max(iu, id) > clamp) {
+            clamp = Math.max(iu, id)
+            clampPin = pinNo
+          }
+        }
+      })
+      const rClamp = clamp / HC.iClampMax
       const rV = vs / HC.vccMax
       const rOut = worstOut / HC.iOutMax
       const rSup = Math.max(supply, sub) / HC.iSupplyMax
       return {
         live: { v: vs, i: supply + sub },
-        stress: stress(Math.max(rV, rOut, rSup), () => {
-          if (sub / HC.iSupplyMax >= Math.max(rV, rOut)) {
+        stress: stress(Math.max(rV, rOut, rSup, rClamp), () => {
+          const swapped = vs < -0.3 || sub / HC.iSupplyMax >= Math.max(rV, rOut)
+          if (!swapped && rClamp >= Math.max(rV, rOut, rSup)) {
+            const at = clampPin ? v(clampPin) - v(GND) : 0
+            return `${chip} input on pin ${clampPin} was driven to ${eng(at, 'V')} with the supply at ${eng(vs, 'V')}: its protection diode carried ${eng(clamp, 'A')}, one input can take at most ${eng(HC.iClampMax, 'A')}. Keep inputs between GND and VCC.`
+          }
+          if (swapped) {
             return `${chip} has VCC and GND swapped: ${eng(sub, 'A')} ran straight through the chip (at most ${eng(HC.iSupplyMax, 'A')}). Pin 14 goes to +, pin 7 to -.`
           }
           if (rV >= rOut) return `${chip} supply was ${eng(vs, 'V')}; a 74HC chip takes at most ${HC.vccMax} V (it works on 2-6 V).`

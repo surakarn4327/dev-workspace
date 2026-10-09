@@ -39,6 +39,7 @@ export class Simulation {
   log: LogEntry[] = []
   clock = 0
   private builtVersion = -1
+  private builtClock = 0
   private warm?: Float64Array
   private world: World
 
@@ -49,9 +50,12 @@ export class Simulation {
 
   /** Re-solve now if the workspace changed. */
   refresh(): void {
-    if (this.builtVersion === this.world.version) return
+    // a part that drifts with time (a floating chip input) asks for a fresh build every 0.2 s
+    const drifted = this.net.animated && this.clock - this.builtClock >= 0.2
+    if (this.builtVersion === this.world.version && !drifted) return
     this.builtVersion = this.world.version
-    this.net = buildNetlist(this.world)
+    this.builtClock = this.clock
+    this.net = buildNetlist(this.world, this.clock)
     const res = solve(this.net.circuit, this.warm)
     this.warm = res.raw
     this.result = res

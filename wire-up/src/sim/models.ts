@@ -135,4 +135,4 @@ function trim(x: number): string {
  * 74HC CMOS logic chips (DIP-14). Datasheet absolute maximums: supply 7 V (works 2-6 V), 25 mA per output pin, 50 mA through
  * VCC / GND. Inputs switch at half the supply and draw no current; `rLeak` keeps an unpowered chip solvable.
  */
-export const HC = { rout: 50, w: 0.15, vccMax: 7, iOutMax: 0.025, iSupplyMax: 0.05, rLeak: 1e7, rIn: 1e8, diodeIs: 1e-14 }
+export const HC = { rout: 50, w: 0.15, vccMax: 7, iOutMax: 0.025, iSupplyMax: 0.05, iClampMax: 0.02, rLeak: 1e7, rIn: 1e8, diodeIs: 1e-14, rFloat: 1e6 }

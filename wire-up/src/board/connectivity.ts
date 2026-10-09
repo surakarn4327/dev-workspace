@@ -52,6 +52,8 @@ export interface Netlist {
   partRef: Map<string, number>
   /** Point keys that have a pin or a wire end on them. */
   usedKeys: Set<string>
+  /** True if some part (a chip with a floating input) changes with time, so the netlist must be rebuilt every so often. */
+  animated: boolean
   nodeAt(p: Vec): number | undefined
 }
 
@@ -62,7 +64,8 @@ export interface Netlist {
  */
 const FLOAT_TIE = 1e7
 
-export function buildNetlist(world: World): Netlist {
+export function buildNetlist(world: World, time = 0): Netlist {
+  let animated = false
   const uf = new UnionFind()
   // a point's key; items of an isolated paste group get their own namespace so they join each other but nothing else
   const keyOf = (p: Vec, owner: string): string => {
@@ -188,6 +191,10 @@ export function buildNetlist(world: World): Netlist {
       pins: nodes,
       ref: partRef.get(part.id) ?? 0,
       wired: (pin) => (pinsOnNet.get(uf.find(pinKeys.get(part.id)![pin])) ?? 0) > 1,
+      time,
+      animate: () => {
+        animated = true
+      },
       newNode: () => nodeCount++,
       add: (e) => elements.push(e),
       id: (s) => `${part.id}:${s}`,
@@ -208,6 +215,7 @@ export function buildNetlist(world: World): Netlist {
     circuit: { nodeCount, elements },
     partPins,
     partRef,
+    animated,
     usedKeys,
     nodeAt(p) {
       const k = pointKey(p)
