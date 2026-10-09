@@ -10,14 +10,14 @@ import type { PartDef } from './types.ts'
 
 /** Segment name, the pin (0-based) it is wired to, and where it is drawn in the window (art pixels from the sprite's corner). */
 const SEGMENTS: { name: string; pin: number; x: number; y: number; w: number; h: number }[] = [
-  { name: 'a', pin: 6, x: 12, y: 6, w: 23, h: 5 },
-  { name: 'b', pin: 5, x: 36, y: 12, w: 5, h: 19 },
-  { name: 'c', pin: 3, x: 36, y: 38, w: 5, h: 19 },
-  { name: 'd', pin: 1, x: 12, y: 58, w: 23, h: 5 },
-  { name: 'e', pin: 0, x: 6, y: 38, w: 5, h: 19 },
-  { name: 'f', pin: 8, x: 6, y: 12, w: 5, h: 19 },
-  { name: 'g', pin: 9, x: 12, y: 32, w: 23, h: 5 },
-  { name: 'dp', pin: 4, x: 42, y: 59, w: 4, h: 4 },
+  { name: 'a', pin: 6, x: 10, y: 8, w: 24, h: 5 },
+  { name: 'b', pin: 5, x: 32, y: 11, w: 5, h: 24 },
+  { name: 'c', pin: 3, x: 32, y: 36, w: 5, h: 24 },
+  { name: 'd', pin: 1, x: 10, y: 58, w: 24, h: 5 },
+  { name: 'e', pin: 0, x: 7, y: 36, w: 5, h: 24 },
+  { name: 'f', pin: 8, x: 7, y: 11, w: 5, h: 24 },
+  { name: 'g', pin: 9, x: 10, y: 33, w: 24, h: 5 },
+  { name: 'dp', pin: 4, x: 40, y: 58, w: 4, h: 4 },
 ]
 const COM_PINS = [2, 7]
 const PIN_NAMES = ['E', 'D', 'COM', 'C', 'DP', 'B', 'A', 'COM', 'F', 'G']
@@ -36,21 +36,16 @@ function drawSegment(c: CanvasRenderingContext2D, s: (typeof SEGMENTS)[number], 
     px(0, 1, 4, 2, color)
     px(1, 3, 2, 1, color)
     px(1, 1, 1, 1, core)
-  } else if (s.w > s.h) {
-    // a flat bar whose ends are cut to a point
-    px(3, 0, s.w - 6, 1, color)
-    px(2, 1, s.w - 4, 1, color)
-    px(0, 2, s.w, 1, color)
-    px(2, 3, s.w - 4, 1, color)
-    px(3, 4, s.w - 6, 1, color)
-    px(3, 1, s.w - 6, 1, core)
+    return
+  }
+  // a bar 5 pixels thick whose two ends are cut at 45 degrees to a point, like the picture the user sent
+  const inset = [2, 1, 0, 1, 2]
+  if (s.w > s.h) {
+    inset.forEach((k, r) => px(k, r, s.w - 2 * k, 1, color))
+    px(3, 2, s.w - 6, 1, core)
   } else {
-    px(0, 3, 1, s.h - 6, color)
-    px(1, 2, 1, s.h - 4, color)
-    px(2, 0, 1, s.h, color)
-    px(3, 2, 1, s.h - 4, color)
-    px(4, 3, 1, s.h - 6, color)
-    px(1, 3, 1, s.h - 8, core)
+    inset.forEach((k, col) => px(col, k, 1, s.h - 2 * k, color))
+    px(2, 3, 1, s.h - 6, core)
   }
 }
 
