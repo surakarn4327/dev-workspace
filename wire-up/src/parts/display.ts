@@ -146,10 +146,11 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
           const dx = ox + d * DIGIT_W * 2
           for (const s of SEGMENTS) {
             const i = live[`i_${d}_${s.name}`] ?? 0
-            const b = i > 1e-5 ? Math.min(1, i / 0.012) : 0
+            // an LED looks bright well below its full current: about half of the brightness is reached at a quarter of 12 mA
+            const b = i > 1e-5 ? Math.min(1, Math.sqrt(i / 0.012)) : 0
             drawSegment(c, dx, s, '#d8d6cd', '#efede6')
             if (b > 0) {
-              c.globalAlpha = Math.min(1, 0.25 + b)
+              c.globalAlpha = Math.min(1, 0.3 + 0.8 * b)
               drawSegment(c, dx, s, '#ff3b4a', '#ff9aa2')
               c.globalAlpha = 1
             }
