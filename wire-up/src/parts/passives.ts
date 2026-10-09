@@ -1,7 +1,7 @@
 import type { PartInstance } from '../board/world.ts'
 import { COL, drawLabelAbove, drawText, leg, radialGlow, rrect } from '../render/draw.ts'
 import { CAP, CERAMIC_CAP_VALUES, ELECTRO_CAP_VALUES, eiaCode, eng, fmtFarads, fmtOhms, ldrResistance, ntcResistance, resistorBands, RESISTOR_VALUES } from '../sim/models.ts'
-import { drawSprite, pxLine, pxRect, spriteInk } from '../render/pixel.ts'
+import { drawSprite, pxLeg, pxLine, pxRect, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { ceramicCapSprite, electroCapSprite, ldrSprite, ntcSprite, potSprite, resistorSprite } from './art.ts'
 import { eid, legDrop, legGrid, LEG_FIELD, num, spreadOf, stress, U } from './common.ts'
@@ -342,8 +342,12 @@ export const ntc: PartDef = {
 // ---------------------------------------------------------------- capacitors
 
 /** Two straight legs, one hole apart, running up from the pins to `top` and hidden behind the body (LDR, NTC, ceramic disc). */
-function straightLegs(c: CanvasRenderingContext2D, p: PartInstance, top: number): void {
+function straightLegs(c: CanvasRenderingContext2D, p: PartInstance, top: number, outlined = false): void {
   for (const x of [0, 20]) {
+    if (outlined) {
+      pxLeg(c, x, top, 4 + legDrop(p))
+      continue
+    }
     c.fillStyle = COL.metal
     c.fillRect(x - 2, top, 2, 4 - top + legDrop(p))
     c.fillStyle = COL.metalDark
@@ -365,7 +369,7 @@ export const ceramicCap: PartDef = {
   blurb: 'Stores charge. Ceramic disc, either way round, 50 V.',
   pinLabels: ['1', '2'],
   pinLabelPlace: 'below',
-  tipPastPin: 4,
+  tipPastPin: 6,
   tipPastPinVector: 2,
   defaults: () => ({ value: 1e-7, legs: 1 }),
   pins: (p) => pinsTwo(1, legGrid(p)),
@@ -382,7 +386,7 @@ export const ceramicCap: PartDef = {
     ),
   draw(c, p) {
     if (scene.pixel) {
-      straightLegs(c, p, -6)
+      straightLegs(c, p, -6, true)
       c.save()
       c.translate(-10, 0)
       drawSprite(c, ceramicCapSprite(), -2, -52)
@@ -420,7 +424,7 @@ export const electroCap: PartDef = {
   blurb: 'Big stored charge. Has a + and a - leg: 16 V, and it breaks if put in backwards.',
   pinLabels: ['+', '-'],
   pinLabelPlace: 'below',
-  tipPastPin: 4,
+  tipPastPin: 6,
   tipPastPinVector: 2,
   defaults: () => ({ value: 1e-4, legs: 1 }),
   pins: (p) => pinsTwo(1, legGrid(p)),
@@ -443,12 +447,7 @@ export const electroCap: PartDef = {
     const value = `${fmtFarads(num(p, 'value', 1e-4))}F`
     if (scene.pixel) {
       // the legs come straight down from the bottom of the can
-      for (const x of [0, 20]) {
-        c.fillStyle = COL.metal
-        c.fillRect(x - 2, -8, 2, 12 + legDrop(p))
-        c.fillStyle = COL.metalDark
-        c.fillRect(x, -8, 2, 12 + legDrop(p))
-      }
+      for (const x of [0, 20]) pxLeg(c, x, -8, 4 + legDrop(p))
       drawSprite(c, electroCapSprite(), -14, -88)
       // the value and voltage printed up the sleeve, on the lit side
       c.save()

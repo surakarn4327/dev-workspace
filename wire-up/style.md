@@ -35,9 +35,9 @@
 | BC547/BC557 | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `to92Sprite` (ตัวเดียวใช้ทั้งสองรุ่น) — ดูหัวข้อ 5.5 |
 | pot | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `potSprite` — ดูหัวข้อ 5.6 |
 | LDR | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `ldrSprite` — ดูหัวข้อ 5.7 |
-| NTC | **pixel — ร่าง (วาดใหม่ 2026-10-09 รอผู้ใช้ชม)** | `parts/art.ts` `ntcSprite` — ดูหัวข้อ 5.8 |
-| ตัวเก็บประจุเซรามิก (`cap-ceramic`) | **pixel — ร่าง ยังรอผู้ใช้ชมหน้าตา** | `parts/art.ts` `ceramicCapSprite` — ดูหัวข้อ 5.18 |
-| ตัวเก็บประจุอิเล็กโทรไลต์ (`cap-electro`) | **pixel — ร่าง ยังรอผู้ใช้ชมหน้าตา** | `parts/art.ts` `electroCapSprite` — ดูหัวข้อ 5.18 |
+| NTC | **pixel — ผู้ใช้อนุมัติ 2026-10-09 (วาดใหม่เป็นจานดำ)** | `parts/art.ts` `ntcSprite` — ดูหัวข้อ 5.8 |
+| ตัวเก็บประจุเซรามิก (`cap-ceramic`) | **pixel — ผู้ใช้อนุมัติ 2026-10-09** | `parts/art.ts` `ceramicCapSprite` — ดูหัวข้อ 5.18 |
+| ตัวเก็บประจุอิเล็กโทรไลต์ (`cap-electro`) | **pixel — ผู้ใช้อนุมัติ 2026-10-09** | `parts/art.ts` `electroCapSprite` — ดูหัวข้อ 5.18 |
 | ชิป 74HC DIP-14 (00, 02, 04, 08, 32, 86) | **pixel — ร่าง** | `parts/art.ts` `dipSprite` — ดูหัวข้อ 5.17 |
 | logic gate 7 ตัว (NOT, AND, OR, NAND, NOR, XOR, XNOR) | **pixel — ร่าง ยังรอผู้ใช้ชมหน้าตา** | `parts/art.ts` `gateSprite` — ดูหัวข้อ 5.16 |
 | สวิตช์ rocker (ชิ้น `switch` ชื่อ "Rocker switch") | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `rockerSwitchSprite` — ดูหัวข้อ 5.9 |
@@ -69,7 +69,7 @@
 | `bc557` | approved | `to92Sprite` |  |
 | `pot` | approved | `potSprite` |  |
 | `ldr` | approved | `ldrSprite` |  |
-| `ntc` | draft | `ntcSprite` |  |
+| `ntc` | approved | `ntcSprite` |  |
 | `switch` | approved | `rockerSwitchSprite` |  |
 | `slide-switch` | approved | `slideSwitchSprite` |  |
 | `button` | approved | `tactSprite` |  |
@@ -88,8 +88,8 @@
 | `ic-74hc08` | draft | `dipSprite` |  |
 | `ic-74hc32` | draft | `dipSprite` |  |
 | `ic-74hc86` | draft | `dipSprite` |  |
-| `cap-ceramic` | draft | `ceramicCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
-| `cap-electro` | draft | `electroCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
+| `cap-ceramic` | approved | `ceramicCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
+| `cap-electro` | approved | `electroCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
 
 ---
 
@@ -458,6 +458,13 @@
 - ค่าอยู่ที่ `sim/models.ts` (`CERAMIC_CAP_VALUES` 1 nF–1 µF, `ELECTRO_CAP_VALUES` 1 µF–4700 µF, `CAP` = พิกัดและ ESR) ค่าเริ่มต้น 100 nF / 100 µF; ป้ายค่าเขียนเป็น `100uF` (`fmtFarads`)
 - พิกัด: เซรามิก 50 V ทั้งสองทิศ; อิเล็กโทรไลต์ 16 V ถูกขั้ว, กลับขั้วทนราว 1 V (เกินแล้วสะสมความร้อนจนพัง อธิบายว่า "connected backwards")
 - `scripts/label-gap-harness.js` รันแล้ว 2026-10-09: โหมดพิกเซลได้ 4 ทุกมุมหมุนทั้งสองชิ้น; โหมดเวกเตอร์ 4–4.3 เท่า LDR/NTC (ค่าฐานเดิม)
+
+### 5.19 ขาโลหะมีเส้นขอบเข้ม (`pxLeg` ใน `src/render/pixel.ts`) — ทดลอง 2026-10-09 (ผู้ใช้เห็นขา IC มีกรอบดำแต่ขาชิ้นอื่นไม่มี)
+
+- ขาแบบเดียวกับขาของชิป DIP: ขาเหล็กกว้าง 2 พิกเซลอาร์ต (ซีกซ้ายสว่าง `#c9ced6` ซีกขวา `#7d838f`) มีเส้นขอบ `#07070a` หนา 1 พิกเซลอาร์ตรอบด้านข้างและปลายขา
+- ตอนนี้ใช้กับ **LED, ตัวเก็บประจุเซรามิกและอิเล็กโทรไลต์** เท่านั้น (รอผู้ใช้ดูว่าสวย จึงจะขยายไปทุกชิ้น) ชิ้นอื่นยังใช้ขาเปล่า
+- เส้นขอบยื่นเลยปลายขา 2 หน่วยโลก จึงตั้ง `tipPastPin` ของชิ้นที่ใช้ = 6 (เดิม 4); harness ได้ช่องว่าง 4 ทุกมุมหมุน
+
 
 ## 6. เช็กลิสต์เมื่อเพิ่ม/ทำอุปกรณ์ใหม่
 

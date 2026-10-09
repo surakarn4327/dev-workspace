@@ -160,6 +160,20 @@ export function spriteInk(s: Sprite, x: number, y: number): { left: number; top:
 }
 
 /** One art pixel rectangle in art coordinates, for small moving details. */
+/**
+ * A straight pin in the style of the DIP chip's: a 2 art pixel steel leg (light left half, shaded right half) with a dark
+ * outline round its sides and its end. `x` is the leg's centre, `top` / `bottom` its ends in the part's own frame. The outline
+ * adds 2 world px below `bottom`, so a label under the leg needs `tipPastPin` 2 more than for a bare leg.
+ */
+export function pxLeg(c: CanvasRenderingContext2D, x: number, top: number, bottom: number): void {
+  c.fillStyle = '#07070a'
+  c.fillRect(x - 4, top, 8, bottom - top + 2)
+  c.fillStyle = '#c9ced6'
+  c.fillRect(x - 2, top, 2, bottom - top)
+  c.fillStyle = '#7d838f'
+  c.fillRect(x, top, 2, bottom - top)
+}
+
 export function pxRect(c: CanvasRenderingContext2D, ox: number, oy: number, ax: number, ay: number, aw: number, ah: number, color: string): void {
   c.fillStyle = color
   c.fillRect(ox + ax * PX, oy + ay * PX, aw * PX, ah * PX)

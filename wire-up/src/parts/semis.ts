@@ -1,6 +1,6 @@
 import { COL, drawLabelAbove, drawText, leg, mix, radialGlow, rrect } from '../render/draw.ts'
 import { BJT, DIODE, eng, LED_COLORS, LED_I_MAX, LED_I_RATED, LED_N, LED_RS, LED_VR_MAX, ledIs } from '../sim/models.ts'
-import { drawSprite, pxLine, spriteInk } from '../render/pixel.ts'
+import { drawSprite, pxLeg, pxLine, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { diodeSprite, ledSprite, to92Sprite } from './art.ts'
 import { eid, legDrop, legGrid, LEG_FIELD, spreadOf, str, stress, U } from './common.ts'
@@ -15,7 +15,7 @@ export const led: PartDef = {
   blurb: 'Lights up when current flows anode to cathode. Needs a resistor!',
   pinLabels: ['A', 'K'],
   pinLabelPlace: 'below',
-  tipPastPin: 4,
+  tipPastPin: 6,
   tipPastPinVector: 2,
   defaults: () => ({ color: 'red', legs: 1 }),
   pins: (p) => [
@@ -49,12 +49,7 @@ export const led: PartDef = {
     const col = LED_COLORS[str(p, 'color', 'red')] ?? LED_COLORS.red
     const b = live.b ?? 0
     if (scene.pixel) {
-      for (const x of [0, 20]) {
-        c.fillStyle = COL.metal
-        c.fillRect(x - 2, -12, 2, 16 + legDrop(p))
-        c.fillStyle = COL.metalDark
-        c.fillRect(x, -12, 2, 16 + legDrop(p))
-      }
+      for (const x of [0, 20]) pxLeg(c, x, -12, 4 + legDrop(p))
       drawSprite(c, ledSprite(col.body, false), -14, -62)
       if (b > 0) {
         c.globalAlpha = Math.min(1, b)
