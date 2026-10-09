@@ -64,8 +64,8 @@ function drawSegment(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENT
   c.imageSmoothingEnabled = smooth
 }
 
-/** How solid a dark (unlit) bar is: 75 % lets a little of the black body show through, so it stands out less. */
-const UNLIT_ALPHA = 0.75
+/** How solid a dark (unlit) bar is: 50 % lets the black body show through, so it stands out less. */
+const UNLIT_ALPHA = 0.5
 
 /** How far the glow of a lit segment reaches, in art pixels: about one bar thickness. */
 const GLOW_R = 5
