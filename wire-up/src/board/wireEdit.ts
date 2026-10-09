@@ -35,11 +35,33 @@ export function moveBend(a: Vec, via: Vec[], b: Vec, index: number, pos: Vec, ke
   else if (prev.y === pos.y && prev.x !== pos.x) primary = false
   else primary = prev.y === old.y
 
-  // if that makes the wire double back over itself (dragging a corner past the far end), arrive the other way
+  // Arrive at pos with the primary direction, else the other; each candidate has its loops cut out and must still have a
+  // corner where it was dropped. A fold that only crosses the old place of a neighbouring corner is cut out and the corner
+  // stays where it was dropped: that is what lets a corner be pulled back along its own wire (shrinking it).
+  const settle = (t: Vec[]): Vec[] | null => {
+    const v = tidy([a, ...unfold(a, t.slice(1, -1), b), b], keep)
+    return v.some((p) => same(p, pos)) ? v : null
+  }
+  const direct = settle(bendPath(pts, i, pos, primary)) ?? settle(bendPath(pts, i, pos, !primary))
+  if (direct) return direct
+  // otherwise the wire may simply straighten, dropping the detour corner next to this one that it grew earlier: the
+  // simplest of those shapes (so a corner dragged away and then back gives the original wire again)
+  const without: Vec[][] = []
+  if (i >= 2) without.push([...pts.slice(0, i - 1), ...pts.slice(i)])
+  if (i + 2 < pts.length) without.push([...pts.slice(0, i + 1), ...pts.slice(i + 2)])
+  let best: Vec[] | null = null
+  for (const w of without) {
+    const at = w.findIndex((p) => same(p, old))
+    for (const arrives of [primary, !primary]) {
+      const v = settle(bendPath(w, at, pos, arrives))
+      if (v && (best === null || v.length < best.length)) best = v
+    }
+  }
+  if (best) return best
+  // the drop lands on a straight part of the wire (or on an end): the corner just melts into it
   const first = bendPath(pts, i, pos, primary)
-  const out = foldCount(first) > 0 ? bendPath(pts, i, pos, !primary) : first
-  const best = foldCount(out) > foldCount(first) ? first : out
-  return tidy([a, ...unfold(a, best.slice(1, -1), b), b], keep)
+  const out = foldCount(first) === 0 ? first : bendPath(pts, i, pos, !primary)
+  return tidy([a, ...unfold(a, (foldCount(out) > foldCount(first) ? first : out).slice(1, -1), b), b], keep)
 }
 
 /** The path with corner `i` put at `pos`, arriving vertically or horizontally; the leaving segment is perpendicular. */
@@ -107,7 +129,7 @@ export interface WireShape {
 }
 
 /** Corner (0 or 1 point) joining `pivot` to `x` with right angles; it carries on straight out of the previous segment. */
-function cornerBetween(prev: Vec | undefined, pivot: Vec, x: Vec): Vec[] {
+export function cornerBetween(prev: Vec | undefined, pivot: Vec, x: Vec): Vec[] {
   if (same(pivot, x)) return []
   let verticalFirst: boolean
   if (prev && prev.x === pivot.x && prev.y !== pivot.y) verticalFirst = true
@@ -169,8 +191,10 @@ function dragEndRaw(base: WireShape, end: 'a' | 'b', to: Vec, plugOld: boolean):
 }
 
 /**
- * Corners of the path a -> via -> b once every place where it turns straight back on itself is cut out
- * (p -> q -> r on one line with q outside them becomes p -> r). The ends a and b are never removed.
+ * Corners of the path a -> via -> b once every place where it runs over itself is cut out: a turn straight back
+ * (p -> q -> r on one line with q outside them becomes p -> r), and two stretches lying along the same line over some length
+ * (the whole loop between them becomes one straight stretch from where the first begins to where the second ends).
+ * The ends a and b are never removed.
  */
 export function unfold(a: Vec, via: Vec[], b: Vec): Vec[] {
   const dedupe = (path: Vec[]): Vec[] => {
@@ -198,6 +222,21 @@ export function unfold(a: Vec, via: Vec[], b: Vec): Vec[] {
         pts = dedupe([...pts.slice(0, k), ...pts.slice(k + 1)])
         changed = true
         break
+      }
+    }
+    if (changed) continue
+    // two stretches on one line that overlap: p_i .. p_(j+1) both lie on that line, so the loop between them is one stretch
+    for (let i = 0; i + 1 < pts.length && !changed; i++) {
+      for (let j = i + 2; j + 1 < pts.length; j++) {
+        const [p, q] = [pts[i], pts[i + 1]]
+        const [r, s] = [pts[j], pts[j + 1]]
+        const v = p.x === q.x && r.x === s.x && p.x === r.x && Math.min(Math.max(p.y, q.y), Math.max(r.y, s.y)) > Math.max(Math.min(p.y, q.y), Math.min(r.y, s.y))
+        const h = p.y === q.y && r.y === s.y && p.y === r.y && Math.min(Math.max(p.x, q.x), Math.max(r.x, s.x)) > Math.max(Math.min(p.x, q.x), Math.min(r.x, s.x))
+        if (v || h) {
+          pts = dedupe([...pts.slice(0, i + 1), ...pts.slice(j + 1)])
+          changed = true
+          break
+        }
       }
     }
   }
@@ -231,4 +270,38 @@ export function wireOverlaps(a: Vec, via: Vec[], b: Vec): boolean {
     }
   }
   return false
+}
+
+/**
+ * What a corner drag changed, kept so that the next drag of the same corner can undo it exactly: dragging a corner away
+ * can straighten the wire (dropping corners it no longer needs) and the wire alone cannot know it ever had them.
+ */
+export interface BendMemo {
+  /** The corners before the drag and after it. */
+  before: Vec[]
+  after: Vec[]
+  /** Where the dragged corner was before the drag, and where it was dropped. */
+  oldCorner: Vec
+  dropped: Vec
+}
+
+function sameVia(a: Vec[], b: Vec[]): boolean {
+  return a.length === b.length && a.every((p, k) => same(p, b[k]))
+}
+
+/** Remember a finished corner drag (null if it changed nothing). */
+export function rememberBend(before: Vec[], after: Vec[], index: number, dropped: Vec): BendMemo | null {
+  if (sameVia(before, after) || !before[index]) return null
+  return { before: before.map((p) => ({ ...p })), after: after.map((p) => ({ ...p })), oldCorner: { ...before[index] }, dropped: { ...dropped } }
+}
+
+/** The memo, if the corner now being dragged is the one it was about and the wire is still as that drag left it. */
+export function usableMemo(memo: BendMemo | undefined, via: Vec[], index: number): BendMemo | null {
+  if (!memo || !sameVia(memo.after, via) || !via[index] || !same(via[index], memo.dropped)) return null
+  return memo
+}
+
+/** The corners from before the remembered drag when the corner is brought back to where it started, else null. */
+export function undoBend(memo: BendMemo | null, pos: Vec): Vec[] | null {
+  return memo && same(pos, memo.oldCorner) ? memo.before.map((p) => ({ ...p })) : null
 }

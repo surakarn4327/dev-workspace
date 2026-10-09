@@ -225,7 +225,7 @@ export class Renderer {
         c.fill()
       }
     }
-    this.drawFlow(world, sim, now)
+    this.drawFlow(sim, now)
     for (const part of stack) if (layerOf(part.type) >= 4) this.drawPart(part, sim, now, 1)
     if (front) this.drawPart(front, sim, now, 1)
 
@@ -394,15 +394,13 @@ export class Renderer {
   }
 
   /** Dots drifting along each wire in the direction the current flows; faster for more current, none below 1 uA. */
-  private drawFlow(world: World, sim: Simulation, now: number): void {
+  private drawFlow(sim: Simulation, now: number): void {
     const c = this.ctx
     const SPACING = 22
     c.save()
     c.fillStyle = COL.flow
-    for (const w of world.wires) {
-      const i = sim.flow.get(w.id)
-      if (i === undefined || Math.abs(i) < MIN_FLOW) continue
-      const path = wirePath(w)
+    for (const { path, i } of sim.flowParts) {
+      if (Math.abs(i) < MIN_FLOW) continue
       let total = 0
       for (let k = 0; k + 1 < path.length; k++) total += Math.hypot(path[k + 1].x - path[k].x, path[k + 1].y - path[k].y)
       if (total < 1) continue

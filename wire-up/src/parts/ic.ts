@@ -71,6 +71,8 @@ function makeChip(type: string, chip: string, what: string, fn: GateFn, layout: 
     bounds: () => ({ x: -12, y: -2, w: 144, h: 64 }),
     build(p, ctx) {
       if (p.state.failed) return
+      // a real chip does nothing until both supply pins are wired: leave its outputs floating
+      if (!ctx.wired(VCC - 1) || !ctx.wired(GND - 1)) return
       const pin = (k: number) => ctx.pins[k - 1]
       const vcc = pin(VCC)
       const gnd = pin(GND)

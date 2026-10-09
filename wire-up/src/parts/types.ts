@@ -15,6 +15,8 @@ export interface BuildCtx {
   pins: number[]
   /** Node a symbol-level part (a logic gate, which has no ground pin) measures against: the negative of the source in its own circuit. */
   ref: number
+  /** Is anything else on this pin's net? (a chip's supply pin with nothing wired to it reads false) */
+  wired(pin: number): boolean
   newNode(): number
   add(e: Element): void
   id(suffix: string): string

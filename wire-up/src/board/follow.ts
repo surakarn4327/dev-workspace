@@ -3,7 +3,9 @@
 
 import { boardHoles } from '../parts/breadboard.ts'
 import { defOf, pinWorld } from '../parts/index.ts'
-import { tidy } from './wireEdit.ts'
+import { branchMap, carryBranches } from './branches.ts'
+import type { BranchEnd } from './branches.ts'
+import { tidy, unfold } from './wireEdit.ts'
 import { pointKey } from './world.ts'
 import type { PartInstance, Vec, Wire, World } from './world.ts'
 
@@ -26,6 +28,8 @@ export interface FollowPlan {
   whole: Set<string>
   /** Wires that must stay put even if an end lies on a travelling point (they belong to the other side of a held paste). */
   skip?: Set<string>
+  /** Branch wires resting on each wire, as they were when the drag started: they slide with the stretch they sit on. */
+  branches?: Map<string, BranchEnd[]>
 }
 
 function clonePoint(v: Vec): Vec {
@@ -59,7 +63,7 @@ export function planFollow(world: World, dragged: PartInstance): FollowPlan {
   }
   const parts = new Map<string, PartSnap>()
   for (const p of [...carried, ...partial]) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
-  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole: new Set(), skip: skipSet(world, [dragged.id]) }
+  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole: new Set(), skip: skipSet(world, [dragged.id]), branches: branchMap(world) }
 }
 
 /**
@@ -94,7 +98,7 @@ export function planGroup(world: World, partIds: Set<string>, wireIds: Set<strin
   }
   const parts = new Map<string, PartSnap>()
   for (const p of [...carried, ...partial]) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
-  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole, skip: skipSet(world, [...carried.map((p) => p.id), ...wireIds]) }
+  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole, skip: skipSet(world, [...carried.map((p) => p.id), ...wireIds]), branches: branchMap(world) }
 }
 
 /**
@@ -154,7 +158,8 @@ function followWire(w: Wire, moving: Set<string>, dx: number, dy: number): Pick<
     out.push(q[i + 1])
   }
   const newTaps = taps.map((t) => (moving.has(pointKey(t)) ? shift(t) : clonePoint(t)))
-  const via = tidy(out, newTaps)
+  // the shifted end may bring the wire back over itself: cut such loops out, then drop corners that no longer turn
+  const via = tidy([q[0], ...unfold(q[0], tidy(out, newTaps), q[last]), q[last]], newTaps)
   // a tap that no longer sits on a corner (it landed on an end or was folded away) has nothing left to hold
   return { a: q[0], b: q[last], via, taps: newTaps.filter((t) => via.some((v) => same(v, t))) }
 }
@@ -172,6 +177,7 @@ export function applyFollow(world: World, plan: FollowPlan, dx: number, dy: numb
     const s = plan.parts.get(p.id)
     if (s?.leads) p.leads = s.leads.map((l) => (plan.moving.has(pointKey(l)) ? { x: l.x + dx, y: l.y + dy } : clonePoint(l)))
   }
+  const moved: [Wire, Wire][] = []
   for (const base of plan.wires) {
     const w = world.getWire(base.id)
     if (!w || plan.skip?.has(base.id)) continue
@@ -188,5 +194,11 @@ export function applyFollow(world: World, plan: FollowPlan, dx: number, dy: numb
     w.b = next.b
     w.via = next.via
     w.taps = next.taps && next.taps.length > 0 ? next.taps : undefined
+    moved.push([base, w])
+  }
+  // branch wires follow the stretches of the wires they rest on (after every wire has its new shape, so none is overwritten)
+  for (const [base, w] of moved) {
+    const ends = plan.branches?.get(base.id)
+    if (ends) carryBranches(world, ends, [base.a, ...base.via, base.b], [w.a, ...w.via, w.b])
   }
 }

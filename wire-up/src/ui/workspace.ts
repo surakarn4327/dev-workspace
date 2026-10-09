@@ -11,8 +11,10 @@ import { untangle } from '../board/untangle.ts'
 import { routeVia } from '../board/router.ts'
 import { Simulation } from '../board/simulation.ts'
 import { branchesOfParts, groupCollides } from '../board/wireJoin.ts'
-import { dragEnd, moveBend, tidy, wireOverlaps } from '../board/wireEdit.ts'
-import type { WireShape } from '../board/wireEdit.ts'
+import { branchEndsOf, carryBranches } from '../board/branches.ts'
+import type { BranchEnd } from '../board/branches.ts'
+import { dragEnd, moveBend, rememberBend, tidy, undoBend, usableMemo, wireOverlaps } from '../board/wireEdit.ts'
+import type { BendMemo, WireShape } from '../board/wireEdit.ts'
 import { G, snap, unrotVec, WIRE_COLORS } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
 import { holeNear } from '../parts/breadboard.ts'
@@ -26,7 +28,7 @@ type Mode =
   | { t: 'part'; part: PartInstance; grab: Vec; x0: number; y0: number; leads0: Vec[] | null; moved: boolean; local: Vec; sx: number; sy: number; pressing: boolean; follow: FollowPlan }
   | { t: 'lead'; part: PartInstance; index: number }
   | { t: 'dragEnd'; wire: Wire; end: 'a' | 'b'; plugOld: boolean; base: WireShape }
-  | { t: 'bend'; wire: Wire; index: number; via0: Vec[] }
+  | { t: 'bend'; wire: Wire; index: number; via0: Vec[]; branches: BranchEnd[]; undo: BendMemo | null; dropped: Vec | null }
   | { t: 'newWire'; a: Vec; b: Vec; via: Vec[]; clickWire?: string; bad?: boolean }
   | { t: 'box'; a: Vec; b: Vec; sx: number; sy: number; add: boolean; moved: boolean }
   | { t: 'group'; grab: Vec; sx: number; sy: number; moved: boolean; plan: FollowPlan; clickPart: string | null; clickWire: string | null }
@@ -79,6 +81,8 @@ export class Workspace {
   /** Fresh pastes / clicked-in parts sitting on something they were not drawn to: held apart (red) until moved clear. */
   private holdGroups = new Map<string, { parts: Set<string>; wires: Set<string> }>()
   private holdCount = 0
+  /** The last corner drag of each wire, so the next drag of that corner can undo it exactly. */
+  private bendMemo = new Map<string, BendMemo>()
   private last = performance.now()
   private time = 0
   private paused = false
@@ -275,6 +279,7 @@ export class Workspace {
     if (def.freeLeads) part.leads = def.pins(part).map((v) => ({ x: part.x + v.x * G, y: part.y + v.y * G }))
     if (type.startsWith('breadboard')) this.world.parts.unshift(part)
     else this.world.parts.push(part)
+    this.world.dropEmptyWires()
     untangle(this.world)
     this.world.commit()
     this.select(part.id)
@@ -301,6 +306,7 @@ export class Workspace {
     if (s.parts.size + s.wires.size === 0) return
     const plan = planGroup(this.world, s.parts, s.wires)
     applyFollow(this.world, plan, gx * G, gy * G)
+    this.world.dropEmptyWires()
     untangle(this.world)
     this.world.commit()
     this.onEdit()
@@ -326,6 +332,7 @@ export class Workspace {
     const dy = hasBoard ? 0 : dx
     const made = pasteIn(this.world, this.clip, dx, dy)
     if (!hasBoard) this.hold(made.parts, made.wires)
+    this.world.dropEmptyWires()
     untangle(this.world)
     this.world.commit()
     this.setSelection(made.parts, made.wires)
@@ -474,7 +481,9 @@ export class Workspace {
     if (hit.kind === 'bend') {
       // a straight wire has no corner yet: the middle handle adds one at its position, then drags it
       if (hit.index === -1) hit.wire.via = [{ ...hit.point }]
-      this.mode = { t: 'bend', wire: hit.wire, index: Math.max(hit.index, 0), via0: hit.wire.via.map((v) => ({ ...v })) }
+      const index = Math.max(hit.index, 0)
+      const via0 = hit.wire.via.map((v) => ({ ...v }))
+      this.mode = { t: 'bend', wire: hit.wire, index, via0, branches: branchEndsOf(this.world, hit.wire), undo: usableMemo(this.bendMemo.get(hit.wire.id), via0, index), dropped: null }
       return
     }
     if (this.wireMode && hit.kind !== 'wire') {
@@ -609,9 +618,16 @@ export class Workspace {
       }
       case 'bend': {
         const s = this.snapPt(w)
-        const next = this.wrapAround({ a: m.wire.a, via: moveBend(m.wire.a, m.via0, m.wire.b, m.index, s, m.wire.taps ?? []), b: m.wire.b }, m.wire)
+        // brought back to where it started right after an earlier drag: that drag's wire comes back exactly as it was
+        const back = undoBend(m.undo, s)
+        const next = back ? { a: m.wire.a, via: back, b: m.wire.b } : this.wrapAround({ a: m.wire.a, via: moveBend(m.wire.a, m.via0, m.wire.b, m.index, s, m.wire.taps ?? []), b: m.wire.b }, m.wire)
+        m.dropped = s
         // a shape that would run the wire over itself or through a part is not taken (the wire stays as it last was)
-        if (this.shapeOk(next, m.wire)) m.wire.via = next.via
+        if (back || this.shapeOk(next, m.wire)) {
+          m.wire.via = next.via
+          // branch wires resting on the stretches that moved go along
+          carryBranches(this.world, m.branches, [m.wire.a, ...m.via0, m.wire.b], [m.wire.a, ...m.wire.via, m.wire.b])
+        }
         this.hoverPoint = s
         this.world.touch()
         break
@@ -666,6 +682,7 @@ export class Workspace {
           def.press(m.part, false)
           this.world.touch()
         } else if (m.moved) {
+          this.world.dropEmptyWires()
           untangle(this.world) // only fixes wires leaving a lead pin the wrong way; wires under a dropped part stay put
           this.world.commit()
           this.onEdit()
@@ -686,6 +703,12 @@ export class Workspace {
       case 'bend':
         // a corner dropped back onto the straight line (or a bare click on the middle handle) is not a corner
         if (m.t === 'bend' || m.t === 'dragEnd') m.wire.via = tidy([m.wire.a, ...m.wire.via, m.wire.b], m.wire.taps ?? [])
+        // remember what this corner drag changed, so dragging the corner back next time can undo it exactly
+        if (m.t === 'bend') {
+          const memo = m.dropped ? rememberBend(m.via0, m.wire.via, m.index, m.dropped) : null
+          if (memo) this.bendMemo.set(m.wire.id, memo)
+          else this.bendMemo.delete(m.wire.id)
+        }
         this.world.commit()
         this.onEdit()
         break
@@ -717,6 +740,7 @@ export class Workspace {
       }
       case 'group':
         if (m.moved) {
+          this.world.dropEmptyWires()
           untangle(this.world)
           this.world.commit()
           this.onEdit()

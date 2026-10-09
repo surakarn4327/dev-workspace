@@ -7,7 +7,7 @@ import type { PartLive, Stress } from '../parts/types.ts'
 import { buildNetlist } from './connectivity.ts'
 import type { Netlist } from './connectivity.ts'
 import { computeFlow } from './flow.ts'
-import type { World } from './world.ts'
+import type { Vec, World } from './world.ts'
 
 export interface FailEvent {
   partId: string
@@ -32,6 +32,8 @@ export class Simulation {
   live = new Map<string, PartLive>()
   /** Signed current in each wire (+ = from its `a` end to its `b` end) for the flowing dots; wires with no answer are absent. */
   flow = new Map<string, number>()
+  /** Every stretch of wire with its own current (a wire with branches resting on it is several), for the dots. */
+  flowParts: { wire: string; path: Vec[]; i: number }[] = []
   stress = new Map<string, Stress>()
   events: FailEvent[] = []
   log: LogEntry[] = []
@@ -53,7 +55,9 @@ export class Simulation {
     const res = solve(this.net.circuit, this.warm)
     this.warm = res.raw
     this.result = res
-    this.flow = computeFlow(this.world, this.net, res)
+    const flow = computeFlow(this.world, this.net, res)
+    this.flow = flow.byWire
+    this.flowParts = flow.parts
     this.live.clear()
     this.stress.clear()
     for (const part of this.world.parts) {

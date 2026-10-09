@@ -146,6 +146,16 @@ export class World {
     this.parts = this.parts.filter((p) => p.id !== id)
   }
 
+  /**
+   * Wires whose two ends ended up on the same point (a part dragged until both its pins met) are invisible and joined
+   * nothing the shared point does not already join: drop them. Returns how many went.
+   */
+  dropEmptyWires(): number {
+    const before = this.wires.length
+    this.wires = this.wires.filter((w) => !(w.a.x === w.b.x && w.a.y === w.b.y && w.via.length === 0))
+    return before - this.wires.length
+  }
+
   removeWire(id: string): void {
     this.wires = this.wires.filter((w) => w.id !== id)
   }

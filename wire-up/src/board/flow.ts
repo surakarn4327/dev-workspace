@@ -9,8 +9,8 @@ import type { SolveResult } from '../sim/solver.ts'
 import type { Element } from '../sim/solver.ts'
 import type { Netlist } from './connectivity.ts'
 import { socketKeys, tapTarget } from './wireJoin.ts'
-import { pointKey } from './world.ts'
-import type { World } from './world.ts'
+import { pointKey, wirePath } from './world.ts'
+import type { Vec, World } from './world.ts'
 
 /** (circuit node, current drawn from that node into the element) for every terminal of an element. */
 function draws(e: Element, res: SolveResult): [number, number][] {
@@ -29,8 +29,15 @@ function draws(e: Element, res: SolveResult): [number, number][] {
 }
 
 /** Signed current in each wire, positive when it flows from the wire's `a` end to its `b` end. Wires with no answer are absent. */
-export function computeFlow(world: World, net: Netlist, res: SolveResult): Map<string, number> {
-  const out = new Map<string, number>()
+export interface FlowResult {
+  /** Signed current of each wire that has no junction on it (+ = a -> b). */
+  byWire: Map<string, number>
+  /** Every stretch of wire with its own current, for the dots (a wire with branches is several stretches). */
+  parts: { wire: string; path: Vec[]; i: number }[]
+}
+
+export function computeFlow(world: World, net: Netlist, res: SolveResult): FlowResult {
+  const out: FlowResult = { byWire: new Map(), parts: [] }
   if (world.wires.length === 0) return out
 
   // a breadboard strip is one node
@@ -78,22 +85,58 @@ export function computeFlow(world: World, net: Netlist, res: SolveResult): Map<s
     }
   }
 
-  // wire networks
+  // wire networks. A wire a branch rests on is cut into pieces at the junctions, so every piece has one current.
   const sockets = socketKeys(world)
+  const junctions = new Map<string, Vec[]>()
+  for (const o of world.wires) {
+    for (const end of [o.a, o.b]) {
+      const main = tapTarget(world, o, end, sockets)
+      if (main) junctions.set(main.id, [...(junctions.get(main.id) ?? []), end])
+    }
+  }
+  interface Piece {
+    wire: string
+    index: number
+    path: Vec[]
+    a: string
+    b: string
+    whole: boolean
+  }
+  const pieces: Piece[] = []
+  const unsupported = new Set<string>() // wires with plugged corners of their own: no answer
+  for (const w of world.wires) {
+    if ((w.taps?.length ?? 0) > 0) unsupported.add(w.id)
+    const path = wirePath(w)
+    const cuts = (junctions.get(w.id) ?? [])
+      .map((j) => alongPath(path, j))
+      .filter((d): d is number => d !== null)
+      .sort((p, q) => p - q)
+    const marks = [0, ...cuts.filter((d, i) => d > 0 && (i === 0 || d !== cuts[i - 1])), totalLength(path)]
+    for (let m = 0; m + 1 < marks.length; m++) {
+      const piece = slicePath(path, marks[m], marks[m + 1])
+      pieces.push({
+        wire: w.id,
+        index: m,
+        path: piece,
+        a: nodeOf(pointKey(piece[0])),
+        b: nodeOf(pointKey(piece[piece.length - 1])),
+        whole: marks.length === 2,
+      })
+    }
+  }
   const parent = new Map<string, string>()
   const find = (k: string): string => {
     let r = k
     while ((parent.get(r) ?? r) !== r) r = parent.get(r)!
     return r
   }
-  const edges = world.wires.map((w) => ({ w, a: nodeOf(pointKey(w.a)), b: nodeOf(pointKey(w.b)) }))
-  for (const e of edges) {
+  for (const e of pieces) {
     if (!parent.has(e.a)) parent.set(e.a, e.a)
     if (!parent.has(e.b)) parent.set(e.b, e.b)
     parent.set(find(e.a), find(e.b))
   }
-  const groups = new Map<string, typeof edges>()
-  for (const e of edges) {
+  const groups = new Map<string, Piece[]>()
+  for (const e of pieces) {
     const r = find(e.a)
     const g = groups.get(r)
     if (g) g.push(e)
@@ -101,15 +144,11 @@ export function computeFlow(world: World, net: Netlist, res: SolveResult): Map<s
   }
   for (const g of groups.values()) {
     const nodes = new Set<string>()
-    let branched = false
     for (const e of g) {
       nodes.add(e.a)
       nodes.add(e.b)
-      if ((e.w.taps?.length ?? 0) > 0 || tapTarget(world, e.w, e.w.a, sockets) || tapTarget(world, e.w, e.w.b, sockets)) branched = true
-      // a branch wire resting on this one
-      for (const o of world.wires) if (o !== e.w && (tapTarget(world, o, o.a, sockets) === e.w || tapTarget(world, o, o.b, sockets) === e.w)) branched = true
     }
-    if (branched || g.length !== nodes.size - 1 || g.some((e) => e.a === e.b)) continue // loops or branches: no answer
+    if (g.some((e) => unsupported.has(e.wire)) || g.length !== nodes.size - 1 || g.some((e) => e.a === e.b)) continue // loops: no answer
     // peel leaves: the current into a leaf is what everything beyond it draws
     const left = new Set(g)
     const demand = new Map<string, number>()
@@ -127,7 +166,9 @@ export function computeFlow(world: World, net: Netlist, res: SolveResult): Map<s
         if (leaf === null) continue
         const parentNode = leaf === e.a ? e.b : e.a
         const into = demand.get(leaf) ?? 0
-        out.set(e.w.id, leaf === e.b ? into : -into) // positive = a -> b
+        const signed = leaf === e.b ? into : -into // positive = along the piece, start -> end
+        if (e.whole) out.byWire.set(e.wire, signed)
+        out.parts.push({ wire: e.wire, path: e.path, i: signed })
         demand.set(parentNode, (demand.get(parentNode) ?? 0) + into)
         degree.set(leaf, 0)
         degree.set(parentNode, (degree.get(parentNode) ?? 1) - 1)
@@ -136,5 +177,53 @@ export function computeFlow(world: World, net: Netlist, res: SolveResult): Map<s
       }
     }
   }
+  return out
+}
+
+function segLen(a: Vec, b: Vec): number {
+  return Math.hypot(b.x - a.x, b.y - a.y)
+}
+
+function totalLength(path: Vec[]): number {
+  let t = 0
+  for (let k = 0; k + 1 < path.length; k++) t += segLen(path[k], path[k + 1])
+  return t
+}
+
+/** Distance along the path to the point `p` lying on it, or null if it does not. */
+function alongPath(path: Vec[], p: Vec): number | null {
+  let t = 0
+  for (let k = 0; k + 1 < path.length; k++) {
+    const a = path[k]
+    const b = path[k + 1]
+    const cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
+    const within = p.x >= Math.min(a.x, b.x) - 0.5 && p.x <= Math.max(a.x, b.x) + 0.5 && p.y >= Math.min(a.y, b.y) - 0.5 && p.y <= Math.max(a.y, b.y) + 0.5
+    if (Math.abs(cross) <= 0.5 && within) return t + segLen(a, p)
+    t += segLen(a, b)
+  }
+  return null
+}
+
+/** The stretch of `path` between two distances along it, with the corners in between. */
+function slicePath(path: Vec[], from: number, to: number): Vec[] {
+  const pointAt = (d: number): Vec => {
+    let t = 0
+    for (let k = 0; k + 1 < path.length; k++) {
+      const len = segLen(path[k], path[k + 1])
+      if (d <= t + len + 1e-9) {
+        const u = len === 0 ? 0 : Math.min(Math.max((d - t) / len, 0), 1)
+        return { x: Math.round(path[k].x + (path[k + 1].x - path[k].x) * u), y: Math.round(path[k].y + (path[k + 1].y - path[k].y) * u) }
+      }
+      t += len
+    }
+    return path[path.length - 1]
+  }
+  const out: Vec[] = [pointAt(from)]
+  let t = 0
+  for (let k = 0; k + 1 < path.length; k++) {
+    t += segLen(path[k], path[k + 1])
+    if (t > from + 1e-9 && t < to - 1e-9) out.push(path[k + 1])
+  }
+  out.push(pointAt(to))
   return out
 }

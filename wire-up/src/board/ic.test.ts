@@ -71,6 +71,31 @@ describe('74HC chips (DIP-14)', () => {
     expect(t.sim.live.get(t.led.id)!.i).toBeLessThan(0.0005)
   })
 
+  it('does nothing when only GND (or only VCC) is wired, even with a path back through the load', () => {
+    for (const missing of [7, 14]) {
+      const w = new World()
+      const b = new SceneBuilder(w)
+      const bat = b.place('battery', -400, 200, { volts: 4.5 })
+      const chip = b.place('ic-74hc08', 0, 0)
+      const r = b.place('resistor', 300, 200, { value: 330, legs: 2 })
+      const led = b.place('led', 460, 200, { color: 'green' })
+      const [plus, minus] = pinWorld(bat)
+      const p = pinWorld(chip)
+      const rp = pinWorld(r)
+      const lp = pinWorld(led)
+      if (missing !== 14) b.wire(plus, p[13])
+      if (missing !== 7) b.wire(minus, p[6])
+      b.wire(plus, p[0])
+      b.wire(plus, p[1])
+      b.wire(p[2], rp[0])
+      b.wire(rp[1], lp[0])
+      b.wire(lp[1], minus)
+      const sim = new Simulation(w)
+      for (let k = 0; k < 5; k++) sim.step(0.016)
+      expect(sim.live.get(led.id)!.i).toBeLessThan(0.0005)
+    }
+  })
+
   it('does nothing without its supply wired', () => {
     const w = new World()
     const b = new SceneBuilder(w)

@@ -38,3 +38,25 @@ describe('wire following a dragged end', () => {
     expect(w.via).toEqual([{ x: 40, y: 0 }])
   })
 })
+
+describe('branches on a wire that follows', () => {
+  it('slide with the stretch they rest on when the corner next to the dragged end slides', async () => {
+    const { branchMap } = await import('./branches.ts')
+    const w = new World()
+    const main = w.addWire({ x: 0, y: 0 }, { x: 100, y: 60 }, '#ff4a4a', [{ x: 100, y: 0 }])
+    const branch = w.addWire({ x: 160, y: 30 }, { x: 100, y: 30 }, '#2ea043') // its b end rests on the main wire's last stretch
+    const plan: FollowPlan = {
+      carried: [],
+      partial: [],
+      moving: new Set([pointKey({ x: 100, y: 60 })]),
+      parts: new Map(),
+      wires: w.wires.map((x) => JSON.parse(JSON.stringify(x))),
+      whole: new Set(),
+      branches: branchMap(w),
+    }
+    applyFollow(w, plan, -60, 0)
+    expect(main.via).toEqual([{ x: 40, y: 0 }])
+    expect(branch.b).toEqual({ x: 40, y: 30 }) // still on the main wire
+    expect(branch.a).toEqual({ x: 160, y: 30 })
+  })
+})

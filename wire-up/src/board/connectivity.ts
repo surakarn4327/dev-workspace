@@ -55,6 +55,13 @@ export interface Netlist {
   nodeAt(p: Vec): number | undefined
 }
 
+/**
+ * A circuit that shares nothing with the reference gets this weak tie to ground, so its voltages are defined. Too weak (1 Gohm)
+ * and Newton wanders along that nearly free common-mode direction: a board with several separate circuits took 70-280 rounds
+ * to settle after a switch flip; 10 Mohm keeps it at 3-15 and leaks only 0.5 uA from a 4.5 V cell.
+ */
+const FLOAT_TIE = 1e7
+
 export function buildNetlist(world: World): Netlist {
   const uf = new UnionFind()
   // a point's key; items of an isolated paste group get their own namespace so they join each other but nothing else
@@ -131,6 +138,10 @@ export function buildNetlist(world: World): Netlist {
     return n
   }
 
+  // how many part pins share each net: a pin alone on its net (a chip's GND with nothing wired to it) is not connected
+  const pinsOnNet = new Map<string, number>()
+  for (const keys of pinKeys.values()) for (const k of keys) pinsOnNet.set(uf.find(k), (pinsOnNet.get(uf.find(k)) ?? 0) + 1)
+
   const elements: Element[] = []
   const partPins = new Map<string, number[]>()
   const partRef = new Map<string, number>()
@@ -176,6 +187,7 @@ export function buildNetlist(world: World): Netlist {
     defOf(part.type).build(part, {
       pins: nodes,
       ref: partRef.get(part.id) ?? 0,
+      wired: (pin) => (pinsOnNet.get(uf.find(pinKeys.get(part.id)![pin])) ?? 0) > 1,
       newNode: () => nodeCount++,
       add: (e) => elements.push(e),
       id: (s) => `${part.id}:${s}`,
@@ -189,7 +201,7 @@ export function buildNetlist(world: World): Netlist {
     if (tied.has(root)) continue
     tied.add(root)
     const n = nodeOfRoot.get(root)
-    if (n !== undefined) elements.push({ kind: 'R', id: `tie:${root}`, a: n, b: 0, r: 1e9 })
+    if (n !== undefined) elements.push({ kind: 'R', id: `tie:${root}`, a: n, b: 0, r: FLOAT_TIE })
   }
 
   return {
