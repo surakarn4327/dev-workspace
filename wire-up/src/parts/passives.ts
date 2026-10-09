@@ -307,6 +307,8 @@ export const ntc: PartDef = {
       c.save()
       c.translate(-10, 0)
       drawSprite(c, ntcSprite(), -2, -52)
+      // the type printed on the disc, as on the real part
+      drawText(c, 'NTC', 20, -37, { color: '#c9c9d6', align: 'center' })
       if (scene.labeled.has(p.id)) drawLabelAbove(c, `${t.toFixed(0)}C`, 20, spriteInk(ntcSprite(), -2, -52).top)
       c.restore()
       return
