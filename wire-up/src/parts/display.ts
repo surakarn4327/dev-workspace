@@ -10,14 +10,14 @@ import type { PartDef } from './types.ts'
 
 /** Segment name and where it is drawn in one digit (art pixels from the left edge of that digit's 50 pixel wide cell). */
 export const SEGMENTS: { name: string; x: number; y: number; w: number; h: number }[] = [
-  { name: 'a', x: 13, y: 8, w: 24, h: 5 },
-  { name: 'b', x: 35, y: 11, w: 5, h: 24 },
-  { name: 'c', x: 35, y: 36, w: 5, h: 24 },
-  { name: 'd', x: 13, y: 58, w: 24, h: 5 },
-  { name: 'e', x: 10, y: 36, w: 5, h: 24 },
-  { name: 'f', x: 10, y: 11, w: 5, h: 24 },
-  { name: 'g', x: 13, y: 33, w: 24, h: 5 },
-  { name: 'dp', x: 42, y: 58, w: 4, h: 4 },
+  { name: 'a', x: 9, y: 5, w: 30, h: 6 },
+  { name: 'b', x: 36, y: 10, w: 6, h: 23 },
+  { name: 'c', x: 36, y: 37, w: 6, h: 23 },
+  { name: 'd', x: 9, y: 59, w: 30, h: 6 },
+  { name: 'e', x: 6, y: 37, w: 6, h: 23 },
+  { name: 'f', x: 6, y: 10, w: 6, h: 23 },
+  { name: 'g', x: 9, y: 32, w: 30, h: 6 },
+  { name: 'dp', x: 43, y: 59, w: 6, h: 6 },
 ]
 export const DIGIT_W = 50 // art pixels per digit
 const OY = 10
@@ -43,12 +43,14 @@ function drawSegment(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENT
     const px = (x: number, y: number, w: number, h: number) => g.fillRect(x, y, w, h)
     if (s.name === 'dp') {
       // a round dot
-      px(1, 0, 2, 1)
-      px(0, 1, 4, 2)
-      px(1, 3, 2, 1)
+      px(2, 0, 2, 1)
+      px(1, 1, 4, 1)
+      px(0, 2, 6, 2)
+      px(1, 4, 4, 1)
+      px(2, 5, 2, 1)
     } else {
-      // a bar 5 pixels thick whose two ends are cut at 45 degrees to a point, like the picture the user sent
-      const inset = [2, 1, 0, 1, 2]
+      // a bar 6 pixels thick whose two ends are cut at 45 degrees to a point, like the picture the user sent
+      const inset = [2, 1, 0, 0, 1, 2]
       if (s.w > s.h) inset.forEach((k, r) => px(k, r, s.w - 2 * k, 1))
       else inset.forEach((k, col) => px(col, k, 1, s.h - 2 * k))
     }
