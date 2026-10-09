@@ -54,7 +54,7 @@ export const seg7: PartDef = {
   name: '7-segment display',
   category: 'logic',
   blurb:
-    'One-digit LED display, 10 pins (like the common 0.56 inch ones). Each segment is an LED: give it a resistor. Pins 1-5 bottom row left to right: E D COM C DP; 6-10 top row right to left: B A COM F G (the rows are drawn 8 holes apart, wider than the real 6, so the legs show like in the pinout picture). Both COM pins are joined inside.',
+    'One-digit LED display, 10 pins. Each segment is an LED: give it a resistor. Pins 1-5 bottom row left to right: E D COM C DP; 6-10 top row right to left: B A COM F G. Both COM pins are joined inside.',
   pinLabels: PIN_NAMES,
   hidePinLabels: true, // a real display has no printed pin names; the pinout is in the description
   defaults: () => ({ common: 'cathode' }),
