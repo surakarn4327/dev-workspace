@@ -215,7 +215,12 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
           // an LED looks bright well below its full current: about half of the brightness is reached at a quarter of 12 mA
           return i > 1e-5 ? Math.min(1, Math.sqrt(i / 0.012)) : 0
         }
-        // the light of every lit segment first (so it lies under the bars), then the bars
+        // back to front: every bar in its dark colour, then the light spilling from the lit ones (so it lies over the dark bars next to
+        // it), then the lit bars themselves on top
+        for (let d = 0; d < digits; d++) {
+          const dx = ox + d * DIGIT_W * 2
+          for (const s of SEGMENTS) drawSegment(c, dx, s, '#a9a7a4')
+        }
         for (let d = 0; d < digits; d++) {
           const dx = ox + d * DIGIT_W * 2
           for (const s of SEGMENTS) {
@@ -227,7 +232,6 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
           const dx = ox + d * DIGIT_W * 2
           for (const s of SEGMENTS) {
             const b = brightness(d, s.name)
-            drawSegment(c, dx, s, '#a9a7a4')
             if (b > 0) {
               c.globalAlpha = Math.min(1, 0.3 + 0.8 * b)
               drawSegment(c, dx, s, '#ff3b4a')
