@@ -91,6 +91,8 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
           // common cathode: current flows from the segment pin through the LED into the digit's common
           ctx.add({ kind: 'R', id: ctx.id(`rs_${d}_${s.name}`), a: ctx.pins[info.segPin[s.name]], b: mid, r: LED_RS })
           ctx.add({ kind: 'D', id: ctx.id(`d_${d}_${s.name}`), a: mid, b: com, is: ledIs(red.vf10), n: LED_N })
+          // the plastic is not a perfect insulator: 10 Mohm between a segment pin and its common keeps a lone wired segment solvable (a common left unwired used to leave the solver spinning)
+          ctx.add({ kind: 'R', id: ctx.id(`leak_${d}_${s.name}`), a: ctx.pins[info.segPin[s.name]], b: com, r: 1e7 })
         }
       })
     },
