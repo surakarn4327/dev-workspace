@@ -1,11 +1,11 @@
 import type { PartInstance } from '../board/world.ts'
 import { COL, drawLabelAbove, leg, radialGlow, rrect } from '../render/draw.ts'
-import { eng, fmtOhms, ldrResistance, ntcResistance, resistorBands, RESISTOR_VALUES } from '../sim/models.ts'
+import { CAP, CERAMIC_CAP_VALUES, ELECTRO_CAP_VALUES, eng, fmtFarads, fmtOhms, ldrResistance, ntcResistance, resistorBands, RESISTOR_VALUES } from '../sim/models.ts'
 import { drawSprite, pxLine, pxRect, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
-import { ldrSprite, ntcSprite, potSprite, resistorSprite } from './art.ts'
+import { ceramicCapSprite, electroCapSprite, ldrSprite, ntcSprite, potSprite, resistorSprite } from './art.ts'
 import { eid, legDrop, legGrid, LEG_FIELD, num, spreadOf, stress, U } from './common.ts'
-import type { Env, Eval, PartDef } from './types.ts'
+import type { Env, Eval, PartDef, Stress } from './types.ts'
 
 const pinsTwo = (spread: number, y = 0) => [
   { x: 0, y },
@@ -345,4 +345,126 @@ export const ntc: PartDef = {
   },
   fields: () => [{ kind: 'range', key: 'temp', label: 'Temperature', min: -40, max: 150, step: 1, unit: 'C' }, LEG_FIELD],
   summary: (p) => `${eng(ntcResistance(num(p, 'temp', 25)), 'ohm')} at ${num(p, 'temp', 25).toFixed(0)} C`,
+}
+
+// ---------------------------------------------------------------- capacitors
+
+/** Legs that run up from the pins and slant in under the body, hidden by it (same as the LDR and NTC). */
+function slantLegs(c: CanvasRenderingContext2D, p: PartInstance, inner: [number, number]): void {
+  for (const [x, tx] of [
+    [0, inner[0]],
+    [40, inner[1]],
+  ]) {
+    c.fillStyle = COL.metal
+    c.fillRect(x - 2, 0, 2, 4 + legDrop(p))
+    c.fillStyle = COL.metalDark
+    c.fillRect(x, 0, 2, 4 + legDrop(p))
+    pxLine(c, 0, 0, x / 2 - 1, 0, tx - 1, -7, COL.metal)
+    pxLine(c, 0, 0, x / 2, 0, tx, -7, COL.metalDark)
+  }
+}
+
+function capEval(p: PartInstance, env: Env, esr: number, stressOf: (v: number) => Stress): Eval {
+  const c = env.cur(eid(p, 'k'))
+  const i = c ? c.i : 0
+  const v = env.v(env.pins[0]) - env.v(env.pins[1])
+  return { live: { i, v, esr, q: num(p, 'value') * v }, stress: stressOf(v) }
+}
+
+export const ceramicCap: PartDef = {
+  type: 'cap-ceramic',
+  name: 'Capacitor (ceramic)',
+  category: 'passive',
+  blurb: 'Stores charge. Ceramic disc, either way round, 50 V.',
+  pinLabels: ['1', '2'],
+  pinLabelPlace: 'below',
+  tipPastPin: 4,
+  tipPastPinVector: 2,
+  defaults: () => ({ value: 1e-7, legs: 1 }),
+  pins: (p) => pinsTwo(2, legGrid(p)),
+  bounds: (p) => ({ x: -12, y: -48, w: 64, h: 56 + legDrop(p) }),
+  build(p, ctx) {
+    if (p.state.failed) return
+    const mid = ctx.newNode()
+    ctx.add({ kind: 'R', id: ctx.id('esr'), a: ctx.pins[0], b: mid, r: CAP.ceramicEsr })
+    ctx.add({ kind: 'K', id: ctx.id('k'), a: mid, b: ctx.pins[1], c: num(p, 'value', 1e-7) })
+  },
+  evaluate: (p, env) =>
+    capEval(p, env, CAP.ceramicEsr, (v) =>
+      stress(Math.abs(v) / CAP.ceramicVmax, () => `Capacitor had ${eng(Math.abs(v), 'V')} across it but is rated for ${CAP.ceramicVmax} V. Use a lower voltage or a capacitor with a higher rating.`),
+    ),
+  draw(c, p) {
+    if (scene.pixel) {
+      slantLegs(c, p, [12, 28])
+      drawSprite(c, ceramicCapSprite(), 0, -46)
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-7))}F`, 20, spriteInk(ceramicCapSprite(), 0, -46).top)
+      return
+    }
+    leg(c, 0, 0, 14, -10)
+    leg(c, 40, 0, 26, -10)
+    if (legDrop(p) > 0) for (const x of [0, 40]) leg(c, x, 4, x, legDrop(p))
+    c.fillStyle = '#e8a73f'
+    c.beginPath()
+    c.arc(20, -26, 19, 0, Math.PI * 2)
+    c.fill()
+    c.strokeStyle = '#3d2408'
+    c.lineWidth = 2
+    c.stroke()
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-7))}F`, 20, -46)
+  },
+  fields: () => [
+    { kind: 'select', key: 'value', label: 'Capacitance (F)', options: CERAMIC_CAP_VALUES.map((v) => ({ value: v, label: `${fmtFarads(v)}F` })) },
+    LEG_FIELD,
+  ],
+  summary: (p) => `${eng(num(p, 'value', 1e-7), 'F')}, ${CAP.ceramicVmax} V`,
+}
+
+export const electroCap: PartDef = {
+  type: 'cap-electro',
+  name: 'Capacitor (electrolytic)',
+  category: 'passive',
+  blurb: 'Big stored charge. Has a + and a - leg: 16 V, and it breaks if put in backwards.',
+  pinLabels: ['+', '-'],
+  pinLabelPlace: 'below',
+  tipPastPin: 4,
+  tipPastPinVector: 2,
+  defaults: () => ({ value: 1e-4, legs: 1 }),
+  pins: (p) => pinsTwo(2, legGrid(p)),
+  bounds: (p) => ({ x: -12, y: -42, w: 64, h: 50 + legDrop(p) }),
+  build(p, ctx) {
+    if (p.state.failed) return
+    const mid = ctx.newNode()
+    ctx.add({ kind: 'R', id: ctx.id('esr'), a: ctx.pins[0], b: mid, r: CAP.electroEsr })
+    ctx.add({ kind: 'K', id: ctx.id('k'), a: mid, b: ctx.pins[1], c: num(p, 'value', 1e-4) })
+  },
+  evaluate: (p, env) =>
+    capEval(p, env, CAP.electroEsr, (v) =>
+      stress(v >= 0 ? v / CAP.electroVmax : -v / CAP.electroVrev, () =>
+        v >= 0
+          ? `Capacitor had ${eng(v, 'V')} across it but is rated for ${CAP.electroVmax} V. Use a lower voltage or a capacitor with a higher rating.`
+          : `Capacitor was connected backwards: ${eng(-v, 'V')} the wrong way round, and an electrolytic only takes about ${CAP.electroVrev} V that way. Put the + leg on the higher voltage.`,
+      ),
+    ),
+  draw(c, p) {
+    if (scene.pixel) {
+      slantLegs(c, p, [12, 28])
+      drawSprite(c, electroCapSprite(), 6, -40)
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-4))}F`, 20, spriteInk(electroCapSprite(), 6, -40).top)
+      return
+    }
+    leg(c, 0, 0, 12, -8)
+    leg(c, 40, 0, 28, -8)
+    if (legDrop(p) > 0) for (const x of [0, 40]) leg(c, x, 4, x, legDrop(p))
+    c.fillStyle = '#2d4a94'
+    rrect(c, 6, -40, 28, 32, 4)
+    c.fill()
+    c.fillStyle = '#d9dde4'
+    c.fillRect(26, -38, 6, 28)
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-4))}F`, 20, -40)
+  },
+  fields: () => [
+    { kind: 'select', key: 'value', label: 'Capacitance (F)', options: ELECTRO_CAP_VALUES.map((v) => ({ value: v, label: `${fmtFarads(v)}F` })) },
+    LEG_FIELD,
+  ],
+  summary: (p) => `${eng(num(p, 'value', 1e-4), 'F')}, ${CAP.electroVmax} V, + leg on the left`,
 }

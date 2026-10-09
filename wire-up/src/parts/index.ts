@@ -4,7 +4,7 @@ import type { PartInstance, Rot, Vec } from '../board/world.ts'
 import { breadboardFull, breadboardMini } from './breadboard.ts'
 import { meter } from './instruments.ts'
 import { gateAnd, gateNand, gateNor, gateNot, gateOr, gateXnor, gateXor } from './logic.ts'
-import { ldr, ntc, potentiometer, resistor } from './passives.ts'
+import { ceramicCap, electroCap, ldr, ntc, potentiometer, resistor } from './passives.ts'
 import { battery, battery15, battery3, battery45, supply } from './power.ts'
 import { bc547, bc557, diode, led } from './semis.ts'
 import { pushButton, rockerSwitch, slideSwitch } from './switches.ts'
@@ -19,6 +19,8 @@ export const ALL_PARTS: PartDef[] = [
   battery45,
   supply,
   resistor,
+  ceramicCap,
+  electroCap,
   led,
   diode,
   bc547,
@@ -106,7 +108,7 @@ export function rotatePart(p: PartInstance): void {
 // ---------------------------------------------------------------- stacking order
 
 const LOW_PARTS = new Set(['resistor', 'diode'])
-const TALL_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc', 'supply'])
+const TALL_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc', 'cap-ceramic', 'cap-electro', 'supply'])
 
 /**
  * Draw layer of a part: 0 breadboard, 1 flat parts, 2 tall parts, 4 bench tools and batteries.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BJT, ledIs, LED_COLORS, LED_N, LED_RS } from './models.ts'
-import { solve } from './solver.ts'
+import { advance, solve, transientStep } from './solver.ts'
 import type { Circuit } from './solver.ts'
 
 const near = (a: number, b: number, tol: number) => expect(Math.abs(a - b)).toBeLessThanOrEqual(tol)
@@ -213,5 +213,92 @@ describe('logic gates', () => {
     })
     expect(r.converged).toBe(true)
     near(r.v[4], 0, 0.02)
+  })
+})
+
+describe('capacitors', () => {
+  // 5 V -> 1 kohm -> node 2 -> 100 uF -> ground: tau = 0.1 s
+  const rc = (): Circuit => ({
+    nodeCount: 3,
+    elements: [
+      { kind: 'V', id: 'v', a: 1, b: 0, v: 5 },
+      { kind: 'R', id: 'r', a: 1, b: 2, r: 1000 },
+      { kind: 'K', id: 'c', a: 2, b: 0, c: 100e-6 },
+    ],
+  })
+
+  it('is an open circuit in a plain DC solve', () => {
+    const r = solve(rc())
+    near(r.v[2], 5, 1e-6)
+    near(r.cur.get('c')!.i, 0, 1e-12)
+  })
+
+  it('charges along 1 - e^(-t/RC): 63.2 % after one time constant, full after five', () => {
+    const c = rc()
+    const charge = new Map<string, number>()
+    let t = 0
+    let res = advance(c, charge, 0.1)
+    t += 0.1
+    near(res.v[2], 5 * (1 - Math.exp(-1)), 0.05)
+    for (let k = 0; k < 4; k++) {
+      res = advance(c, charge, 0.1)
+      t += 0.1
+    }
+    near(res.v[2], 5 * (1 - Math.exp(-t / 0.1)), 0.05)
+    expect(res.v[2]).toBeGreaterThan(4.9)
+  })
+
+  it('gives the same answer in one big frame and in many small ones', () => {
+    const a = new Map<string, number>()
+    const b = new Map<string, number>()
+    const one = advance(rc(), a, 0.25)
+    let many = one
+    for (let k = 0; k < 250; k++) many = advance(rc(), b, 0.001)
+    near(one.v[2], many.v[2], 0.05)
+  })
+
+  it('discharges through a resistor: V0 e^(-t/RC)', () => {
+    // 100 uF holding 4 V across 1 kohm, no source
+    const c: Circuit = {
+      nodeCount: 2,
+      elements: [
+        { kind: 'R', id: 'r', a: 1, b: 0, r: 1000 },
+        { kind: 'K', id: 'c', a: 1, b: 0, c: 100e-6 },
+      ],
+    }
+    const charge = new Map([['c', 4]])
+    const res = advance(c, charge, 0.2)
+    near(res.v[1], 4 * Math.exp(-2), 0.05)
+  })
+
+  it('draws a current that dies away: i = V/R e^(-t/RC)', () => {
+    const c = rc()
+    const charge = new Map<string, number>()
+    const res = advance(c, charge, 0.1)
+    near(res.cur.get('r')!.i, (5 / 1000) * Math.exp(-1), 2e-4)
+  })
+
+  it('blinks an LED from an RC and a threshold: the LED lights only as the cap charges past its knee', () => {
+    // 5 V -> 220 ohm -> LED -> cap to ground; LED current falls toward zero as the cap fills
+    const c: Circuit = {
+      nodeCount: 4,
+      elements: [
+        { kind: 'V', id: 'v', a: 1, b: 0, v: 5 },
+        { kind: 'R', id: 'r', a: 1, b: 2, r: 220 },
+        { kind: 'D', id: 'd', a: 2, b: 3, is: ledIs(LED_COLORS.red.vf10), n: LED_N },
+        { kind: 'K', id: 'c', a: 3, b: 0, c: 1000e-6 },
+      ],
+    }
+    const charge = new Map<string, number>()
+    const early = advance(c, charge, 0.02).cur.get('d')!.i
+    let late = early
+    for (let k = 0; k < 100; k++) late = advance(c, charge, 0.1).cur.get('d')!.i
+    expect(early).toBeGreaterThan(0.01)
+    expect(late).toBeLessThan(1e-4)
+  })
+
+  it('picks a step from the fastest RC', () => {
+    near(transientStep(rc()), 0.0025, 1e-9)
+    expect(transientStep({ nodeCount: 2, elements: [{ kind: 'R', id: 'r', a: 1, b: 0, r: 5 }] })).toBe(Infinity)
   })
 })

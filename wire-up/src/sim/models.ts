@@ -136,3 +136,18 @@ function trim(x: number): string {
  * VCC / GND. Inputs switch at half the supply and draw no current; `rLeak` keeps an unpowered chip solvable.
  */
 export const HC = { rout: 50, w: 0.15, vccMax: 7, iOutMax: 0.025, iSupplyMax: 0.05, iClampMax: 0.02, rLeak: 1e7, rIn: 1e8, diodeIs: 1e-14, rFloat: 1e6 }
+
+/** Standard capacitor values, in farads: E6 from 1 nF to 1 uF (ceramic disc) and from 1 uF to 4700 uF (electrolytic). */
+const E6 = [1.0, 1.5, 2.2, 3.3, 4.7, 6.8]
+const rnd = (x: number): number => Number(x.toPrecision(3))
+export const CERAMIC_CAP_VALUES: number[] = [...[1e-9, 1e-8, 1e-7].flatMap((d) => E6.map((m) => rnd(m * d))), 1e-6]
+export const ELECTRO_CAP_VALUES: number[] = [...[1e-6, 1e-5, 1e-4].flatMap((d) => E6.map((m) => rnd(m * d))), ...[1e-3, 2.2e-3, 4.7e-3]]
+/** Ratings: the ceramic disc takes 50 V either way round; the electrolytic 16 V the right way round and about 1 V backwards. Series resistance (ESR) in ohm. */
+export const CAP = { ceramicVmax: 50, electroVmax: 16, electroVrev: 1, ceramicEsr: 0.1, electroEsr: 0.5 }
+
+export function fmtFarads(f: number): string {
+  if (f >= 1e-3) return `${Number((f * 1e3).toPrecision(3))}m`
+  if (f >= 1e-6) return `${Number((f * 1e6).toPrecision(3))}u`
+  if (f >= 1e-9) return `${Number((f * 1e9).toPrecision(3))}n`
+  return `${Number((f * 1e12).toPrecision(3))}p`
+}

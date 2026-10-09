@@ -1,6 +1,6 @@
 // Live simulation: rebuild + solve when the workspace changes, accumulate stress every frame.
 
-import { solve } from '../sim/solver.ts'
+import { advance } from '../sim/solver.ts'
 import type { SolveResult } from '../sim/solver.ts'
 import { defOf, pinWorld } from '../parts/index.ts'
 import type { PartLive, Stress } from '../parts/types.ts'
@@ -41,6 +41,9 @@ export class Simulation {
   private builtVersion = -1
   private builtClock = 0
   private warm?: Float64Array
+  /** Voltage across each capacitor (by element id): where its charge is now. A new circuit starts discharged. */
+  private charge = new Map<string, number>()
+  private hasCaps = false
   private world: World
 
   constructor(world: World) {
@@ -56,7 +59,15 @@ export class Simulation {
     this.builtVersion = this.world.version
     this.builtClock = this.clock
     this.net = buildNetlist(this.world, this.clock)
-    const res = solve(this.net.circuit, this.warm)
+    this.hasCaps = this.net.circuit.elements.some((e) => e.kind === 'K')
+    // a capacitor that is gone (deleted, burnt, replaced) lets go of its charge
+    const caps = new Set(this.net.circuit.elements.flatMap((e) => (e.kind === 'K' ? [e.id] : [])))
+    for (const id of [...this.charge.keys()]) if (!caps.has(id)) this.charge.delete(id)
+    this.show(advance(this.net.circuit, this.charge, 0, this.warm))
+  }
+
+  /** Take a solve as the state of the circuit: current in the wires, and every part's readings and stress. */
+  private show(res: SolveResult & { raw: Float64Array }): void {
     this.warm = res.raw
     this.result = res
     const flow = computeFlow(this.world, this.net, res)
@@ -82,6 +93,8 @@ export class Simulation {
   step(dt: number): void {
     this.clock += dt
     this.refresh()
+    // capacitors charge and discharge in real time
+    if (this.hasCaps && dt > 0) this.show(advance(this.net.circuit, this.charge, Math.min(dt, 0.25), this.warm))
     let failedNow = false
     for (const part of this.world.parts) {
       if (part.state.failed) continue

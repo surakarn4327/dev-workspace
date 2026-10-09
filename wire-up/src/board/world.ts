@@ -103,7 +103,7 @@ function clonePart(p: PartInstance): PartInstance {
 }
 
 /** Parts whose legs hang below the body and have an adjustable length. */
-export const HANGING_LEG_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc'])
+export const HANGING_LEG_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc', 'cap-ceramic', 'cap-electro'])
 
 export class World {
   parts: PartInstance[] = []

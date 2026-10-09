@@ -17,6 +17,8 @@ export type Element =
   | { kind: 'D'; id: string; a: number; b: number; is: number; n: number }
   /** Bipolar transistor (Ebers-Moll). pol = +1 NPN, -1 PNP. */
   | { kind: 'Q'; id: string; c: number; b: number; e: number; pol: 1 | -1; is: number; bf: number; br: number }
+  /** Capacitor. Open circuit in a plain DC solve; in a transient step a conductance `c / dt` plus a source holding last step's voltage. */
+  | { kind: 'K'; id: string; a: number; b: number; c: number }
   | GateElement
   | CmosGateElement
 
@@ -59,6 +61,12 @@ export interface CmosGateElement {
   rout: number
   /** Width of the input switching step, in volts. */
   w: number
+}
+
+/** One time step of a transient solve: `dt` seconds, with each capacitor's voltage (a minus b) at the start of the step, by element id. */
+export interface Transient {
+  dt: number
+  vPrev: Map<string, number>
 }
 
 export interface Circuit {
@@ -198,10 +206,12 @@ class Problem {
   readonly circuit: Circuit
   /** Voltage sources forced into constant-current mode. */
   readonly cc: Map<string, number>
+  readonly tran?: Transient
 
-  constructor(circuit: Circuit, cc: Map<string, number>) {
+  constructor(circuit: Circuit, cc: Map<string, number>, tran?: Transient) {
     this.circuit = circuit
     this.cc = cc
+    this.tran = tran
     this.nNodes = circuit.nodeCount - 1
     for (const e of circuit.elements) {
       if (e.kind === 'V' && !cc.has(e.id)) {
@@ -280,6 +290,14 @@ class Problem {
       switch (e.kind) {
         case 'R':
           this.stampG(A, e.a, e.b, 1 / Math.max(e.r, 1e-6))
+          break
+        case 'K':
+          if (this.tran) {
+            // backward Euler: i = C (v - vPrev) / dt, a conductance with a constant current in parallel
+            const g = e.c / this.tran.dt
+            this.stampG(A, e.a, e.b, g)
+            this.stampI(z, e.a, e.b, -g * (this.tran.vPrev.get(e.id) ?? 0))
+          }
           break
         case 'B': {
           const g = 1 / Math.max(e.r, 1e-6)
@@ -423,6 +441,9 @@ class Problem {
         case 'R':
           out.set(e.id, { i: (nv(e.a) - nv(e.b)) / Math.max(e.r, 1e-6) })
           break
+        case 'K':
+          out.set(e.id, { i: this.tran ? (e.c / this.tran.dt) * (nv(e.a) - nv(e.b) - (this.tran.vPrev.get(e.id) ?? 0)) : 0 })
+          break
         case 'B': {
           const g = 1 / Math.max(e.r, 1e-6)
           // through-element a -> b current: (Va - Vb)*g - V*g
@@ -473,8 +494,8 @@ class Problem {
   }
 }
 
-function solveWith(circuit: Circuit, cc: Map<string, number>, warm?: Float64Array): { x: Float64Array; ok: boolean; iters: number; p: Problem } {
-  const p = new Problem(circuit, cc)
+function solveWith(circuit: Circuit, cc: Map<string, number>, warm?: Float64Array, tran?: Transient): { x: Float64Array; ok: boolean; iters: number; p: Problem } {
+  const p = new Problem(circuit, cc, tran)
   const zero: Float64Array = new Float64Array(p.size)
   const start: Float64Array = warm && warm.length === p.size ? warm : zero
   let r = p.newton(start, 1)
@@ -498,9 +519,9 @@ function solveWith(circuit: Circuit, cc: Map<string, number>, warm?: Float64Arra
   return { x: r.x, ok: r.ok, iters, p }
 }
 
-export function solve(circuit: Circuit, warm?: Float64Array): SolveResult & { raw: Float64Array } {
+export function solve(circuit: Circuit, warm?: Float64Array, tran?: Transient): SolveResult & { raw: Float64Array } {
   const cc = new Map<string, number>()
-  let out = solveWith(circuit, cc, warm)
+  let out = solveWith(circuit, cc, warm, tran)
   let total = out.iters
   for (let pass = 0; pass < 4; pass++) {
     let changed = false
@@ -515,7 +536,7 @@ export function solve(circuit: Circuit, warm?: Float64Array): SolveResult & { ra
       }
     }
     if (!changed) break
-    out = solveWith(circuit, cc, undefined)
+    out = solveWith(circuit, cc, undefined, tran)
     total += out.iters
   }
   const v = new Float64Array(circuit.nodeCount)
@@ -527,5 +548,46 @@ export function solve(circuit: Circuit, warm?: Float64Array): SolveResult & { ra
     ccIds: new Set(cc.keys()),
     converged: out.ok,
     iterations: total,
+  }
+}
+
+/**
+ * The longest step that follows the fastest capacitor of `circuit` well: a fortieth of the smallest `C / (conductance of the
+ * resistors touching it)`. Infinity when there is no capacitor. (Backward Euler never goes unstable at a bigger step, it only
+ * gets less exact.)
+ */
+export function transientStep(circuit: Circuit): number {
+  let best = Infinity
+  for (const k of circuit.elements) {
+    if (k.kind !== 'K') continue
+    let g = 0
+    for (const e of circuit.elements) {
+      if ((e.kind !== 'R' && e.kind !== 'B') || e.id.endsWith(':esr')) continue // a capacitor's own series resistance is not what it charges through
+      if (e.a === k.a || e.a === k.b || e.b === k.a || e.b === k.b) g += 1 / Math.max(e.r, 1e-6)
+    }
+    if (g > 0) best = Math.min(best, k.c / g / 40)
+  }
+  return best
+}
+
+/** Most sub-steps one call of `advance` takes; a capacitor faster than that settles inside a step anyway. */
+const MAX_SUBSTEPS = 200
+
+/**
+ * Let `seconds` of real time pass in a circuit with capacitors: `charge` holds each capacitor's voltage (by element id) and is
+ * updated in place. Returns the solve at the end of the time. A circuit without capacitors needs no stepping and gets one
+ * plain solve.
+ */
+export function advance(circuit: Circuit, charge: Map<string, number>, seconds: number, warm?: Float64Array): SolveResult & { raw: Float64Array } {
+  const caps = circuit.elements.filter((e) => e.kind === 'K')
+  if (caps.length === 0 || seconds <= 0) return solve(circuit, warm, caps.length > 0 ? { dt: 1e-9, vPrev: charge } : undefined)
+  const n = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(seconds / transientStep(circuit))))
+  const dt = seconds / n
+  let res = solve(circuit, warm, { dt, vPrev: charge })
+  for (let k = 0; ; k++) {
+    // commit the step just solved
+    for (const e of caps) charge.set(e.id, res.v[e.a] - res.v[e.b])
+    if (k + 1 >= n) return res
+    res = solve(circuit, res.raw, { dt, vPrev: charge })
   }
 }

@@ -38,7 +38,7 @@ Wire-Up = lab ทดลองอิเล็กทรอนิกส์เสม
 - Vite + TypeScript `strict: true` + Canvas 2D (ไม่มี dependency runtime เลย; dev: vite, typescript, vitest)
 - ตัวคำนวณ SPICE-style: **MNA** + Newton-Raphson (diode/LED/BJT Ebers-Moll, junction limiting `pnjlim`),
   source stepping เป็น fallback, ขีดจำกัดกระแสของ supply (โหมด CC) วนแก้ใน `solve()`
-- DC เท่านั้นใน v1 (ไม่มี capacitor/transient) — ความร้อนสะสมของชิ้นส่วนคำนวณแยกต่อเฟรมใน `Simulation.step`
+- DC + ตัวเก็บประจุตามเวลาจริง (ผู้ใช้สั่ง 2026-10-09: เวลาจริง ไม่มีปุ่มเร่ง ไม่มี mission): element `K` ใน solver คือวงจรเปิดตอน solve DC และเป็น backward Euler (`C/dt` ขนานแหล่งกระแส) เมื่อส่ง `Transient` ให้ `solve`; `advance(circuit, charge, seconds)` เดินเวลาแบ่งก้าวย่อยตามค่าคงที่เวลา RC เล็กสุด (`transientStep`, ไม่นับ ESR ที่ id ลงท้าย `:esr`) ไม่เกิน 200 ก้าวต่อเฟรม; ประจุของทุกตัวเก็บใน `Simulation.charge` (ตาม id, เริ่มที่ 0 ทุกครั้งที่เปิด/โหลดไฟล์, ไม่เซฟ); วงจรไม่มี C ใช้เส้นทาง solve เดิม ไม่ช้าลง — ความร้อนสะสมของชิ้นส่วนคำนวณแยกต่อเฟรมใน `Simulation.step`
 - ไม่มี backend ทุกอย่างฟรีไม่ผูกบัตร (ธรรมนูญข้อ 4)
 
 ## คำสั่งที่ใช้จริง
