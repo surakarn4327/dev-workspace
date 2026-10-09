@@ -66,4 +66,53 @@ describe('wire flow', () => {
     expect(parts[1].i).toBeLessThan(parts[0].i * 0.55)
     expect(sim.flow.has(main.id)).toBe(false) // no single number for a cut wire
   })
+
+  it('divides the current between two wires that form a loop, in inverse proportion to their lengths', () => {
+    // + to the resistor by a short wire and by a longer one: the same two ends, so a loop of wires
+    const w = new World()
+    const bat = newPart(w.nextId('p'), 'battery', 0, 0)
+    bat.params.volts = 9
+    const r = newPart(w.nextId('p'), 'resistor', 300, 0)
+    w.parts.push(bat, r)
+    const [plus, minus] = pinWorld(bat)
+    const rp = pinWorld(r)
+    const short = w.addWire(plus, rp[0], '#ff4a4a')
+    const detour = w.addWire(plus, rp[0], '#2ea043', [{ x: plus.x, y: plus.y - 100 }, { x: rp[0].x, y: plus.y - 100 }])
+    w.addWire(rp[1], minus, '#4a7aff')
+    const sim = new Simulation(w)
+    sim.step(0.016)
+    const a = sim.flow.get(short.id)!
+    const b = sim.flow.get(detour.id)!
+    expect(a).toBeGreaterThan(0)
+    expect(b).toBeGreaterThan(0)
+    const lenShort = Math.hypot(rp[0].x - plus.x, rp[0].y - plus.y)
+    const lenDetour = 100 + (rp[0].x - plus.x) + 100
+    expect(a / b).toBeCloseTo(lenDetour / lenShort, 1)
+    // together they carry the whole load
+    expect(a + b).toBeGreaterThan(0.026) // 9 V over the default 330 ohm resistor and the cell's own 1.5 ohm
+    expect(a + b).toBeLessThan(0.028)
+  })
+
+  it('flows in every wire of a bus that ties several pins together', () => {
+    // a square of wires round four tied points, one resistor feeding the corner: nothing is left without a current
+    const w = new World()
+    const bat = newPart(w.nextId('p'), 'battery', 0, 0)
+    bat.params.volts = 9
+    const r1 = newPart(w.nextId('p'), 'resistor', 300, 0)
+    const r2 = newPart(w.nextId('p'), 'resistor', 300, 100)
+    w.parts.push(bat, r1, r2)
+    const [plus, minus] = pinWorld(bat)
+    const p1 = pinWorld(r1)
+    const p2 = pinWorld(r2)
+    const a = w.addWire(plus, p1[0], '#ff4a4a')
+    const b = w.addWire(p1[0], p2[0], '#ff4a4a')
+    const c = w.addWire(plus, p2[0], '#ff4a4a') // closes the loop plus -> p1 -> p2 -> plus
+    w.addWire(p1[1], minus, '#4a7aff')
+    w.addWire(p2[1], minus, '#4a7aff')
+    const sim = new Simulation(w)
+    sim.step(0.016)
+    for (const wire of [a, b, c]) expect(sim.flow.has(wire.id), wire.id).toBe(true)
+    // the two loads draw nearly the same, so the wire between their pins carries only the small difference the wire lengths make
+    expect(Math.abs(sim.flow.get(b.id)!)).toBeLessThan(0.002)
+  })
 })

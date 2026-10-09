@@ -151,7 +151,7 @@ function vcritOf(nVt: number, is: number): number {
 }
 
 /** Dense Gaussian elimination with partial pivoting. Solves in place, returns false if singular. */
-function gauss(A: Float64Array, z: Float64Array, n: number): boolean {
+export function gauss(A: Float64Array, z: Float64Array, n: number): boolean {
   for (let col = 0; col < n; col++) {
     let piv = col
     let best = Math.abs(A[col * n + col])

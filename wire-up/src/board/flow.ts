@@ -1,10 +1,11 @@
 // Current in each wire, for the flowing-dots animation. The solver only knows node voltages and element currents, so the
-// current in a wire is rebuilt from the currents each part draws at its pins: a wire network that is a tree (no loops, no
-// branch wires resting on another wire) has exactly one answer, found by peeling it from the leaves. Anything else is left
-// out (no dots) rather than guessed.
+// current in a wire is rebuilt from the currents each part draws at its pins. Wires are given a resistance in proportion to
+// their length, which is what makes the answer unique even where they form loops (the circuit's own results are untouched).
+// A wire with plugged corners of its own is left out (no dots) rather than guessed.
 
 import { boardHoles } from '../parts/breadboard.ts'
 import { pinWorld } from '../parts/index.ts'
+import { gauss } from '../sim/solver.ts'
 import type { SolveResult } from '../sim/solver.ts'
 import type { Element } from '../sim/solver.ts'
 import type { Netlist } from './connectivity.ts'
@@ -85,7 +86,7 @@ export function computeFlow(world: World, net: Netlist, res: SolveResult): FlowR
     }
   }
 
-  // wire networks. A wire a branch rests on is cut into pieces at the junctions, so every piece has one current.
+  // wire networks. A wire a branch rests on is cut into pieces at the junctions, so every piece has one current. Loops are solved too (below).
   const sockets = socketKeys(world)
   const junctions = new Map<string, Vec[]>()
   for (const o of world.wires) {
@@ -143,38 +144,43 @@ export function computeFlow(world: World, net: Netlist, res: SolveResult): FlowR
     else groups.set(r, [e])
   }
   for (const g of groups.values()) {
-    const nodes = new Set<string>()
+    if (g.some((e) => unsupported.has(e.wire))) continue
+    const nodes = [...new Set(g.flatMap((e) => [e.a, e.b]))]
+    const demand = nodes.map((n) => need.get(n) ?? 0)
+    if (nodes.length < 2 || demand.every((d) => Math.abs(d) < 1e-12)) continue
+    // A real wire is not a perfect conductor: its resistance grows with its length. Where wires form a loop that is what decides
+    // how the current divides, so the answer is not a guess. The network of wires is solved on its own (the circuit's own results
+    // never change): each stretch gets a resistance in proportion to its length, the current each part draws is injected at its
+    // pins, and Kirchhoff's current law gives the potential of every junction and so the current in every stretch.
+    const index = new Map(nodes.map((n, i) => [n, i]))
+    const m = nodes.length - 1 // the first junction is the reference (potential 0), its row and column are left out
+    const L = new Float64Array(m * m)
+    const z = new Float64Array(m)
+    const conductance = (e: Piece): number => 1 / Math.max(totalLength(e.path), 1)
     for (const e of g) {
-      nodes.add(e.a)
-      nodes.add(e.b)
-    }
-    if (g.some((e) => unsupported.has(e.wire)) || g.length !== nodes.size - 1 || g.some((e) => e.a === e.b)) continue // loops: no answer
-    // peel leaves: the current into a leaf is what everything beyond it draws
-    const left = new Set(g)
-    const demand = new Map<string, number>()
-    for (const n of nodes) demand.set(n, need.get(n) ?? 0)
-    const degree = new Map<string, number>()
-    for (const e of g) {
-      degree.set(e.a, (degree.get(e.a) ?? 0) + 1)
-      degree.set(e.b, (degree.get(e.b) ?? 0) + 1)
-    }
-    let progress = true
-    while (left.size > 0 && progress) {
-      progress = false
-      for (const e of [...left]) {
-        const leaf = degree.get(e.a) === 1 ? e.a : degree.get(e.b) === 1 ? e.b : null
-        if (leaf === null) continue
-        const parentNode = leaf === e.a ? e.b : e.a
-        const into = demand.get(leaf) ?? 0
-        const signed = leaf === e.b ? into : -into // positive = along the piece, start -> end
-        if (e.whole) out.byWire.set(e.wire, signed)
-        out.parts.push({ wire: e.wire, path: e.path, i: signed })
-        demand.set(parentNode, (demand.get(parentNode) ?? 0) + into)
-        degree.set(leaf, 0)
-        degree.set(parentNode, (degree.get(parentNode) ?? 1) - 1)
-        left.delete(e)
-        progress = true
+      if (e.a === e.b) continue
+      const i = index.get(e.a)! - 1
+      const j = index.get(e.b)! - 1
+      const c = conductance(e)
+      if (i >= 0) L[i * m + i] += c
+      if (j >= 0) L[j * m + j] += c
+      if (i >= 0 && j >= 0) {
+        L[i * m + j] -= c
+        L[j * m + i] -= c
       }
+    }
+    // current arriving at a junction from the wires is what the parts there draw: (L V)_n = -draw_n
+    for (let k = 1; k < nodes.length; k++) z[k - 1] = -demand[k]
+    if (!gauss(L, z, m)) continue
+    const potential = (n: string): number => {
+      const k = index.get(n)!
+      return k === 0 ? 0 : z[k - 1]
+    }
+    for (const e of g) {
+      if (e.a === e.b) continue
+      const signed = (potential(e.a) - potential(e.b)) * conductance(e) // positive = along the piece, start -> end
+      if (e.whole) out.byWire.set(e.wire, signed)
+      out.parts.push({ wire: e.wire, path: e.path, i: signed })
     }
   }
   return out
