@@ -322,18 +322,34 @@ export class App {
     $('save-state').textContent = 'autosave on'
   }
 
+  /** Toasts on screen by their text: the same message again counts up on the one box instead of piling a new box on top. */
+  private toasts = new Map<string, { el: HTMLElement; title: HTMLElement; label: string; count: number; timer: number }>()
+
   toast(title: string, body: string, good: boolean): void {
+    const key = `${title}|${body}`
+    const old = this.toasts.get(key)
+    const ms = good ? 6000 : 12000
+    if (old && old.el.isConnected) {
+      old.count++
+      old.title.textContent = `${old.label} (x${old.count})`
+      window.clearTimeout(old.timer)
+      old.timer = window.setTimeout(() => old.el.remove(), ms)
+      return
+    }
     const el = document.createElement('div')
     el.className = `toast${good ? ' good' : ''}`
     const b = document.createElement('b')
     b.textContent = title
     el.appendChild(b)
     el.appendChild(document.createTextNode(body))
-    el.onclick = () => el.remove()
+    el.onclick = () => {
+      el.remove()
+      this.toasts.delete(key)
+    }
     const host = $('toasts')
     host.appendChild(el)
-    while (host.children.length > 3) host.firstElementChild?.remove()
-    window.setTimeout(() => el.remove(), good ? 6000 : 16000)
+    while (host.children.length > 2) host.firstElementChild?.remove()
+    this.toasts.set(key, { el, title: b, label: title, count: 1, timer: window.setTimeout(() => el.remove(), ms) })
   }
 
   private frame(dt: number): void {
@@ -341,7 +357,9 @@ export class App {
     const log = this.ws.sim.log
     while (this.logSeen < log.length) {
       const l = log[this.logSeen++]
-      this.toast(`${l.partName} burnt out`, l.message, false)
+      // the box keeps to the one sentence that says what went wrong in numbers; the whole advice is in the Inspector under Incidents
+      const first = l.message.split(/(?<=[.!?])\s/)[0]
+      this.toast(`${l.partName} burnt out`, first.length > 150 ? `${first.slice(0, 147).replace(/\s+\S*$/, '')}...` : first, false)
     }
     this.lessons.update(dt)
     this.uiAcc += dt
