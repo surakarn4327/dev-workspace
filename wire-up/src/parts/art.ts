@@ -1226,3 +1226,42 @@ export function electroCapSprite(): Sprite {
     )
   })
 }
+
+// ---------------------------------------------------------------- seven-segment display
+
+/**
+ * Single-digit LED display seen from the front (reference: Wikimedia Commons "FND500.jpg"): a red translucent block with a dark
+ * smoked window for the digit. 50 x 46 art pixels, grid cell (0, 0) at world (-10, 14); the 10 pins (two rows of 5, x = 0..80,
+ * y = 0 and 120) are drawn by the part. The lit segments, the text and the glow are drawn on top by the part, in the window
+ * (art pixels 5..44 across, 4..41 down).
+ */
+export function segDisplaySprite(): Sprite {
+  return sprite('seg7', () => {
+    const W = 50
+    const H = 46
+    const g = new PixelGrid(W, H)
+    g.rrect(0, 0, W, H, 3, 'T')
+    const cells: Array<[number, number]> = []
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g.get(x, y) !== '.') cells.push([x, y])
+    for (const [x, y] of cells) {
+      const lit = g.get(x - 1, y) === '.' || g.get(x, y - 1) === '.'
+      const dark = g.get(x + 1, y) === '.' || g.get(x, y + 1) === '.'
+      const lit2 = g.get(x - 2, y) === '.' || g.get(x, y - 2) === '.'
+      const base = y < 14 ? 'T' : y < 30 ? 'M' : 'S'
+      g.set(x, y, lit && !dark ? 'h' : dark && !lit ? 'D' : lit2 ? 'L' : base)
+    }
+    // the smoked window: dark, with a shaded top-left edge and a lit bottom-right lip
+    g.rect(5, 4, 40, 38, 'K')
+    g.rect(5, 4, 40, 1, 'k')
+    g.rect(5, 4, 1, 38, 'k')
+    g.rect(6, 41, 39, 1, 'J')
+    g.rect(44, 5, 1, 37, 'J')
+    // a soft reflection in the top left of the window
+    g.rect(7, 6, 6, 1, 'g')
+    g.rect(7, 7, 1, 3, 'g')
+    return g.build(
+      { h: '#e0545e', L: '#c43a46', T: '#a52a35', M: '#86202a', S: '#6a1820', D: '#4e1017', K: '#210508', k: '#120204', J: '#8a2430', g: '#5a2026' },
+      '#2a0508',
+    )
+  })
+}
