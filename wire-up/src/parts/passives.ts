@@ -231,7 +231,7 @@ export const ldr: PartDef = {
     const lux = num(p, 'lux', 100)
     if (scene.pixel) {
       // straight legs one hole apart, hidden behind the disc; the disc is drawn 10 px left so it sits between them
-      straightLegs(c, p, -4)
+      straightLegs(c, p, -16)
       c.save()
       c.translate(-10, 0)
       drawSprite(c, ldrSprite(), -2, -48)
