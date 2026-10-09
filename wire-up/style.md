@@ -50,6 +50,47 @@
 | สภาพไหม้ (ทุกชิ้นที่ไหม้) | **pixel — ผู้ใช้เลือกแนวทาง 2026-10-07** | `render/burnt.ts` — ดูหัวข้อ 5.15 (ยังรอผู้ใช้ชมหน้าตา) |
 | ควัน, แสงเรือง | เวกเตอร์ | ยังไม่ได้ทำ |
 
+### 1.3 ทะเบียนชิ้นส่วน (ตรวจอัตโนมัติ — `src/parts/registry.test.ts`)
+
+ทุกชิ้นใน `ALL_PARTS` ต้องมีหนึ่งแถวที่นี่ และชื่อสไปรต์ต้องมีอยู่จริงใน `parts/art.ts` (ถ้าไม่มีสไปรต์เขียน `none`) ไม่งั้นเทสต์พัง สถานะ: `approved` = ผู้ใช้ดูภาพแล้วอนุมัติ, `draft` = ยังรอ (ห้ามลอกเป็นต้นแบบ) — เพิ่มชิ้นใหม่ให้ใส่ `draft` ก่อนเสมอ เปลี่ยนเป็น `approved` ได้เมื่อผู้ใช้บอกเท่านั้น วิธีเพิ่มชิ้นส่วนทั้งหมดดู [`PARTS.md`](PARTS.md)
+
+| type | สถานะ | สไปรต์ | หมายเหตุ |
+|---|---|---|---|
+| `resistor` | approved | `resistorSprite` | ต้นแบบ |
+| `battery` | approved | `batterySprite` |  |
+| `battery-1.5` | approved | `batterySprite` |  |
+| `battery-3` | approved | `batterySprite` |  |
+| `battery-4.5` | approved | `batterySprite` |  |
+| `supply` | approved | `supplySprite` |  |
+| `meter` | approved | `meterSprite` |  |
+| `led` | approved | `ledSprite` |  |
+| `diode` | approved | `diodeSprite` |  |
+| `bc547` | approved | `to92Sprite` |  |
+| `bc557` | approved | `to92Sprite` |  |
+| `pot` | approved | `potSprite` |  |
+| `ldr` | approved | `ldrSprite` |  |
+| `ntc` | approved | `ntcSprite` |  |
+| `switch` | approved | `rockerSwitchSprite` |  |
+| `slide-switch` | approved | `slideSwitchSprite` |  |
+| `button` | approved | `tactSprite` |  |
+| `breadboard` | approved | `breadboardSprite` |  |
+| `breadboard-mini` | approved | `breadboardSprite` |  |
+| `gate-not` | draft | `gateSprite` | สัญลักษณ์ ไม่มีขาไฟเลี้ยง |
+| `gate-and` | draft | `gateSprite` | สัญลักษณ์ ไม่มีขาไฟเลี้ยง |
+| `gate-or` | draft | `gateSprite` | สัญลักษณ์ ไม่มีขาไฟเลี้ยง |
+| `gate-nand` | draft | `gateSprite` | สัญลักษณ์ ไม่มีขาไฟเลี้ยง |
+| `gate-nor` | draft | `gateSprite` | สัญลักษณ์ ไม่มีขาไฟเลี้ยง |
+| `gate-xor` | draft | `gateSprite` | สัญลักษณ์ ไม่มีขาไฟเลี้ยง |
+| `gate-xnor` | draft | `gateSprite` | สัญลักษณ์ ไม่มีขาไฟเลี้ยง |
+| `ic-74hc00` | draft | `dipSprite` |  |
+| `ic-74hc02` | draft | `dipSprite` |  |
+| `ic-74hc04` | draft | `dipSprite` |  |
+| `ic-74hc08` | draft | `dipSprite` |  |
+| `ic-74hc32` | draft | `dipSprite` |  |
+| `ic-74hc86` | draft | `dipSprite` |  |
+| `cap-ceramic` | draft | `ceramicCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
+| `cap-electro` | draft | `electroCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
+
 ---
 
 ## 2. สี

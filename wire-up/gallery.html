@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wire-Up | Parts gallery</title>
+    <style>
+      html, body { overflow: auto !important; height: auto !important; }
+      body { margin: 0; background: #17171d; color: #b9b4e8; font: 14px Consolas, monospace; }
+      header { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; align-items: center; padding: 8px 16px; background: #0f0f14; border-bottom: 1px solid #38f9ff55; }
+      header button, header label { color: #38f9ff; background: #1b1b24; border: 1px solid #38f9ff88; padding: 4px 10px; font: inherit; cursor: pointer; }
+      main { padding: 12px 16px 60px; }
+      .part { margin: 0 0 18px; padding: 8px 10px; border: 1px solid #2c2c38; }
+      .part h2 { margin: 0 0 2px; font-size: 15px; color: #fff; }
+      .part p { margin: 0 0 6px; color: #8f8bb8; }
+      .badge { font-size: 11px; padding: 1px 6px; margin-left: 8px; border: 1px solid; }
+      .approved { color: #39ff88; }
+      .draft { color: #ffb43a; }
+      .row { display: flex; gap: 6px; flex-wrap: wrap; }
+      canvas { background: #23232b; image-rendering: pixelated; }
+      pre { white-space: pre-wrap; color: #ffb43a; }
+      .bad { color: #ff3b4a; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Parts gallery</b>
+      <button id="mode">Look: pixel</button>
+      <button id="check">Check label gaps (style.md 3.5)</button>
+      <span id="summary"></span>
+    </header>
+    <main id="list"></main>
+    <script type="module" src="/src/gallery.ts"></script>
+  </body>
+</html>
