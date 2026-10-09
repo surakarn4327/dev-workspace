@@ -24,26 +24,20 @@ const OY = 10
 
 const red = LED_COLORS.red
 
-/** One segment as a pixel bar with chamfered ends (the dot is a small round blob): `color` body, `core` a lighter line along it. */
-function drawSegment(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENTS)[number], color: string, core: string): void {
-  const px = (x: number, y: number, w: number, h: number, col: string) => pxRect(c, ox, OY, s.x + x, s.y + y, w, h, col)
+/** One segment as a flat pixel bar in one colour, with chamfered ends (the dot is a small round blob). */
+function drawSegment(c: CanvasRenderingContext2D, ox: number, s: (typeof SEGMENTS)[number], color: string): void {
+  const px = (x: number, y: number, w: number, h: number) => pxRect(c, ox, OY, s.x + x, s.y + y, w, h, color)
   if (s.name === 'dp') {
     // a round dot
-    px(1, 0, 2, 1, color)
-    px(0, 1, 4, 2, color)
-    px(1, 3, 2, 1, color)
-    px(1, 1, 1, 1, core)
+    px(1, 0, 2, 1)
+    px(0, 1, 4, 2)
+    px(1, 3, 2, 1)
     return
   }
   // a bar 5 pixels thick whose two ends are cut at 45 degrees to a point, like the picture the user sent
   const inset = [2, 1, 0, 1, 2]
-  if (s.w > s.h) {
-    inset.forEach((k, r) => px(k, r, s.w - 2 * k, 1, color))
-    px(3, 2, s.w - 6, 1, core)
-  } else {
-    inset.forEach((k, col) => px(col, k, 1, s.h - 2 * k, color))
-    px(2, 3, 1, s.h - 6, core)
-  }
+  if (s.w > s.h) inset.forEach((k, r) => px(k, r, s.w - 2 * k, 1))
+  else inset.forEach((k, col) => px(col, k, 1, s.h - 2 * k))
 }
 
 /** What differs between the one-digit and the four-digit display. */
@@ -149,10 +143,10 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
             const i = live[`i_${d}_${s.name}`] ?? 0
             // an LED looks bright well below its full current: about half of the brightness is reached at a quarter of 12 mA
             const b = i > 1e-5 ? Math.min(1, Math.sqrt(i / 0.012)) : 0
-            drawSegment(c, dx, s, '#d8d6cd', '#efede6')
+            drawSegment(c, dx, s, '#f2f0ea')
             if (b > 0) {
               c.globalAlpha = Math.min(1, 0.3 + 0.8 * b)
-              drawSegment(c, dx, s, '#ff3b4a', '#ff9aa2')
+              drawSegment(c, dx, s, '#ff3b4a')
               c.globalAlpha = 1
             }
           }
@@ -171,7 +165,7 @@ function makeSegDisplay(type: string, name: string, blurb: string, info: SegDisp
       for (let d = 0; d < digits; d++) {
         for (const s of SEGMENTS) {
           const on = (live[`i_${d}_${s.name}`] ?? 0) > 1e-5
-          c.fillStyle = on ? '#ff3b4a' : '#cfcfc6'
+          c.fillStyle = on ? '#ff3b4a' : '#f2f0ea'
           c.fillRect(ox + d * DIGIT_W * 2 + s.x * 2, OY + s.y * 2, s.w * 2, s.h * 2)
         }
       }
