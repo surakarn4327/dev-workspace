@@ -10,8 +10,8 @@ function rc(type: string, farads: number, flip = false): { w: World; sim: Simula
   const bat = b.place('battery', -320, 80, { volts: 9 })
   b.place('resistor', 0, 0, { value: 10000, legs: 2 })
   const cap = b.place(type, 160, 100, { value: farads, legs: 1 })
-  // the capacitor's pins sit at (160, 120) and, one hole apart for the electrolytic, two for the disc; `flip` puts the supply the other way round
-  const far = { x: type === 'cap-electro' ? 180 : 200, y: 120 }
+  // the capacitor's pins sit at (160, 120) and, one hole apart; `flip` puts the supply the other way round
+  const far = { x: 180, y: 120 }
   b.connect(bat, flip ? far : { x: 0, y: 0 }, flip ? { x: 0, y: 0 } : far)
   b.wire({ x: 80, y: 0 }, { x: 160, y: 120 })
   return { w, sim: new Simulation(w), capId: cap.id }

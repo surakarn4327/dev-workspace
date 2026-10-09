@@ -173,11 +173,12 @@ describe('missions can be completed', () => {
     ldr.x = s.b.hole(3, 6).x
     ldr.y = s.b.hole(3, 6).y
     ldr.params.lux = 5
+    // the sensor's legs are one hole apart (columns 3 and 4): the resistor starts where the sensor ends
     const r = s.get('resistor')
-    r.x = s.b.hole(5, 5).x
-    r.y = s.b.hole(5, 5).y
-    s.b.connect(s.get('battery'), s.b.hole(3, 4), s.b.hole(9, 4))
-    s.get('meter').leads = [s.b.hole(5, 4), s.b.hole(9, 3)]
+    r.x = s.b.hole(4, 5).x
+    r.y = s.b.hole(4, 5).y
+    s.b.connect(s.get('battery'), s.b.hole(3, 4), s.b.hole(8, 4))
+    s.get('meter').leads = [s.b.hole(4, 4), s.b.hole(8, 3)]
     s.world.commit()
     s.run()
     expect(s.results()).toEqual([true, true, false])

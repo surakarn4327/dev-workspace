@@ -1152,8 +1152,8 @@ export function ceramicCapSprite(): Sprite {
     const g = new PixelGrid(22, 24)
     g.disc(11, 11, 10.5, 'f')
     // the two bulges at the bottom edge, one over each leg
-    g.rect(6, 20, 3, 4, 'f')
-    g.rect(14, 20, 3, 4, 'f')
+    g.rect(5, 20, 3, 4, 'f')
+    g.rect(15, 20, 3, 4, 'f')
     for (let y = 0; y < 24; y++) {
       for (let x = 0; x < 22; x++) {
         if (g.get(x, y) === '.') continue

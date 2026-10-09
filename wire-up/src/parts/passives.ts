@@ -216,8 +216,8 @@ export const ldr: PartDef = {
   tipPastPinVector: 2,
   wheelKey: 'lux',
   defaults: () => ({ lux: 100, legs: 1 }),
-  pins: (p) => pinsTwo(2, legGrid(p)),
-  bounds: (p) => ({ x: -12, y: -48, w: 64, h: 56 + legDrop(p) }),
+  pins: (p) => pinsTwo(1, legGrid(p)),
+  bounds: (p) => ({ x: -22, y: -48, w: 64, h: 56 + legDrop(p) }),
   build(p, ctx) {
     if (p.state.failed) return
     ctx.add({ kind: 'R', id: ctx.id('r'), a: ctx.pins[0], b: ctx.pins[1], r: ldrResistance(num(p, 'lux', 100)) })
@@ -230,27 +230,21 @@ export const ldr: PartDef = {
   draw(c, p) {
     const lux = num(p, 'lux', 100)
     if (scene.pixel) {
-      // legs run straight up from the pins, then slant in under the disc (art-pixel diagonals, 2 px wide)
-      for (const [x, tx] of [
-        [0, 6],
-        [40, 14],
-      ]) {
-        c.fillStyle = COL.metal
-        c.fillRect(x - 2, 0, 2, 4 + legDrop(p))
-        c.fillStyle = COL.metalDark
-        c.fillRect(x, 0, 2, 4 + legDrop(p))
-        pxLine(c, 0, 0, x / 2 - 1, 0, tx - 1, -7, COL.metal)
-        pxLine(c, 0, 0, x / 2, 0, tx, -7, COL.metalDark)
-      }
+      // straight legs one hole apart, hidden behind the disc; the disc is drawn 10 px left so it sits between them
+      straightLegs(c, p, -4)
+      c.save()
+      c.translate(-10, 0)
       drawSprite(c, ldrSprite(), -2, -48)
       const bright = Math.min(1, Math.log10(Math.max(lux, 1)) / 4.5)
       radialGlow(c, 20, -26, 38, '#fff3b0', bright * 0.35)
       if (scene.labeled.has(p.id)) drawLabelAbove(c, eng(lux, 'lx', 2).replace(' ', ''), 20, spriteInk(ldrSprite(), -2, -48).top)
+      c.restore()
       return
     }
-    leg(c, 0, 0, 12, -14)
-    leg(c, 40, 0, 28, -14)
-    if (legDrop(p) > 0) for (const x of [0, 40]) leg(c, x, 4, x, legDrop(p))
+    leg(c, 0, 0, 0, legDrop(p))
+    leg(c, 20, 0, 20, legDrop(p))
+    c.save()
+    c.translate(-10, 0)
     c.fillStyle = '#7a5226'
     c.beginPath()
     c.arc(20, -26, 21, 0, Math.PI * 2)
@@ -273,6 +267,7 @@ export const ldr: PartDef = {
     const b = Math.min(1, Math.log10(Math.max(lux, 1)) / 4.5)
     radialGlow(c, 20, -26, 38, '#fff3b0', b * 0.35)
     if (scene.labeled.has(p.id)) drawLabelAbove(c, eng(lux, 'lx', 2).replace(' ', ''), 20, -47)
+    c.restore()
   },
   fields: () => [{ kind: 'range', key: 'lux', label: 'Light level', min: 0.1, max: 100000, step: 0.1, log: true, unit: 'lx' }, LEG_FIELD],
   summary: (p) => `${eng(ldrResistance(num(p, 'lux', 100)), 'ohm')} at ${eng(num(p, 'lux', 100), 'lx')}`,
@@ -291,8 +286,8 @@ export const ntc: PartDef = {
   tipPastPinVector: 2,
   wheelKey: 'temp',
   defaults: () => ({ temp: 25, legs: 1 }),
-  pins: (p) => pinsTwo(2, legGrid(p)),
-  bounds: (p) => ({ x: -12, y: -48, w: 64, h: 56 + legDrop(p) }),
+  pins: (p) => pinsTwo(1, legGrid(p)),
+  bounds: (p) => ({ x: -22, y: -48, w: 64, h: 56 + legDrop(p) }),
   build(p, ctx) {
     if (p.state.failed) return
     ctx.add({ kind: 'R', id: ctx.id('r'), a: ctx.pins[0], b: ctx.pins[1], r: ntcResistance(num(p, 'temp', 25)) })
@@ -306,26 +301,20 @@ export const ntc: PartDef = {
     const t = num(p, 'temp', 25)
     if (scene.pixel) {
       const hotGlow = Math.min(Math.max((t - 40) / 100, 0), 1)
-      radialGlow(c, 20, -26, 38, '#ff6a2a', hotGlow * 0.6)
-      // legs run straight up from the pins, then slant in under the bead (same legs as the LDR)
-      for (const [x, tx] of [
-        [0, 6],
-        [40, 14],
-      ]) {
-        c.fillStyle = COL.metal
-        c.fillRect(x - 2, 0, 2, 4 + legDrop(p))
-        c.fillStyle = COL.metalDark
-        c.fillRect(x, 0, 2, 4 + legDrop(p))
-        pxLine(c, 0, 0, x / 2 - 1, 0, tx - 1, -7, COL.metal)
-        pxLine(c, 0, 0, x / 2, 0, tx, -7, COL.metalDark)
-      }
+      radialGlow(c, 10, -26, 38, '#ff6a2a', hotGlow * 0.6)
+      // straight legs one hole apart, hidden behind the bead (same as the LDR)
+      straightLegs(c, p, -4)
+      c.save()
+      c.translate(-10, 0)
       drawSprite(c, ntcSprite(), -2, -48)
       if (scene.labeled.has(p.id)) drawLabelAbove(c, `${t.toFixed(0)}C`, 20, spriteInk(ntcSprite(), -2, -48).top)
+      c.restore()
       return
     }
-    leg(c, 0, 0, 14, -10)
-    leg(c, 40, 0, 26, -10)
-    if (legDrop(p) > 0) for (const x of [0, 40]) leg(c, x, 4, x, legDrop(p))
+    leg(c, 0, 0, 0, legDrop(p))
+    leg(c, 20, 0, 20, legDrop(p))
+    c.save()
+    c.translate(-10, 0)
     const hot = Math.min(Math.max((t - 40) / 100, 0), 1)
     radialGlow(c, 20, -20, 32, '#ff6a2a', hot * 0.6)
     c.fillStyle = '#1f6fd0'
@@ -342,6 +331,7 @@ export const ntc: PartDef = {
     c.arc(20, -20, 14, 0, Math.PI * 2)
     c.stroke()
     if (scene.labeled.has(p.id)) drawLabelAbove(c, `${t.toFixed(0)}C`, 20, -35)
+    c.restore()
   },
   fields: () => [{ kind: 'range', key: 'temp', label: 'Temperature', min: -40, max: 150, step: 1, unit: 'C' }, LEG_FIELD],
   summary: (p) => `${eng(ntcResistance(num(p, 'temp', 25)), 'ohm')} at ${num(p, 'temp', 25).toFixed(0)} C`,
@@ -349,20 +339,13 @@ export const ntc: PartDef = {
 
 // ---------------------------------------------------------------- capacitors
 
-/** Legs that run up from the pins and slant in under the body, hidden by it (same as the LDR and NTC). */
-function slantLegs(c: CanvasRenderingContext2D, p: PartInstance, inner: [number, number]): void {
-  for (const [x, tx] of [
-    [0, inner[0]],
-    [40, inner[1]],
-  ]) {
+/** Two straight legs, one hole apart, running up from the pins to `top` and hidden behind the body (LDR, NTC, ceramic disc). */
+function straightLegs(c: CanvasRenderingContext2D, p: PartInstance, top: number): void {
+  for (const x of [0, 20]) {
     c.fillStyle = COL.metal
-    c.fillRect(x - 2, 0, 2, 4 + legDrop(p))
+    c.fillRect(x - 2, top, 2, 4 - top + legDrop(p))
     c.fillStyle = COL.metalDark
-    c.fillRect(x, 0, 2, 4 + legDrop(p))
-    // from the top of the straight stretch, slanting in to the bulge under the disc
-    // (pxLine works in art pixels, 2 world px each)
-    pxLine(c, 0, 0, x / 2 - 1, 0, tx / 2 - 1, -3, COL.metal)
-    pxLine(c, 0, 0, x / 2, 0, tx / 2, -3, COL.metalDark)
+    c.fillRect(x, top, 2, 4 - top + legDrop(p))
   }
 }
 
@@ -383,8 +366,8 @@ export const ceramicCap: PartDef = {
   tipPastPin: 4,
   tipPastPinVector: 2,
   defaults: () => ({ value: 1e-7, legs: 1 }),
-  pins: (p) => pinsTwo(2, legGrid(p)),
-  bounds: (p) => ({ x: -12, y: -54, w: 64, h: 62 + legDrop(p) }),
+  pins: (p) => pinsTwo(1, legGrid(p)),
+  bounds: (p) => ({ x: -22, y: -54, w: 64, h: 62 + legDrop(p) }),
   build(p, ctx) {
     if (p.state.failed) return
     const mid = ctx.newNode()
@@ -397,16 +380,20 @@ export const ceramicCap: PartDef = {
     ),
   draw(c, p) {
     if (scene.pixel) {
-      slantLegs(c, p, [12, 28])
+      straightLegs(c, p, -6)
+      c.save()
+      c.translate(-10, 0)
       drawSprite(c, ceramicCapSprite(), -2, -52)
       // the code printed on the disc, as on the real part
       drawText(c, eiaCode(num(p, 'value', 1e-7)), 20, -37, { color: '#5a3410', align: 'center' })
       if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-7))}F`, 20, spriteInk(ceramicCapSprite(), -2, -52).top)
+      c.restore()
       return
     }
-    leg(c, 0, 0, 14, -10)
-    leg(c, 40, 0, 26, -10)
-    if (legDrop(p) > 0) for (const x of [0, 40]) leg(c, x, 4, x, legDrop(p))
+    leg(c, 0, 0, 0, legDrop(p))
+    leg(c, 20, 0, 20, legDrop(p))
+    c.save()
+    c.translate(-10, 0)
     c.fillStyle = '#e8a73f'
     c.beginPath()
     c.arc(20, -30, 19, 0, Math.PI * 2)
@@ -415,6 +402,7 @@ export const ceramicCap: PartDef = {
     c.lineWidth = 2
     c.stroke()
     if (scene.labeled.has(p.id)) drawLabelAbove(c, `${fmtFarads(num(p, 'value', 1e-7))}F`, 20, -50)
+    c.restore()
   },
   fields: () => [
     { kind: 'select', key: 'value', label: 'Capacitance (F)', options: CERAMIC_CAP_VALUES.map((v) => ({ value: v, label: `${fmtFarads(v)}F` })) },
