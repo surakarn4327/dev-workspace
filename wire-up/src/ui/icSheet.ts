@@ -148,13 +148,14 @@ function drawSegSheet(c: CanvasRenderingContext2D, type: string): void {
       pts.forEach(([px, py], i) => (i === 0 ? c.moveTo(px, py) : c.lineTo(px, py)))
       c.closePath()
       c.stroke()
-      if (info.digits === 1) drawText(c, s.name, sx + sw / 2, sy + sh / 2 - 5, { color: SHEET.ink, align: 'center', size: 9 })
+      // the letter of each bar, small enough for the four-digit sheet (bars drawn at 0.6) too
+      const size = info.digits === 1 ? 9 : 7
+      drawText(c, s.name, sx + sw / 2, sy + sh / 2 - size / 2 - 1, { color: SHEET.ink, align: 'center', size })
     }
   }
   // numbered pin boxes (1..perRow along the bottom left to right, the rest back along the top) with the pin names beyond them
   const n = info.pinNames.length
   const x0 = x + w / 2 - ((info.perRow - 1) * 20) / 2
-  const commons = new Set(info.comPins.flat())
   for (let i = 0; i < n; i++) {
     const top = i >= info.perRow
     const px = x0 + (top ? info.perRow - 1 - (i - info.perRow) : i) * 20
@@ -162,8 +163,6 @@ function drawSegSheet(c: CanvasRenderingContext2D, type: string): void {
     c.strokeRect(px - BOX / 2, by, BOX, BOX)
     drawText(c, String(i + 1), px, by + 3, { color: SHEET.ink, align: 'center', size: 10 })
     drawText(c, info.pinNames[i], px, top ? by - 14 : by + BOX + 3, { color: SHEET.ink, align: 'center', size: 9 })
-    // the common pins go to minus (common cathode)
-    if (commons.has(i)) drawText(c, '-', px, top ? y + 4 : y + h - 14, { color: SHEET.ink, align: 'center', size: 10 })
   }
 }
 
