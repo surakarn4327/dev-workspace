@@ -112,7 +112,7 @@ function segPin(k: number): { x: number; top: boolean } {
 }
 
 /** The seven-segment pinout: the black package, the eight segments with their letters, numbered pin boxes and the pin names. */
-function drawSegSheet(c: CanvasRenderingContext2D, anode: boolean): void {
+function drawSegSheet(c: CanvasRenderingContext2D): void {
   c.strokeStyle = SHEET.ink
   c.lineWidth = 1.5
   c.lineCap = 'square'
@@ -145,7 +145,7 @@ function drawSegSheet(c: CanvasRenderingContext2D, anode: boolean): void {
     c.stroke()
     drawText(c, s.name, sx + sw / 2, sy + sh / 2 - 5, { color: SHEET.ink, align: 'center', size: 9 })
   }
-  // numbered pin boxes with the pin names beyond them, and the sign the common pin takes
+  // numbered pin boxes with the pin names beyond them, and the minus sign on the common pins (common cathode)
   for (let k = 1; k <= 10; k++) {
     const p = segPin(k)
     const by = p.top ? y - BOX : y + h
@@ -153,7 +153,7 @@ function drawSegSheet(c: CanvasRenderingContext2D, anode: boolean): void {
     drawText(c, String(k), p.x, by + 3, { color: SHEET.ink, align: 'center', size: 10 })
     const name = PIN_NAMES[k - 1]
     drawText(c, name, p.x, p.top ? by - 14 : by + BOX + 3, { color: SHEET.ink, align: 'center', size: 9 })
-    if (name === 'COM') drawText(c, anode ? '+' : '-', p.x, p.top ? y + 4 : y + h - 14, { color: SHEET.ink, align: 'center', size: 10 })
+    if (name === 'COM') drawText(c, '-', p.x, p.top ? y + 4 : y + h - 14, { color: SHEET.ink, align: 'center', size: 10 })
   }
 }
 
@@ -167,8 +167,7 @@ export function updateChipSheet(canvas: HTMLCanvasElement, part: PartInstance | 
     return
   }
   canvas.style.display = 'block'
-  const anode = seg && part!.params.common === 'anode'
-  const key = seg ? `seg7:${anode ? 'anode' : 'cathode'}` : part!.type
+  const key = seg ? 'seg7' : part!.type
   if (canvas.dataset.chip === key) return
   canvas.dataset.chip = key
   const size = seg ? { w: SEG.W, h: SEG.H } : { w: W, h: H }
@@ -181,6 +180,6 @@ export function updateChipSheet(canvas: HTMLCanvasElement, part: PartInstance | 
   if (!c) return
   c.setTransform(dpr, 0, 0, dpr, 0, 0)
   c.clearRect(0, 0, size.w, size.h)
-  if (seg) drawSegSheet(c, anode)
+  if (seg) drawSegSheet(c)
   else drawSheet(c, info!)
 }

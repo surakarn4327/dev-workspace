@@ -3,7 +3,7 @@ import { drawSprite, pxLeg, pxRect } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, LED_COLORS, LED_I_MAX, LED_N, LED_RS, LED_VR_MAX, ledIs } from '../sim/models.ts'
 import { segDisplaySprite } from './art.ts'
-import { eid, str, stress } from './common.ts'
+import { eid, stress } from './common.ts'
 import type { PartDef } from './types.ts'
 
 // ---------------------------------------------------------------- seven-segment display
@@ -54,15 +54,14 @@ export const seg7: PartDef = {
   name: '7-segment display',
   category: 'logic',
   blurb:
-    'One-digit LED display, 10 pins. Each segment is an LED: give it a resistor. Pins 1-5 bottom row left to right: E D COM C DP; 6-10 top row right to left: B A COM F G. Both COM pins are joined inside.',
+    'One-digit LED display, 10 pins. Each segment is an LED: give it a resistor. Common cathode: connect COM to -, and give a segment + through a resistor to light it. Pins 1-5 bottom row left to right: E D COM C DP; 6-10 top row right to left: B A COM F G. Both COM pins are joined inside.',
   pinLabels: PIN_NAMES,
   hidePinLabels: true, // a real display has no printed pin names; the pinout is in the description
-  defaults: () => ({ common: 'cathode' }),
+  defaults: () => ({}),
   pins: () => Array.from({ length: 10 }, (_, i) => (i < 5 ? { x: i, y: 8 } : { x: 4 - (i - 5), y: 0 })),
   bounds: () => ({ x: -12, y: -4, w: 104, h: 170 }),
   build(p, ctx) {
     if (p.state.failed) return
-    const anode = str(p, 'common', 'cathode') === 'anode'
     const com = ctx.pins[COM_PINS[0]]
     // the two COM pins are one wire inside the package
     ctx.add({ kind: 'R', id: ctx.id('com'), a: com, b: ctx.pins[COM_PINS[1]], r: 0.01 })
@@ -70,18 +69,12 @@ export const seg7: PartDef = {
       const mid = ctx.newNode()
       const pin = ctx.pins[s.pin]
       const led = { is: ledIs(red.vf10), n: LED_N }
-      if (anode) {
-        // common anode: current flows from COM through the LED and out of the segment pin
-        ctx.add({ kind: 'D', id: ctx.id(`d_${s.name}`), a: com, b: mid, ...led })
-        ctx.add({ kind: 'R', id: ctx.id(`rs_${s.name}`), a: mid, b: pin, r: LED_RS })
-      } else {
-        ctx.add({ kind: 'R', id: ctx.id(`rs_${s.name}`), a: pin, b: mid, r: LED_RS })
-        ctx.add({ kind: 'D', id: ctx.id(`d_${s.name}`), a: mid, b: com, ...led })
-      }
+      // common cathode: current flows from the segment pin through the LED into COM
+      ctx.add({ kind: 'R', id: ctx.id(`rs_${s.name}`), a: pin, b: mid, r: LED_RS })
+      ctx.add({ kind: 'D', id: ctx.id(`d_${s.name}`), a: mid, b: com, ...led })
     }
   },
   evaluate(p, env) {
-    const anode = str(p, 'common', 'cathode') === 'anode'
     const live: Record<string, number> = {}
     let total = 0
     let worst = 0
@@ -94,7 +87,7 @@ export const seg7: PartDef = {
       // forward current, or the reverse voltage across the segment
       const vSeg = env.v(env.pins[s.pin])
       const vCom = env.v(env.pins[COM_PINS[0]])
-      const rev = anode ? vSeg - vCom : vCom - vSeg
+      const rev = vCom - vSeg
       const rF = i / LED_I_MAX
       const rR = rev / LED_VR_MAX
       const r = Math.max(rF, rR)
@@ -109,14 +102,13 @@ export const seg7: PartDef = {
       live,
       stress: stress(worst, () =>
         worstRev
-          ? `Segment ${worstName} was reverse-biased: an LED segment takes at most ${LED_VR_MAX} V backwards. Check which way the COM pin should go (${anode ? 'to +' : 'to -'}).`
+          ? `Segment ${worstName} was reverse-biased: an LED segment takes at most ${LED_VR_MAX} V backwards. Common cathode: the COM pins go to - and the segment pins get the + voltage.`
           : `Segment ${worstName} carried ${eng(worst * LED_I_MAX, 'A')}; one segment is rated for ${eng(LED_I_MAX, 'A')} (normal: 10-20 mA). Add a resistor in series with each segment: R = (Vsupply - 2 V) / 0.01 A.`,
       ),
     }
   },
   draw(c, p, live) {
-    const anode = str(p, 'common', 'cathode') === 'anode'
-    const label = anode ? '7-seg common anode' : '7-seg common cathode'
+    const label = '7-segment display'
     if (scene.pixel) {
       // pins first (they end under the body), then the block over them
       for (let i = 0; i < 5; i++) {
@@ -153,16 +145,6 @@ export const seg7: PartDef = {
     }
     if (scene.labeled.has(p.id)) drawLabelAbove(c, label, 40, 0)
   },
-  fields: () => [
-    {
-      kind: 'select',
-      key: 'common',
-      label: 'Common pin',
-      options: [
-        { value: 'cathode', label: 'Common cathode (COM to -)' },
-        { value: 'anode', label: 'Common anode (COM to +)' },
-      ],
-    },
-  ],
-  summary: (p) => `${str(p, 'common', 'cathode') === 'anode' ? 'Common anode' : 'Common cathode'}, 8 red LEDs, 30 mA each max`,
+  fields: () => [],
+  summary: () => 'Common cathode: COM to -, 8 red LEDs, 30 mA each max',
 }
