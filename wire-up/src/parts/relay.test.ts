@@ -155,6 +155,52 @@ describe('relay module, whole board', () => {
     expect(live.on).toBe(1)
   })
 
+
+  /** A module on a 5 V battery with only the wires named: vcc, gnd, and IN1 tied to GND. */
+  function powered(wires: { vcc: boolean; gnd: boolean; in1ToGnd?: boolean }, channels = 1) {
+    const w = new World()
+    const b = new SceneBuilder(w)
+    const mod = b.place('relay-module', 400, 100, { channels, trigger: 'low' })
+    const sup = b.place('battery', 0, 0, { volts: 5 })
+    const pins = pinWorld(mod)
+    const [sp, sm] = pinWorld(sup)
+    if (wires.vcc) b.wire(sp, pins[channels + 1])
+    if (wires.gnd) b.wire(sm, pins[0], '#2f6fe0')
+    if (wires.in1ToGnd) b.wire(pins[1], pins[0], '#2ea043')
+    w.commit()
+    const sim = new Simulation(w)
+    run(sim, 0.3)
+    return { sim, live: sim.live.get(mod.id)!, supplyA: Math.abs(sim.live.get(sup.id)?.i ?? 0) }
+  }
+
+  it('green power LED needs both VCC and GND, and the board then draws current', () => {
+    const none = powered({ vcc: false, gnd: false })
+    const vccOnly = powered({ vcc: true, gnd: false })
+    const gndOnly = powered({ vcc: false, gnd: true })
+    const both = powered({ vcc: true, gnd: true })
+    for (const s of [none, vccOnly, gndOnly]) {
+      expect(s.live.pw).toBe(0)
+      expect(s.supplyA).toBeLessThan(1e-6)
+    }
+    expect(both.live.pw).toBe(1)
+    expect(both.supplyA).toBeGreaterThan(0.003) // the power LED branch: 5 V over 1.2 k
+    expect(both.live.on).toBe(0)
+  })
+
+  it('pulling in a relay adds the coil current on top of the power LED', () => {
+    const idle = powered({ vcc: true, gnd: true })
+    const on = powered({ vcc: true, gnd: true, in1ToGnd: true })
+    expect(on.live.on).toBe(1)
+    expect(on.supplyA).toBeGreaterThan(idle.supplyA + 0.05)
+  })
+
+  it('every channel of a multi channel board shares one power LED state with the supply', () => {
+    for (const n of [2, 4, 8]) {
+      expect(powered({ vcc: true, gnd: false }, n).live.pw).toBe(0)
+      expect(powered({ vcc: true, gnd: true }, n).live.pw).toBe(1)
+    }
+  })
+
   it('the sprite and the hit box agree on the width', () => {
     for (const n of [1, 2, 4, 8]) {
       const p = newPart('t', 'relay-module', 0, 0)

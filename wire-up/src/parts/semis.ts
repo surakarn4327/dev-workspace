@@ -35,7 +35,8 @@ export const led: PartDef = {
     const i = cur ? cur.i : 0
     const v = env.v(env.pins[0]) - env.v(env.pins[1])
     const rev = Math.max(-v, 0)
-    const b = Math.min(Math.max(i, 0) / LED_I_RATED, 1.6) ** 0.6
+    // below a microamp (solver leakage) it is dark, not a faint glow
+    const b = i < 1e-6 ? 0 : Math.min(Math.max(i, 0) / LED_I_RATED, 1.6) ** 0.6
     return {
       live: { i, v, b },
       stress: stress(Math.max(i / LED_I_MAX, rev / LED_VR_MAX), () =>

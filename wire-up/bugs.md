@@ -181,3 +181,4 @@
 - **Symptom:** VCC wired, GND left open, green LED lit; supply ammeter 0.000 A and no flow dots.
 - **Cause:** the LED was drawn from the VCC pin voltage only (`v(vcc) - v(gnd)`, floating GND reads 0 V), and the board drew no current of its own, so there was nothing for the meter or flow to show.
 - **Fix:** `src/parts/relay.ts` adds a 1.2 kΩ element `pw` between VCC and GND (the power LED branch); the green LED lights only when its current is >= 0.5 mA (`live.pw`). Open GND = no current = LED off.
+- **Prevention:** `src/parts/behaviour.test.ts` drives each pin of every part alone and requires zero current and an unchanged drawing; the old relay code fails it. Same sweep fixed the plain LED, which glowed by about 1e-6 from solver leakage (now dark under 1 µA, `semis.ts`).
