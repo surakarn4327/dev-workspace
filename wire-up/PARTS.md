@@ -50,6 +50,7 @@
 | `src/parts/art.ts` | สไปรต์พิกเซล (`PixelGrid` + `sprite(key, …)` + `export function xxxSprite`) |
 | `src/parts/<กลุ่ม>.ts` | `PartDef`: type (kebab-case), name, category, blurb, pins, bounds, build, evaluate, draw (มี branch `scene.pixel` + เวกเตอร์สำรอง), fields, summary, ป้ายขา (`pinLabelPlace`/`tipPastPin`) |
 | `src/parts/index.ts` | ใส่ใน `ALL_PARTS` (ลำดับ = ลำดับใน toolbox); ใส่ชื่อใน `TALL_PARTS` หรือ `LOW_PARTS` ถ้าชั้นการวาดไม่ใช่ค่าปริยาย (4) |
+| (สายทับ/ใต้ชิ้นส่วน) | **ไม่ต้องแตะอะไร** สายทับทุกชิ้นยกเว้นหมวด `category: 'switch'` (สวิตช์/ปุ่มกด อยู่เหนือสายเสมอ ไม่ให้สายบังปุ่ม) `drawsOverWires` ใน `parts/index.ts` อ่านจาก category เอง; ชิ้นกดได้ใหม่ให้ใส่ `category: 'switch'` แล้วแก้รายการในเทสต์ "wire stacking" ของ `registry.test.ts` ให้ตรง |
 | `src/board/world.ts` | ชิ้นที่ขายื่นลงและปรับความยาวได้ → เพิ่มใน `HANGING_LEG_PARTS` (และใส่ `LEG_FIELD`) |
 | `src/board/obstacles.ts` `leadDirs` | ถ้าชิ้นมีกฎทิศสายออกจากขา (แบต=บน, สวิตช์=ข้าง...) |
 | `src/render/burnt.ts` `NOT_BURNT` | ถ้า `failed` ไม่ได้แปลว่าไหม้ |

@@ -1,6 +1,7 @@
 // The interactive canvas: pan/zoom, drag parts, draw wires, keyboard shortcuts, main loop.
 
 import { applyFollow, planFollow, planGroup } from '../board/follow.ts'
+import { looseLeads } from '../board/probe.ts'
 import type { FollowPlan } from '../board/follow.ts'
 import { clipWidth, copyOut, itemsInBox, normBox, pasteIn } from '../board/group.ts'
 import type { Clip } from '../board/group.ts'
@@ -26,7 +27,7 @@ import type { Overlay, View } from '../render/renderer.ts'
 
 type Mode =
   | { t: 'pan'; sx: number; sy: number; camX: number; camY: number }
-  | { t: 'part'; part: PartInstance; grab: Vec; x0: number; y0: number; leads0: Vec[] | null; moved: boolean; local: Vec; sx: number; sy: number; pressing: boolean; follow: FollowPlan }
+  | { t: 'part'; part: PartInstance; grab: Vec; x0: number; y0: number; leads0: Vec[] | null; loose: boolean[]; moved: boolean; local: Vec; sx: number; sy: number; pressing: boolean; follow: FollowPlan }
   | { t: 'lead'; part: PartInstance; index: number }
   | { t: 'dragEnd'; wire: Wire; end: 'a' | 'b'; plugOld: boolean; base: WireShape }
   | { t: 'bend'; wire: Wire; index: number; via0: Vec[]; branches: BranchEnd[]; undo: BendMemo | null; dropped: Vec | null }
@@ -166,7 +167,7 @@ export class Workspace {
     for (const part of this.world.parts) {
       if (part.type.startsWith('breadboard')) {
         if (holeNear(part, pt, 1)) return true
-      } else if (pinWorld(part).some((q) => q.x === pt.x && q.y === pt.y)) return true
+      } else if (!defOf(part.type).freeLeads && pinWorld(part).some((q) => q.x === pt.x && q.y === pt.y)) return true // a probe tip only touches
     }
     return this.world.wires.some((o) => o !== wire && [o.a, o.b, ...(o.taps ?? [])].some((q) => q.x === pt.x && q.y === pt.y))
   }
@@ -466,7 +467,7 @@ export class Workspace {
     // Ctrl+click adds to / removes from the selection
     if (ctrl) {
       if (hit.kind === 'wire') return this.toggle({ wire: hit.wire.id })
-      if (hit.kind === 'part' || hit.kind === 'board' || hit.kind === 'pin' || hit.kind === 'lead') return this.toggle({ part: hit.part.id })
+      if (hit.kind === 'part' || hit.kind === 'board' || hit.kind === 'pin') return this.toggle({ part: hit.part.id })
     }
     // pressing something that belongs to a multi-selection drags the whole selection
     if (this.groupSize() > 0 && !ctrl && (hit.kind === 'part' || hit.kind === 'board' || hit.kind === 'wire')) {
@@ -488,7 +489,7 @@ export class Workspace {
     }
 
     if (hit.kind === 'lead') {
-      this.select(hit.part.id)
+      // pressing a probe moves the probe only: the meter is not selected
       this.mode = { t: 'lead', part: hit.part, index: hit.index }
       return
     }
@@ -548,6 +549,7 @@ export class Workspace {
           x0: part.x,
           y0: part.y,
           leads0: part.leads ? part.leads.map((l) => ({ ...l })) : null,
+          loose: looseLeads(this.world, part),
           moved: false,
           local: hit.local,
           sx: e.clientX,
@@ -626,7 +628,8 @@ export class Workspace {
         const dy = ny - m.y0
         m.part.x = nx
         m.part.y = ny
-        if (m.leads0 && m.part.leads) m.part.leads = m.leads0.map((l) => ({ x: l.x + dx, y: l.y + dy }))
+        // probe tips that touch a pin, hole or wire stay there (the lead stretches); loose ones go along with the meter
+        if (m.leads0 && m.part.leads) m.part.leads = m.leads0.map((l, i) => (m.loose[i] ? { x: l.x + dx, y: l.y + dy } : { ...l }))
         applyFollow(this.world, m.follow, dx, dy) // wires on its pins, and everything on a breadboard, go along
         this.world.touch()
         break

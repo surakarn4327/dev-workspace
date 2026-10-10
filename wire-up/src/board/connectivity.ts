@@ -99,13 +99,23 @@ export function buildNetlist(world: World, time = 0): Netlist {
     }
   }
 
+  // Bare metal a meter probe can touch: part pins, breadboard holes and the metal caps at the ends of jumper wires. A wire resting
+  // on the middle of another one (a branch) and a plugged corner are covered (soldered and sleeved): a probe there touches
+  // insulation and reads nothing.
+  const exposed = new Set<string>(sockets)
+  for (const w of world.wires) {
+    for (const end of [w.a, w.b]) if (tapTarget(world, w, end, sockets) === undefined) exposed.add(pointKey(end))
+  }
+
   const pinKeys = new Map<string, string[]>()
   for (const part of world.parts) {
     const def = defOf(part.type)
     if (def.pinLabels.length === 0) continue
     const plain = pinWorld(part).map(pointKey)
     // an isolated part (placed with a pin on a wire end, shown red) is not joined to anything until it is moved away
-    const keys = world.isolated.has(part.id) ? plain.map((k) => `${k}#${world.isolated.get(part.id)}`) : plain
+    let keys = world.isolated.has(part.id) ? plain.map((k) => `${k}#${world.isolated.get(part.id)}`) : plain
+    // a probe tip on covered metal touches nothing: it gets a node of its own
+    if (def.freeLeads) keys = keys.map((k, i) => (exposed.has(plain[i]) ? k : `${k}#probe:${part.id}:${i}`))
     pinKeys.set(part.id, keys)
     for (const k of keys) uf.find(k)
     for (const k of plain) usedKeys.add(k)

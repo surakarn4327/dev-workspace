@@ -3,16 +3,17 @@
 import type { Simulation } from '../board/simulation.ts'
 import { G, pointKey, rotVec, wirePath } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
-import { defOf, drawsOverWires, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
+import { defOf, drawsOverWires, layerOf, leadDir, pinWorld, stackOrder } from '../parts/index.ts'
 import { effectiveColors, socketKeys, tapEnds } from '../board/wireJoin.ts'
 import { paintBurnt, canBurn } from './burnt.ts'
 import { ringOf } from './outline.ts'
 import { PX } from './pixel.ts'
-import { COL, drawLabelAt, drawText, LABEL_GAP, labelBoxSize, mix, radialGlow, rrect } from './draw.ts'
+import { COL, drawLabelAt, drawText, LABEL_GAP, labelBoxSize, mix, radialGlow, replayGlows, rrect } from './draw.ts'
 import { straightMid } from '../board/wireEdit.ts'
 import { SELECT_GLOW_REACH, SELECT_GLOW_STEPS, cableShape, drawCableBase, drawCableSelection, drawCableBody, drawCableCaps, junctionShape, pixelProbeHead } from './pixelwire.ts'
 import type { CableShape } from './pixelwire.ts'
 import { scene } from './scene.ts'
+import type { GlowCall } from './scene.ts'
 import { sameSigs } from './dragPlan.ts'
 import type { Sigs } from './dragPlan.ts'
 
@@ -70,6 +71,16 @@ export type HideKind = 'grid' | 'parts' | 'wires' | 'bodies' | 'caps' | 'dots' |
 
 /** How far past the screen edge (CSS px) a layer reaches, so panning does not need a repaint until it runs out. */
 const LAYER_MARGIN = 256
+
+/** How far from the tip (world px, along the housing) a pixel probe's cable ends: the middle of the housing's far end cell. */
+const PROBE_CABLE_END = 16 * PX
+
+/** A drawing context that does nothing: any call returns itself, any property reads as 0. Used to run a draw function for its labels only. */
+const NO_CTX: CanvasRenderingContext2D = new Proxy(function () {}, {
+  get: (_t, key) => (key === Symbol.toPrimitive ? () => 0 : NO_CTX),
+  set: () => true,
+  apply: () => NO_CTX,
+}) as unknown as CanvasRenderingContext2D
 
 interface Layer {
   canvas: HTMLCanvasElement
@@ -279,7 +290,9 @@ export class Renderer {
     const { zoom } = view
     scene.time = now
     scene.used = sim.net.usedKeys
-    scene.labeled = new Set([ov.selectedPart, ov.labelPart].filter((x): x is string => x !== null))
+    // value labels are not painted with the parts (they would make the saved layers depend on the pointer): see drawLabels
+    const labeled = new Set([ov.selectedPart, ov.labelPart].filter((x): x is string => x !== null))
+    scene.labeled = new Set()
     this.ctx = main
     main.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     main.fillStyle = COL.bg
@@ -294,8 +307,9 @@ export class Renderer {
     if (this.cacheable(world)) this.drawCached(world, sim, view, ov, now)
     else this.drawContent(world, sim, ov, now)
 
-    // selection, handles and hints
+    // value labels, then selection, handles and hints
     main.setTransform(sMain, 0, 0, sMain, -view.camX * sMain, -view.camY * sMain)
+    this.drawLabels(world, sim, labeled, now)
     this.drawOverlay(world, ov, now)
     main.setTransform(1, 0, 0, 1, 0, 0)
   }
@@ -329,7 +343,7 @@ export class Renderer {
     const { zoom } = view
     const s = this.dpr * zoom
     const m = LAYER_MARGIN / zoom // margin in world units
-    const base = [this.pixelMode, this.dpr, this.width, this.height, ov.selectedPart, ov.labelPart, ov.selectedWire, [...ov.group.wires].join(','), Object.values(this.hide).join(',')].join('|')
+    const base = [this.pixelMode, this.dpr, this.width, this.height, ov.selectedPart, ov.selectedWire, [...ov.group.wires].join(','), Object.values(this.hide).join(',')].join('|')
     const [below, above] = this.layers
     // fingerprint the board only when something that can change it has happened
     const tokens = `${base}|${zoom}|${world.version}|${sim.stamp}`
@@ -364,8 +378,14 @@ export class Renderer {
     this.blit(below, view)
     main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
     main.imageSmoothingEnabled = false
+    replayGlows(main, this.glowsBelow)
     if (!this.hide.dots) this.drawFlow(sim, now)
-    if (!above.empty) this.blit(above, view)
+    if (!above.empty) {
+      this.blit(above, view)
+      main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
+      main.imageSmoothingEnabled = false
+      replayGlows(main, this.glowsAbove)
+    }
     main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
     main.imageSmoothingEnabled = false
     this.drawLive(world, sim, ov, now)
@@ -386,8 +406,12 @@ export class Renderer {
       layer.ox = view.camX - m
       layer.oy = view.camY - m
     }
-    this.paintLayer(below, s, () => this.drawBelow(world, sim, ov, now))
-    this.paintLayer(above, s, () => this.drawAbove(world, sim, ov, now))
+    this.paintLayer(below, s, () => {
+      this.glowsBelow = this.drawBelow(world, sim, ov, now)
+    })
+    this.paintLayer(above, s, () => {
+      this.glowsAbove = this.drawAbove(world, sim, ov, now)
+    })
     const { stack, front } = this.stackOf(world, ov)
     above.empty = !front && !stack.some((p) => drawsOverWires(p.type))
     below.empty = false
@@ -460,9 +484,9 @@ export class Renderer {
 
   /** Things that are part of the circuit itself: parts, wires, leads, smoke. */
   private drawContent(world: World, sim: Simulation, ov: Overlay, now: number): void {
-    this.drawBelow(world, sim, ov, now)
+    replayGlows(this.ctx, this.drawBelow(world, sim, ov, now))
     if (!this.hide.dots) this.drawFlow(sim, now)
-    this.drawAbove(world, sim, ov, now)
+    replayGlows(this.ctx, this.drawAbove(world, sim, ov, now))
     this.drawLive(world, sim, ov, now)
   }
 
@@ -473,8 +497,34 @@ export class Renderer {
     return { stack: stackOrder(world.parts).filter((p) => p !== front), front }
   }
 
+  /** The halos of the saved layers, painted over the board after each layer (see `radialGlow`). */
+  private glowsBelow: GlowCall[] = []
+  private glowsAbove: GlowCall[] = []
+
+  /** Run `paint`, taking the halos it asks for instead of painting them. */
+  private collectGlows(paint: () => void): GlowCall[] {
+    const sink: GlowCall[] = []
+    scene.glowSink = sink
+    scene.glowBase = this.ctx.getTransform().inverse()
+    try {
+      paint()
+    } finally {
+      scene.glowSink = null
+      scene.glowBase = null
+    }
+    return sink
+  }
+
+  private drawBelow(world: World, sim: Simulation, ov: Overlay, now: number): GlowCall[] {
+    return this.collectGlows(() => this.paintBelow(world, sim, ov, now))
+  }
+
+  private drawAbove(world: World, sim: Simulation, ov: Overlay, now: number): GlowCall[] {
+    return this.collectGlows(() => this.paintAbove(world, sim, ov, now))
+  }
+
   /** Everything under the flowing dots: all parts, then the wires and their junction dots. */
-  private drawBelow(world: World, sim: Simulation, ov: Overlay, now: number): void {
+  private paintBelow(world: World, sim: Simulation, ov: Overlay, now: number): void {
     const c = this.ctx
     const { stack } = this.stackOf(world, ov)
     if (!this.hide.parts) for (const part of stack) if (!drawsOverWires(part.type)) this.drawPart(part, sim, now, 1)
@@ -512,7 +562,7 @@ export class Renderer {
   }
 
   /** Over the dots: the switches, then the selected part. */
-  private drawAbove(world: World, sim: Simulation, ov: Overlay, now: number): void {
+  private paintAbove(world: World, sim: Simulation, ov: Overlay, now: number): void {
     const { stack, front } = this.stackOf(world, ov)
     if (!this.hide.parts) for (const part of stack) if (drawsOverWires(part.type)) this.drawPart(part, sim, now, 1)
     if (front && !this.hide.parts) this.drawPart(front, sim, now, 1)
@@ -624,6 +674,33 @@ export class Renderer {
     c.globalAlpha = prev
   }
 
+  /**
+   * The value label of each shown part (selected, or held under the pointer), on top of the board. A part's draw function writes its
+   * label as it draws; here it runs against `NO_CTX`, which swallows every other call, while `scene.labelCtx` takes the label.
+   */
+  private drawLabels(world: World, sim: Simulation, shown: Set<string>, now: number): void {
+    if (shown.size === 0 || this.hide.parts) return
+    const c = this.ctx
+    scene.labeled = shown
+    scene.labelPass = true
+    scene.labelCtx = c
+    try {
+      for (const id of shown) {
+        const part = world.getPart(id)
+        if (!part) continue
+        c.save()
+        c.translate(part.x, part.y)
+        c.rotate((part.rot * Math.PI) / 2)
+        defOf(part.type).draw(NO_CTX, part, sim.live.get(part.id) ?? {}, now)
+        c.restore()
+      }
+    } finally {
+      scene.labelPass = false
+      scene.labelCtx = null
+      scene.labeled = new Set()
+    }
+  }
+
   private drawPart(part: PartInstance, sim: Simulation, now: number, alpha: number): void {
     const c = this.ctx
     const def = defOf(part.type)
@@ -633,7 +710,15 @@ export class Renderer {
     c.rotate((part.rot * Math.PI) / 2)
     if (part.state.failed && alpha === 1 && canBurn(part.type)) {
       this.scratch ??= document.createElement('canvas')
-      const a = paintBurnt(this.scratch, (sc) => def.draw(sc, part, live, now), def.bounds(part), part.id, now, this.scale)
+      // a burnt part is painted on a scratch canvas of its own: its halo is painted there, not recorded for the board
+      const sink = scene.glowSink
+      scene.glowSink = null
+      let a: ReturnType<typeof paintBurnt>
+      try {
+        a = paintBurnt(this.scratch, (sc) => def.draw(sc, part, live, now), def.bounds(part), part.id, now, this.scale)
+      } finally {
+        scene.glowSink = sink
+      }
       c.drawImage(this.scratch, a.x, a.y, a.w, a.h)
     } else {
       def.draw(c, part, live, now)
@@ -803,15 +888,16 @@ export class Renderer {
     const c = this.ctx
     const def = defOf(part.type)
     const anchors = def.anchors?.(part) ?? []
-    const b = def.bounds(part)
     anchors.forEach((a, i) => {
       const tip = part.leads![i]
       const A = { x: part.x + a.x, y: part.y + a.y }
-      const dir = a.y < b.h / 2 ? -1 : 1
-      const dist = Math.hypot(tip.x - A.x, tip.y - A.y)
+      const dir = leadDir(part, i)
+      // a pixel probe's cable ends at the far end of its housing, not at the metal tip (it would show under the tip)
+      const end = def.leadTip === 'probe' && this.pixelMode ? { x: tip.x, y: tip.y - dir * PROBE_CABLE_END } : tip
+      const dist = Math.hypot(end.x - A.x, end.y - A.y)
       const k = Math.min(60, 20 + dist * 0.3)
       const c1 = { x: A.x, y: A.y + dir * k }
-      const c2 = { x: tip.x, y: tip.y - dir * k }
+      const c2 = { x: end.x, y: end.y - dir * k }
       const col = def.leadColors?.[i] ?? '#888'
       c.lineCap = 'round'
       if (this.pixelMode) {
@@ -821,7 +907,7 @@ export class Renderer {
           c.lineWidth = width
           c.beginPath()
           c.moveTo(A.x + dx, A.y + dy)
-          c.bezierCurveTo(c1.x + dx, c1.y + dy, c2.x + dx, c2.y + dy, tip.x + dx, tip.y + dy)
+          c.bezierCurveTo(c1.x + dx, c1.y + dy, c2.x + dx, c2.y + dy, end.x + dx, end.y + dy)
           c.stroke()
         }
         stroke(2, 2, 8, 'rgba(0,0,0,0.38)')

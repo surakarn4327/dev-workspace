@@ -378,6 +378,18 @@ export function pixelCable(c: CanvasRenderingContext2D, pts: PixelPoint[], color
   if (ends) drawCableCaps(c, pts, plugs)
 }
 
+/** The area `pixelProbeHead` covers (metal tip and housing), in world px, with `pad` px extra on every side: what a click grabs. */
+export function probeHeadBox(tip: PixelPoint, bodyDir: number, pad = 0): { x0: number; y0: number; x1: number; y1: number } {
+  const tx = Math.round(tip.x / PX)
+  const ty = Math.round(tip.y / PX)
+  // cells: housing 8 wide, from 2 to 18 past the tip; metal tip from 1 before the tip to 4 past it
+  const near = -1
+  const far = 18
+  const y0 = bodyDir > 0 ? ty + near : ty - far
+  const y1 = bodyDir > 0 ? ty + far : ty - near
+  return { x0: (tx - 4) * PX - pad, y0: y0 * PX - pad, x1: (tx + 4) * PX + pad, y1: y1 * PX + pad }
+}
+
 /**
  * Pixel probe head. `tip` is the contact point and the housing extends away from it along y
  * (`bodyDir` = +1 down / -1 up), as the lead always arrives vertically.
@@ -385,22 +397,37 @@ export function pixelCable(c: CanvasRenderingContext2D, pts: PixelPoint[], color
 export function pixelProbeHead(c: CanvasRenderingContext2D, tip: PixelPoint, bodyDir: number, color: string): void {
   const tx = Math.round(tip.x / PX)
   const ty = Math.round(tip.y / PX)
-  const rect = (x0: number, y0: number, w: number, h: number): Array<[number, number]> => {
-    const cells: Array<[number, number]> = []
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) cells.push([x0 + i, y0 + j])
-    return cells
+  // x is centred on the tip, y runs away from it; mirrored when the housing is above. Each block is one fillRect, so no seams
+  // show between cells at any zoom.
+  // `dx`/`dy` move the block in world cells after the mirroring, so the shadow always falls down and to the right.
+  const block = (x: number, y: number, w: number, h: number, fill: string, dx = 0, dy = 0): void => {
+    c.fillStyle = fill
+    c.fillRect((tx + x + dx) * PX, ((bodyDir > 0 ? ty + y : ty - y - h) + dy) * PX, w * PX, h * PX)
   }
-  // laid out going down from the tip, mirrored when the housing is above it
-  const at = (x: number, y: number, w: number, h: number): Array<[number, number]> =>
-    bodyDir > 0 ? rect(tx + x, ty + y, w, h) : rect(tx + x, ty - y - h, w, h)
-  const outlineColor = mix(color, '#000000', 0.78)
-  // metal tip 2 wide x 3 long, housing 6 wide x 14 long
-  fillCells(c, at(-3, 3, 8, 16), 'rgba(0,0,0,0.38)')
-  fillCells(c, at(-4, 2, 8, 16), outlineColor)
-  fillCells(c, at(-1, -1, 2, 5), outlineColor)
-  fillCells(c, at(-1, 0, 2, 3), '#c9ced6')
-  fillCells(c, at(-1, 0, 1, 3), '#f1f4f9')
-  fillCells(c, at(-3, 3, 6, 14), color)
-  fillCells(c, at(-3, 3, 1, 14), mix(color, '#ffffff', 0.4))
-  fillCells(c, at(1, 3, 2, 14), mix(color, '#000000', 0.35))
+  const outline = mix(color, '#000000', 0.78)
+  const shade = mix(color, '#000000', 0.35)
+  const groove = mix(color, '#000000', 0.5)
+  const lit = mix(color, '#ffffff', 0.4)
+  // drop shadow (the outline's own shape, one cell down and right, no piece overlapping another), then the outline:
+  // housing 8 wide x 16 long with the far end rounded, metal tip 2 wide
+  const cast = 'rgba(0,0,0,0.38)'
+  block(-4, 2, 8, 15, cast, 1, 1)
+  block(-3, 17, 6, 1, cast, 1, 1)
+  block(-1, -1, 2, 3, cast, 1, 1)
+  block(-4, 2, 8, 15, outline)
+  block(-3, 17, 6, 1, outline)
+  block(-1, -1, 2, 5, outline)
+  // body: colour, lit left edge, shaded right edge
+  block(-3, 3, 6, 14, color)
+  block(-2, 16, 4, 1, color)
+  block(-3, 5, 1, 11, lit)
+  block(1, 5, 2, 11, shade)
+  // ferrule next to the tip, and three grip ribs
+  block(-3, 3, 6, 2, groove)
+  block(-3, 3, 1, 2, mix(color, '#000000', 0.25))
+  for (const y of [8, 10, 12]) block(-2, y, 3, 1, groove)
+  // metal tip with its highlight and a darker point
+  block(-1, 0, 2, 3, '#c9ced6')
+  block(-1, 0, 1, 3, '#f1f4f9')
+  block(0, 2, 1, 1, '#8e96a3')
 }

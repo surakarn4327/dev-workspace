@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { applyFollow } from './follow.ts'
+import { boardHoles } from '../parts/breadboard.ts'
+import { newPart } from '../parts/index.ts'
+import { applyFollow, planFollow, planGroup } from './follow.ts'
+import { looseLeads } from './probe.ts'
 import type { FollowPlan } from './follow.ts'
 import { pointKey, World } from './world.ts'
 
@@ -8,7 +11,6 @@ function drag(a: { x: number; y: number }, via: { x: number; y: number }[], b: {
   const wire = w.addWire(a, b, '#2ea043', via)
   const plan: FollowPlan = {
     carried: [],
-    partial: [],
     moving: new Set([pointKey(moved === 'a' ? a : b)]),
     parts: new Map(),
     wires: [JSON.parse(JSON.stringify(wire))],
@@ -47,7 +49,6 @@ describe('branches on a wire that follows', () => {
     const branch = w.addWire({ x: 160, y: 30 }, { x: 100, y: 30 }, '#2ea043') // its b end rests on the main wire's last stretch
     const plan: FollowPlan = {
       carried: [],
-      partial: [],
       moving: new Set([pointKey({ x: 100, y: 60 })]),
       parts: new Map(),
       wires: w.wires.map((x) => JSON.parse(JSON.stringify(x))),
@@ -58,5 +59,45 @@ describe('branches on a wire that follows', () => {
     expect(main.via).toEqual([{ x: 40, y: 0 }])
     expect(branch.b).toEqual({ x: 40, y: 30 }) // still on the main wire
     expect(branch.a).toEqual({ x: 160, y: 30 })
+  })
+})
+
+describe('meter probes only touch', () => {
+  it('do not travel with a breadboard they are lying on', () => {
+    const w = new World()
+    const board = newPart(w.nextId('p'), 'breadboard-mini', 0, 0)
+    const meter = newPart(w.nextId('p'), 'meter', 400, 0)
+    const hole = boardHoles(board)[0].pos
+    meter.leads![0] = { ...hole }
+    w.parts.push(board, meter)
+    const plan = planFollow(w, board)
+    expect(plan.carried).toEqual([])
+    applyFollow(w, plan, 40, 20)
+    expect(meter.leads![0]).toEqual(hole)
+  })
+
+  it('leave wire ends lying on a probe tip where they are when the meter is dragged', () => {
+    const w = new World()
+    const meter = newPart(w.nextId('p'), 'meter', 400, 0)
+    const tip = { ...meter.leads![0] }
+    const wire = w.addWire(tip, { x: tip.x - 100, y: tip.y }, '#2ea043', [])
+    w.parts.push(meter)
+    const plan = planFollow(w, meter)
+    expect(plan.moving.size).toBe(0)
+    applyFollow(w, plan, 40, 20)
+    expect(wire.a).toEqual(tip)
+  })
+
+  it('a tip touching nothing is loose and goes with a moved meter; one on a wire stays', () => {
+    const w = new World()
+    const meter = newPart(w.nextId('p'), 'meter', 400, 0)
+    const [red, black] = meter.leads!
+    w.addWire({ x: red.x - 40, y: red.y }, { x: red.x + 40, y: red.y }, '#2ea043', []) // the red tip lies on this wire
+    w.parts.push(meter)
+    expect(looseLeads(w, meter)).toEqual([false, true])
+    const plan = planGroup(w, new Set([meter.id]), new Set())
+    applyFollow(w, plan, 60, 20)
+    expect(meter.leads![0]).toEqual(red)
+    expect(meter.leads![1]).toEqual({ x: black.x + 60, y: black.y + 20 })
   })
 })

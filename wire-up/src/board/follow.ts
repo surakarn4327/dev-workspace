@@ -1,11 +1,13 @@
 // What travels along when a part is dragged: wire ends plugged into its pins follow it, and moving a breadboard
-// carries everything sitting on it (parts with a pin in a hole, wire ends in holes, probe tips in holes).
+// carries everything sitting on it (parts with a pin in a hole, wire ends in holes). Meter probes only touch: they never travel
+// with a breadboard, and wire ends lying on a probe tip do not follow the meter.
 
 import { boardHoles } from '../parts/breadboard.ts'
 import { defOf, pinWorld } from '../parts/index.ts'
 import { branchMap, carryBranches, moveBranchEnd } from './branches.ts'
 import type { BranchEnd } from './branches.ts'
 import { tidy, unfold } from './wireEdit.ts'
+import { looseLeads } from './probe.ts'
 import { pointKey } from './world.ts'
 import type { PartInstance, Vec, Wire, World } from './world.ts'
 
@@ -13,13 +15,13 @@ interface PartSnap {
   x: number
   y: number
   leads: Vec[] | null
+  /** Per lead: touches nothing, so it goes along with the part (a probe tip resting on something stays). Absent = all go. */
+  loose?: boolean[]
 }
 
 export interface FollowPlan {
   /** Parts that move bodily with the dragged one (parts standing on a dragged breadboard). */
   carried: PartInstance[]
-  /** Probe-style parts that stay put: only the lead tips lying on the dragged breadboard travel. */
-  partial: PartInstance[]
   /** Keys of the points that travel, as they were before the drag started. */
   moving: Set<string>
   parts: Map<string, PartSnap>
@@ -46,24 +48,22 @@ function cloneWireShape(w: Wire): Wire {
 export function planFollow(world: World, dragged: PartInstance): FollowPlan {
   const moving = new Set<string>()
   const carried: PartInstance[] = []
-  const partial: PartInstance[] = []
   if (dragged.type.startsWith('breadboard')) {
     const holes = new Set(boardHoles(dragged).map((h) => pointKey(h.pos)))
     for (const p of world.parts) {
       if (p === dragged || p.type.startsWith('breadboard')) continue
       const onBoard = pinWorld(p).some((v) => holes.has(pointKey(v)))
       if (!onBoard) continue
-      if (defOf(p.type).freeLeads) partial.push(p)
-      else carried.push(p)
+      if (!defOf(p.type).freeLeads) carried.push(p)
     }
     for (const k of holes) moving.add(k)
     for (const p of carried) for (const v of pinWorld(p)) moving.add(pointKey(v))
-  } else {
+  } else if (!defOf(dragged.type).freeLeads) {
     for (const v of pinWorld(dragged)) moving.add(pointKey(v))
   }
   const parts = new Map<string, PartSnap>()
-  for (const p of [...carried, ...partial]) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
-  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole: new Set(), skip: skipSet(world, [dragged.id]), branches: branchMap(world) }
+  for (const p of carried) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
+  return { carried, moving, parts, wires: world.wires.map(cloneWireShape), whole: new Set(), skip: skipSet(world, [dragged.id]), branches: branchMap(world) }
 }
 
 /**
@@ -72,7 +72,6 @@ export function planFollow(world: World, dragged: PartInstance): FollowPlan {
  */
 export function planGroup(world: World, partIds: Set<string>, wireIds: Set<string>): FollowPlan {
   const carried: PartInstance[] = []
-  const partial: PartInstance[] = []
   const moving = new Set<string>()
   for (const id of partIds) {
     const p = world.getPart(id)
@@ -82,13 +81,12 @@ export function planGroup(world: World, partIds: Set<string>, wireIds: Set<strin
     const holes = new Set(boardHoles(board).map((h) => pointKey(h.pos)))
     for (const k of holes) moving.add(k)
     for (const p of world.parts) {
-      if (p.type.startsWith('breadboard') || carried.includes(p) || partial.includes(p)) continue
+      if (p.type.startsWith('breadboard') || carried.includes(p)) continue
       if (!pinWorld(p).some((v) => holes.has(pointKey(v)))) continue
-      if (defOf(p.type).freeLeads) partial.push(p)
-      else carried.push(p)
+      if (!defOf(p.type).freeLeads) carried.push(p)
     }
   }
-  for (const p of carried) if (!p.type.startsWith('breadboard')) for (const v of pinWorld(p)) moving.add(pointKey(v))
+  for (const p of carried) if (!p.type.startsWith('breadboard') && !defOf(p.type).freeLeads) for (const v of pinWorld(p)) moving.add(pointKey(v))
   const whole = new Set<string>()
   for (const id of wireIds) {
     const w = world.getWire(id)
@@ -97,8 +95,12 @@ export function planGroup(world: World, partIds: Set<string>, wireIds: Set<strin
     for (const v of [w.a, w.b, ...w.via, ...(w.taps ?? [])]) moving.add(pointKey(v))
   }
   const parts = new Map<string, PartSnap>()
-  for (const p of [...carried, ...partial]) parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null })
-  return { carried, partial, moving, parts, wires: world.wires.map(cloneWireShape), whole, skip: skipSet(world, [...carried.map((p) => p.id), ...wireIds]), branches: branchMap(world) }
+  for (const p of carried) {
+    // a probe tip that rests on something that moves along goes with it; one resting on something that stays is held there
+    const loose = defOf(p.type).freeLeads ? looseLeads(world, p).map((free, i) => free || moving.has(pointKey(p.leads![i]))) : undefined
+    parts.set(p.id, { x: p.x, y: p.y, leads: p.leads ? p.leads.map(clonePoint) : null, loose })
+  }
+  return { carried, moving, parts, wires: world.wires.map(cloneWireShape), whole, skip: skipSet(world, [...carried.map((p) => p.id), ...wireIds]), branches: branchMap(world) }
 }
 
 /**
@@ -171,11 +173,7 @@ export function applyFollow(world: World, plan: FollowPlan, dx: number, dy: numb
     if (!s) continue
     p.x = s.x + dx
     p.y = s.y + dy
-    if (s.leads) p.leads = s.leads.map((l) => ({ x: l.x + dx, y: l.y + dy }))
-  }
-  for (const p of plan.partial) {
-    const s = plan.parts.get(p.id)
-    if (s?.leads) p.leads = s.leads.map((l) => (plan.moving.has(pointKey(l)) ? { x: l.x + dx, y: l.y + dy } : clonePoint(l)))
+    if (s.leads) p.leads = s.leads.map((l, i) => (s.loose && !s.loose[i] ? clonePoint(l) : { x: l.x + dx, y: l.y + dy }))
   }
   const moved: [Wire, Wire][] = []
   const wholeMoved: Wire[] = []

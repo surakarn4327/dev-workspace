@@ -51,7 +51,10 @@ function cloneWire(w: Wire): Wire {
   return out
 }
 
-export const WIRE_COLORS = ['#ff4a4a', '#2f6fe0', '#2ea043', '#f2d21b', '#f08a1c', '#f2f2f2', '#0b0b0b', '#8a45d6']
+/** The black jumper wire: a dark grey clearly darker than the board (#23232b) but not pure black (it was #0b0b0b; #3c3c46, #1c1c22 and #141419 were too light). */
+export const WIRE_BLACK = '#0f0f14'
+const OLD_WIRE_BLACK = '#0b0b0b'
+export const WIRE_COLORS = ['#ff4a4a', '#2f6fe0', '#2ea043', '#f2d21b', '#f08a1c', '#f2f2f2', WIRE_BLACK, '#8a45d6']
 
 export function snap(v: number): number {
   return Math.round(v / G) * G
@@ -264,7 +267,7 @@ export function validateWorldData(raw: unknown, knownTypes: Set<string>): WorldD
       a: cloneVec(w.a),
       b: cloneVec(w.b),
       via,
-      color: typeof w.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(w.color) ? w.color : WIRE_COLORS[0],
+      color: typeof w.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(w.color) ? (w.color.toLowerCase() === OLD_WIRE_BLACK ? WIRE_BLACK : w.color) : WIRE_COLORS[0],
     })
     const taps = Array.isArray(w.taps) && w.taps.every(isVec) ? (w.taps as Vec[]).map(cloneVec) : []
     if (taps.length > 0) wires[wires.length - 1].taps = taps

@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { HANGING_LEG_PARTS, G } from '../board/world.ts'
 import type { Element } from '../sim/solver.ts'
-import { ALL_PARTS, layerOf, newPart, sanitizeParams } from './index.ts'
+import { ALL_PARTS, drawsOverWires, layerOf, newPart, sanitizeParams } from './index.ts'
 import type { BuildCtx, Env, PartDef } from './types.ts'
 import styleMd from '../../style.md?raw'
 import artSource from './art.ts?raw'
@@ -144,6 +144,13 @@ describe('every part is complete', () => {
       if (hangs) expect(layerOf(def.type), 'tall part: add the type to TALL_PARTS (parts/index.ts)').toBe(2)
       expect(def.fields(p).some((f) => f.key === 'legs'), 'a part with legs needs LEG_FIELD').toBe(true)
     })()
+  })
+})
+
+describe('wire stacking', () => {
+  it('switches and push buttons are over the wires, every other part is under them', () => {
+    const over = ALL_PARTS.filter((d) => drawsOverWires(d.type)).map((d) => d.type).sort()
+    expect(over).toEqual(['button', 'slide-switch', 'switch'])
   })
 })
 

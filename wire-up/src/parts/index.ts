@@ -102,6 +102,13 @@ export function pinWorld(p: PartInstance): Vec[] {
   })
 }
 
+/** Which side of the part lead `i` hangs from: -1 when its anchor is in the top half of the body, 1 in the bottom half. */
+export function leadDir(p: PartInstance, i: number): -1 | 1 {
+  const def = defOf(p.type)
+  const a = def.anchors?.(p)[i]
+  return a && a.y >= def.bounds(p).h / 2 ? 1 : -1
+}
+
 export function rotatePart(p: PartInstance): void {
   const def = defOf(p.type)
   if (def.fixedRot) return
@@ -124,11 +131,12 @@ export function layerOf(type: string): number {
   return 4
 }
 
-const OVER_WIRES = new Set(['switch', 'slide-switch', 'button'])
-
-/** Switches and push buttons are drawn (and hit) over the wires, so a wire never hides the thing you press. */
+/**
+ * Every part is drawn (and hit) under the wires except the 'switch' category (rocker, slide, push button): a wire must never
+ * hide the thing you press. A new part follows its category, so nothing needs listing here.
+ */
 export function drawsOverWires(type: string): boolean {
-  return OVER_WIRES.has(type)
+  return byType.get(type)?.category === 'switch'
 }
 
 /** Parts from bottom to top: by layer, then by the order they were placed. */

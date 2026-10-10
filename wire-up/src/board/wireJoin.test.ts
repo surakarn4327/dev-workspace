@@ -71,3 +71,37 @@ describe('branch wires', () => {
     expect(gone.has(plain.id)).toBe(false)
   })
 })
+
+describe('meter probes only touch', () => {
+  it('a probe tip on the free end of a branch neither keeps it from joining the main wire nor makes it go with the meter', () => {
+    const { w, main, branch } = mainAndBranch()
+    const meter = newPart(w.nextId('p'), 'meter', 400, 0)
+    meter.leads![0] = { x: 100, y: 100 } // the free end of the branch
+    w.parts.push(meter)
+    expect(effectiveColors(w).get(branch)).toBe(w.getWire(main)!.color)
+    expect(branchesOfParts(w, [meter]).size).toBe(0)
+  })
+
+  it('a probe tip on the end that rests on the main wire does not turn the branch into its own colour', () => {
+    const { w, main, branch } = mainAndBranch()
+    const meter = newPart(w.nextId('p'), 'meter', 400, 0)
+    meter.leads![0] = { x: 100, y: 0 } // where the branch rests on the main wire
+    w.parts.push(meter)
+    expect(effectiveColors(w).get(branch)).toBe(w.getWire(main)!.color)
+  })
+
+  it('reads a wire end (bare cap) but not the covered point where a branch rests on another wire', () => {
+    const { w } = mainAndBranch()
+    w.addWire({ x: 0, y: 0 }, { x: 0, y: -100 }, '#2f6fe0') // a second wire starting on the main wire's end
+    const meter = newPart(w.nextId('p'), 'meter', 400, 0)
+    meter.leads![0] = { x: 100, y: 100 } // free end (cap) of the branch
+    meter.leads![1] = { x: 100, y: 0 } // where the branch rests on the main wire's body
+    w.parts.push(meter)
+    const net = buildNetlist(w)
+    const pins = net.partPins.get(meter.id)!
+    const mainEnd = net.nodeAt({ x: 200, y: 0 })
+    expect(pins[0]).toBe(mainEnd) // the branch's cap is on the main wire's net
+    expect(pins[1]).not.toBe(mainEnd) // the covered joint reads nothing
+  })
+})
+

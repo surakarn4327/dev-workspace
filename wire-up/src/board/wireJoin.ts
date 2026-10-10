@@ -26,7 +26,7 @@ export function socketKeys(world: World): Set<string> {
   const out = new Set<string>()
   for (const part of world.parts) {
     if (part.type.startsWith('breadboard')) for (const h of boardHoles(part)) out.add(pointKey(h.pos))
-    else if (defOf(part.type).pinLabels.length > 0) for (const v of pinWorld(part)) out.add(pointKey(v))
+    else if (defOf(part.type).pinLabels.length > 0 && !defOf(part.type).freeLeads) for (const v of pinWorld(part)) out.add(pointKey(v)) // a probe tip is not a socket: it only touches
   }
   return out
 }
@@ -86,7 +86,7 @@ export function branchesOfParts(world: World, parts: PartInstance[]): Set<string
   const keys = new Set<string>()
   for (const part of parts) {
     if (part.type.startsWith('breadboard')) for (const h of boardHoles(part)) keys.add(pointKey(h.pos))
-    else for (const v of pinWorld(part)) keys.add(pointKey(v))
+    else if (!defOf(part.type).freeLeads) for (const v of pinWorld(part)) keys.add(pointKey(v)) // wires merely touching a probe tip do not belong to the meter
   }
   const sockets = socketKeys(world)
   const out = new Set<string>()
@@ -108,12 +108,12 @@ export function groupCollides(world: World, partIds: Set<string>, wireIds: Set<s
   for (const w of world.wires) if (!wireIds.has(w.id)) for (const v of [w.a, w.b, ...(w.taps ?? [])]) foreign.add(pointKey(v))
   const foreignPins = new Set<string>()
   for (const p of world.parts) {
-    if (partIds.has(p.id) || p.type.startsWith('breadboard') || defOf(p.type).pinLabels.length === 0) continue
+    if (partIds.has(p.id) || p.type.startsWith('breadboard') || defOf(p.type).pinLabels.length === 0 || defOf(p.type).freeLeads) continue
     for (const v of pinWorld(p)) foreignPins.add(pointKey(v))
   }
   for (const id of partIds) {
     const p = world.getPart(id)
-    if (!p || p.type.startsWith('breadboard') || defOf(p.type).pinLabels.length === 0) continue
+    if (!p || p.type.startsWith('breadboard') || defOf(p.type).pinLabels.length === 0 || defOf(p.type).freeLeads) continue
     if (pinWorld(p).some((v) => foreign.has(pointKey(v)))) return true
   }
   for (const id of wireIds) {

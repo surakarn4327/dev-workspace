@@ -1,5 +1,8 @@
 // Drawing helpers: neon palette, text, legs, glow. Canvas 2D only.
 
+import { scene } from './scene.ts'
+import type { GlowCall } from './scene.ts'
+
 export const COL = {
   bg: '#23232b',
   grid: '#6a6a7c',
@@ -85,6 +88,7 @@ export const LABEL_GAP = 4
  * stays upright on screen; only its position follows the part's rotation, keeping the `LABEL_GAP` from the edge.
  */
 export function drawLabelBeside(c: CanvasRenderingContext2D, str: string, x: number, y: number, dx: number, dy: number, size = 11): void {
+  if (scene.labelPass && scene.labelCtx) c = scene.labelCtx
   const m = c.getTransform()
   const ax = m.a * x + m.c * y + m.e
   const ay = m.b * x + m.d * y + m.f
@@ -163,8 +167,32 @@ export function neon(c: CanvasRenderingContext2D, color: string, blur: number, f
   c.restore()
 }
 
+/**
+ * A soft additive halo. While a layer is being painted (`scene.glowSink`) it is only recorded, to be replayed on the board with
+ * `replayGlows` once the layer is laid over it, so it looks the same however the picture was put together.
+ */
 export function radialGlow(c: CanvasRenderingContext2D, x: number, y: number, r: number, color: string, alpha: number): void {
   if (alpha <= 0.01) return
+  if (scene.glowSink && scene.glowBase) {
+    scene.glowSink.push({ m: scene.glowBase.multiply(c.getTransform()), x, y, r, color, alpha })
+    return
+  }
+  fillGlow(c, x, y, r, color, alpha)
+}
+
+/** Paint recorded halos with `c`'s current transform as the world transform. */
+export function replayGlows(c: CanvasRenderingContext2D, calls: GlowCall[]): void {
+  if (calls.length === 0) return
+  const world = c.getTransform()
+  for (const g of calls) {
+    c.save()
+    c.setTransform(world.multiply(g.m))
+    fillGlow(c, g.x, g.y, g.r, g.color, g.alpha)
+    c.restore()
+  }
+}
+
+function fillGlow(c: CanvasRenderingContext2D, x: number, y: number, r: number, color: string, alpha: number): void {
   c.save()
   c.globalCompositeOperation = 'lighter'
   const g = c.createRadialGradient(x, y, 0, x, y, r)

@@ -51,7 +51,7 @@ export const meter: PartDef = {
   freeLeads: true,
   fixedRot: true,
   leadTip: 'probe',
-  leadColors: ['#ff3b4a', '#15151a'],
+  leadColors: ['#ff3b4a', '#0f0f14'], // the black lead is the same dark grey as the black jumper wire (WIRE_BLACK)
   pinLabels: ['red', 'black'],
   hidePinLabels: true,
   defaults: () => ({ mode: 'V' }),
@@ -60,8 +60,8 @@ export const meter: PartDef = {
     { x: 5, y: 11 },
   ],
   anchors: () => [
-    { x: 34, y: 186 },
-    { x: 86, y: 186 },
+    { x: 34, y: 176 }, // the centres of the two jack holes in the sprite (art pixels 17, 43 x 88)
+    { x: 86, y: 176 },
   ],
   bounds: () => ({ x: 0, y: 0, w: 120, h: 190 }),
   build(p, ctx) {

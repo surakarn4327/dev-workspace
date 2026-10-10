@@ -1,6 +1,7 @@
 // Pointer hit testing in world coordinates.
 
-import { defOf, drawsOverWires, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
+import { defOf, drawsOverWires, layerOf, leadDir, pinWorld, stackOrder } from '../parts/index.ts'
+import { probeHeadBox } from '../render/pixelwire.ts'
 import { holeNear } from '../parts/breadboard.ts'
 import { straightMid } from './wireEdit.ts'
 import { unrotVec, wirePath } from './world.ts'
@@ -45,7 +46,11 @@ export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string
     const part = world.parts[k]
     if (!defOf(part.type).freeLeads || !part.leads) continue
     for (let i = 0; i < part.leads.length; i++) {
-      if (dist(part.leads[i], p) <= tol + 3) return { kind: 'lead', part, index: i, point: part.leads[i] }
+      const tip = part.leads[i]
+      // the whole probe head grabs the lead, not just its metal tip
+      const head = defOf(part.type).leadTip === 'probe' ? probeHeadBox(tip, -leadDir(part, i), 2) : null
+      const inHead = head !== null && p.x >= head.x0 && p.x <= head.x1 && p.y >= head.y0 && p.y <= head.y1
+      if (inHead || dist(tip, p) <= tol + 3) return { kind: 'lead', part, index: i, point: tip }
     }
   }
 

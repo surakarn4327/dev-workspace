@@ -218,7 +218,7 @@ export class App {
           const n = this.damagedSelected().length
           return n > 1 ? `Replace ${n}` : 'Replace'
         },
-        tip: 'Swap burnt-out or overheated selected parts for fresh ones',
+        tip: 'Swap burnt-out or overheated selected parts for fresh ones (Y)',
         run: () => this.replaceSelected(),
         enabled: () => this.damagedSelected().length > 0,
       }),
@@ -366,6 +366,9 @@ export class App {
     } else if ((e.ctrlKey || e.metaKey) && k === 'y') {
       e.preventDefault()
       this.redo()
+    } else if (k === 'y' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && this.damagedSelected().length > 0) {
+      e.preventDefault()
+      this.replaceSelected()
     }
   }
 

@@ -94,7 +94,6 @@ describe('wire editing, random drags', () => {
       if (dx === 0 && dy === 0) continue
       const plan: FollowPlan = {
         carried: [],
-        partial: [],
         moving: new Set([pointKey(end === 'a' ? w.a : w.b)]),
         parts: new Map(),
         wires: world.wires.map((x) => JSON.parse(JSON.stringify(x))),
@@ -185,7 +184,6 @@ describe('branch wires, random drags', () => {
       if (dx === 0 && dy === 0) continue
       const plan: FollowPlan = {
         carried: [],
-        partial: [],
         moving: new Set([pointKey(end === 'a' ? w.a : w.b)]),
         parts: new Map(),
         wires: world.wires.map((x) => JSON.parse(JSON.stringify(x))),
