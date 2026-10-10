@@ -28,13 +28,13 @@ function lamp(c: CanvasRenderingContext2D, on: boolean): void {
   pxRect(c, 0, 0, (LAMP.x - 2) / 2, (LAMP.y - 2) / 2, 2, 2, on ? COL.green : '#0f2038')
 }
 
-/** The pin names printed beside the pads (pin coordinates in world px). */
-const NAMES: Array<[string, number, number, number]> = [
-  ['COIL', 0, -17, 0],
-  ['COIL', 0, 68, 0],
-  ['COM', 100, -17, 0],
-  ['NC', 60, 68, 0],
-  ['NO', 140, 68, 0],
+/** The pin names printed beside the pads: text, x, y (world px) and alignment (the coil names stay inside the left edge of the box). */
+const NAMES: Array<[string, number, number, 'left' | 'center']> = [
+  ['COIL', -4, -17, 'left'],
+  ['COIL', -4, 68, 'left'],
+  ['COM', 100, -17, 'center'],
+  ['NC', 60, 68, 'center'],
+  ['NO', 140, 68, 'center'],
 ]
 
 export const relay5v: PartDef = {
@@ -83,7 +83,7 @@ export const relay5v: PartDef = {
       drawSprite(c, s, ORIGIN.x, ORIGIN.y)
       drawText(c, 'SRD-05VDC-SL-C', 70, 14, { color: INK, align: 'center' })
       drawText(c, '10A 250VAC 10A 30VDC', 70, 28, { color: '#a9c2f2', align: 'center' })
-      for (const [name, x, y] of NAMES) drawText(c, name, x, y, { color: INK, align: 'center', size: 7 })
+      for (const [name, x, y, align] of NAMES) drawText(c, name, x, y, { color: INK, align, size: 7 })
       lamp(c, on)
       if (scene.labeled.has(p.id)) drawLabelAbove(c, 'Relay 5 V', 70, spriteInk(s, ORIGIN.x, ORIGIN.y).top)
       return
