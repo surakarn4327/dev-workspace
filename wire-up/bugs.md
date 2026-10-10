@@ -176,3 +176,8 @@
 ## ข้อควรระวังที่รู้ล่วงหน้า (ยังไม่เคยพัง)
 - Solver: LED/diode ต้องใช้ `pnjlim` (junction limiting) ไม่งั้น Newton ระเบิดเมื่อต่อ LED ตรงกับแหล่งจ่าย และต้อง clamp `exp` ที่ 80 (LED สีน้ำเงิน Vf ≈ 3 V ถ้า clamp ต่ำกว่านี้ค่ากระแสผิด)
 - ไฟล์ใช้ `erasableSyntaxOnly`: ห้ามใช้ parameter property (`constructor(private x)`), enum, namespace
+
+## Relay module: green power LED on with GND unconnected, no current shown
+- **Symptom:** VCC wired, GND left open, green LED lit; supply ammeter 0.000 A and no flow dots.
+- **Cause:** the LED was drawn from the VCC pin voltage only (`v(vcc) - v(gnd)`, floating GND reads 0 V), and the board drew no current of its own, so there was nothing for the meter or flow to show.
+- **Fix:** `src/parts/relay.ts` adds a 1.2 kΩ element `pw` between VCC and GND (the power LED branch); the green LED lights only when its current is >= 0.5 mA (`live.pw`). Open GND = no current = LED off.

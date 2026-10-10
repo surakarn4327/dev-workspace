@@ -17,6 +17,9 @@ const HEIGHT = 312
 const PITCH = RELAY_CHANNEL_PITCH * 2
 /** The opto stage: the LED side draws through 1 kohm; the driver pulls the coil in above 2 V of drive and lets go below 1 V. */
 const R_IN = 1000
+// the green power LED and its series resistor, across VCC and GND: it only lights when current really flows
+const R_PWR = 1200
+const I_PWR_ON = 0.0005
 const DRIVE_ON = 2
 const DRIVE_OFF = 1
 /** Input current at which the opto-coupler's LED is overdriven (ampere). */
@@ -97,6 +100,7 @@ export const relayModule: PartDef = {
     const high = triggerOf(p) === 'high'
     const gnd = ctx.pins[0]
     const vcc = ctx.pins[n + 1]
+    ctx.add({ kind: 'R', id: ctx.id('pw'), a: vcc, b: gnd, r: R_PWR })
     for (let i = 0; i < n; i++) {
       const inp = ctx.pins[1 + i]
       const nc = ctx.pins[n + 2 + 3 * i]
@@ -126,7 +130,7 @@ export const relayModule: PartDef = {
   evaluate(p, env) {
     const n = channelsOf(p)
     const vs = env.v(env.pins[n + 1]) - env.v(env.pins[0])
-    const live: Record<string, number> = { v: vs }
+    const live: Record<string, number> = { v: vs, pw: Math.abs(env.cur(eid(p, 'pw'))?.i ?? 0) >= I_PWR_ON ? 1 : 0 }
     let worstContact = 0
     let worstIn = 0
     let on = 0
@@ -173,7 +177,7 @@ export const relayModule: PartDef = {
         drawText(c, '10A 250VAC 10A 30VDC', 80 + dx, 146, { color: '#a9c2f2', align: 'center', size: 8 })
         // the red LED: this relay is pulled in; the green LED: the board has power (every channel shows its own)
         statusLed(c, 38 + ax, 126, on, 'red')
-        statusLed(c, 38 + ax, 116, (live.v ?? 0) >= 2.5, 'green')
+        statusLed(c, 38 + ax, 116, (live.pw ?? 0) > 0.5, 'green')
       }
       if (n === 1) {
         // one channel: the jumper pins stand in a column at the right edge (names on their left); the cap covers H and COM
