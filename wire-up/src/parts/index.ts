@@ -4,6 +4,7 @@ import { rotVec, G, snap } from '../board/world.ts'
 import type { PartInstance, Rot, Vec } from '../board/world.ts'
 import { breadboardFull, breadboardMini } from './breadboard.ts'
 import { meter } from './instruments.ts'
+import { relay5v } from './relay.ts'
 import { gateAnd, gateNand, gateNor, gateNot, gateOr, gateXnor, gateXor } from './logic.ts'
 import { ceramicCap, electroCap, ldr, ntc, potentiometer, resistor } from './passives.ts'
 import { battery, battery15, battery3, battery45, supply } from './power.ts'
@@ -40,6 +41,7 @@ export const ALL_PARTS: PartDef[] = [
   hc32,
   hc86,
   ne555,
+  relay5v,
   seg7,
   seg7x4,
   rockerSwitch,

@@ -23,6 +23,7 @@ export type Element =
   | GateElement
   | CmosGateElement
   | TimerElement
+  | RelayElement
 
 export type GateFn = 'not' | 'and' | 'or' | 'nand' | 'nor' | 'xor' | 'xnor'
 
@@ -85,6 +86,25 @@ export interface TimerElement {
   ref: number
   dis: number
 }
+
+/**
+ * The contacts of a relay (the coil is an ordinary resistor between `c1` and `c2`). Whether it is pulled in is kept in the same
+ * map as the capacitor voltages, under `${id}:on`, and moved on after every step by `settleTimers`: pulled in at 75% of the rated
+ * coil voltage, let go again at 10%, held in between. Pulled in, COM joins NO; otherwise COM joins NC (`RELAY.rContact` each).
+ * The coil circuit and the contacts share no node unless the wiring joins them.
+ */
+export interface RelayElement {
+  kind: 'Y'
+  id: string
+  c1: number
+  c2: number
+  com: number
+  no: number
+  nc: number
+}
+
+/** 5 V relay (SRD-05VDC-SL-C datasheet figures): coil, switching levels and ratings. */
+export const RELAY = { vRated: 5, vPull: 3.75, vDrop: 0.5, rCoil: 70, rContact: 0.1, vCoilMax: 10, iContactMax: 10 }
 
 /** NE555 numbers (TI / ST datasheets): ratings, output stages, and the internal divider. */
 export const TIMER = {
@@ -426,6 +446,11 @@ class Problem {
           })
           break
         }
+        case 'Y': {
+          const on = (this.tran?.vPrev.get(`${e.id}:on`) ?? 0) > 0.5
+          this.stampG(A, e.com, on ? e.no : e.nc, 1 / RELAY.rContact)
+          break
+        }
         case 'T': {
           const st = this.tran?.vPrev
           if ((st?.get(`${e.id}:en`) ?? 1) < 0.5) break
@@ -525,6 +550,12 @@ class Problem {
         case 'C': {
           const [toVcc, toGnd] = cmosBranches(e, nv)
           out.set(e.id, { i: toVcc, ib: toGnd })
+          break
+        }
+        case 'Y': {
+          const on = (this.tran?.vPrev.get(`${e.id}:on`) ?? 0) > 0.5
+          // current from COM into the closed side; `ib` says which side is closed (1 = NO)
+          out.set(e.id, { i: (nv(e.com) - nv(on ? e.no : e.nc)) / RELAY.rContact, ib: on ? 1 : 0 })
           break
         }
         case 'T': {
@@ -649,7 +680,7 @@ const MAX_SUBSTEPS = 200
  */
 export function advance(circuit: Circuit, charge: Map<string, number>, seconds: number, warm?: Float64Array): SolveResult & { raw: Float64Array } {
   const caps = circuit.elements.filter((e) => e.kind === 'K')
-  const timers = circuit.elements.some((e) => e.kind === 'T')
+  const timers = circuit.elements.some((e) => e.kind === 'T' || e.kind === 'Y')
   if (caps.length === 0 && !timers) return solve(circuit, warm)
   if (seconds <= 0) {
     let res = solve(circuit, warm, { dt: 1e-9, vPrev: charge })
@@ -670,7 +701,7 @@ export function advance(circuit: Circuit, charge: Map<string, number>, seconds: 
 }
 
 /**
- * Move the latch of every timer on to what its comparators ask for, given the node voltages `v` of a solve (state in `state`, see
+ * Move the latch of every timer, and the armature of every relay, on to what its inputs ask for, given the node voltages `v` of a solve (state in `state`, see
  * `TimerElement`). Reset low wins, then trigger below 1/3 sets the output, then threshold above 2/3 clears it. A chip whose supply
  * is under `vOn` (`vOff` once running) is off: output and discharge float, latch cleared. Returns true if anything changed.
  */
@@ -682,6 +713,12 @@ export function settleTimers(circuit: Circuit, state: Map<string, number>, v: Fl
     if (was !== on) changed = true
   }
   for (const e of circuit.elements) {
+    if (e.kind === 'Y') {
+      const vc = Math.abs(v[e.c1] - v[e.c2])
+      const was = (state.get(`${e.id}:on`) ?? 0) > 0.5
+      put(`${e.id}:on`, vc >= RELAY.vPull ? true : vc <= RELAY.vDrop ? false : was)
+      continue
+    }
     if (e.kind !== 'T') continue
     const g = v[e.gnd]
     const vs = v[e.vcc] - g

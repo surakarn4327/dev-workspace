@@ -24,6 +24,8 @@ function draws(e: Element, res: SolveResult): [number, number, number?][] {
       return [[e.y, -c.i], [e.ref ?? 0, c.i]] // the symbol gate pushes c.i out of Y and takes it back from its reference
     case 'C':
       return [[e.y, c.i + (c.ib ?? 0)], [e.vcc, -c.i], [e.gnd, -(c.ib ?? 0)]] // a chip gate: in through VCC, out through GND
+    case 'Y':
+      return [[e.com, c.i], [(c.ib ?? 0) > 0.5 ? e.no : e.nc, -c.i]] // the closed contact carries c.i from COM to the side it is joined to
     case 'T': {
       // a timer pushes c.i out of OUT (negative: it sinks) and takes c.ib in at DIS; it gets the current from VCC while the output is high
       const fromVcc = c.i > 0 ? c.i : 0

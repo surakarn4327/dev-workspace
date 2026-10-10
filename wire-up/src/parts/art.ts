@@ -1155,6 +1155,40 @@ function dipBody(key: string, perRow: number): Sprite {
   })
 }
 
+// ---------------------------------------------------------------- relay
+
+/** Where the five pins sit in the relay sprite, in art pixels (cell (0, 0) is at world (-8, -32)): coil, coil, COM, NC, NO. */
+export const RELAY_PADS: Array<[number, number]> = [[4, 16], [4, 46], [54, 16], [34, 46], [74, 46]]
+
+/**
+ * 5 V PCB relay seen from above (reference: the blue Songle SRD-05VDC-SL-C cube, 19 x 15.5 mm): a flat blue plastic box with a
+ * bevel, light from the upper left. The pins come out of the bottom; as the part stands on a board they are drawn as small silver
+ * pads at their grid points. 78 x 62 art pixels, cell (0, 0) at world (-8, -32). Text and the status lamp are drawn by the part.
+ */
+export function relaySprite(): Sprite {
+  return sprite('relay', () => {
+    const W = 78
+    const H = 62
+    const g = new PixelGrid(W, H)
+    g.rrect(0, 0, W, H, 3, 'a')
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (g.get(x, y) === '.') continue
+        const nearTL = x < 3 || y < 3
+        const nearBR = x >= W - 3 || y >= H - 3
+        g.set(x, y, nearTL && !nearBR ? 'h' : nearBR && !nearTL ? 'd' : y < H / 3 ? 'a' : y < (2 * H) / 3 ? 'b' : 'c')
+      }
+    }
+    for (const [cx, cy] of RELAY_PADS) {
+      g.disc(cx, cy, 2.7, 'p')
+      g.disc(cx, cy, 1.9, 'S')
+      g.rect(cx, cy - 1, 2, 2, 'T')
+      g.set(cx - 1, cy - 1, 'W')
+    }
+    return g.build({ h: '#7fa8ff', a: '#4a80e0', b: '#3b6cc9', c: '#2f58ab', d: '#22448a', p: '#16161b', S: '#c9ced6', T: '#7d838f', W: '#ffffff' }, '#0c1d45')
+  })
+}
+
 // ---------------------------------------------------------------- capacitors
 
 /**
