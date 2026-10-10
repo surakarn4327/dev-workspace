@@ -189,6 +189,25 @@ export class Renderer {
     main.setTransform(1, 0, 0, 1, 0, 0)
   }
 
+  /** Wire colours and branch joins depend only on the layout, so they are worked out when the layout changes, not every frame. */
+  private wireCache: { world: World; version: number; colors: Map<string, string>; taps: Map<string, Vec[]>; dots: { at: Vec; color: string }[] } | null = null
+
+  private wireInfo(world: World): { colors: Map<string, string>; taps: Map<string, Vec[]>; dots: { at: Vec; color: string }[] } {
+    const hit = this.wireCache
+    if (hit && hit.world === world && hit.version === world.version) return hit
+    const sockets = socketKeys(world)
+    const colors = effectiveColors(world, sockets)
+    const taps = new Map<string, Vec[]>()
+    const dots: { at: Vec; color: string }[] = []
+    for (const w of world.wires) {
+      const ends = tapEnds(world, w, sockets)
+      taps.set(w.id, ends)
+      for (const at of ends) dots.push({ at, color: colors.get(w.id) ?? w.color })
+    }
+    this.wireCache = { world, version: world.version, colors, taps, dots }
+    return this.wireCache
+  }
+
   /** Things that are part of the circuit itself: parts, wires, leads, smoke. */
   private drawContent(world: World, sim: Simulation, ov: Overlay, now: number): void {
     const c = this.ctx
@@ -197,13 +216,11 @@ export class Renderer {
     const front = sel && layerOf(sel.type) > 0 ? sel : undefined
     const stack = stackOrder(world.parts).filter((p) => p !== front)
     for (const part of stack) if (layerOf(part.type) < 4) this.drawPart(part, sim, now, 1)
-    const sockets = socketKeys(world)
-    const colors = effectiveColors(world, sockets)
+    const { colors, taps, dots: tapDots } = this.wireInfo(world)
     // every cable's shadow and outline first, then the bodies: a branch merges into its main wire with no dark seam
     const shapes = new Map<string, CableShape>()
     // a round dot wherever a branch wire joins the middle of another (same colour as the main wire)
-    const dots: { at: Vec; color: string; shape?: CableShape }[] = []
-    for (const w of world.wires) for (const at of tapEnds(world, w, sockets)) dots.push({ at, color: colors.get(w.id) ?? w.color })
+    const dots: { at: Vec; color: string; shape?: CableShape }[] = tapDots.map((d) => ({ ...d }))
     if (this.pixelMode) {
       for (const w of world.wires) {
         const shape = cableShape(wirePath(w))
@@ -215,7 +232,7 @@ export class Renderer {
         drawCableBase(c, d.shape, d.color)
       }
     }
-    for (const w of world.wires) this.drawWire(w, w.id === ov.selectedWire || ov.group.wires.has(w.id), colors.get(w.id) ?? w.color, shapes.get(w.id), tapEnds(world, w, sockets))
+    for (const w of world.wires) this.drawWire(w, w.id === ov.selectedWire || ov.group.wires.has(w.id), colors.get(w.id) ?? w.color, shapes.get(w.id), taps.get(w.id) ?? [])
     for (const d of dots) {
       if (d.shape) drawCableBody(c, d.shape, d.color)
       else {

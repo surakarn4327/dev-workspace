@@ -44,6 +44,11 @@ export class Simulation {
   /** Voltage across each capacitor (by element id): where its charge is now. A new circuit starts discharged. */
   private charge = new Map<string, number>()
   private hasCaps = false
+  /** The circuit as it was last solved: a rebuild that comes out electrically identical (a part or wire dragged about) keeps the answer. */
+  private sig = ''
+  private solved: (SolveResult & { raw: Float64Array }) | null = null
+  /** Every capacitor has stopped moving: no need to step time until the circuit changes. */
+  private settled = false
   private world: World
 
   constructor(world: World) {
@@ -63,12 +68,21 @@ export class Simulation {
     // a capacitor that is gone (deleted, burnt, replaced) lets go of its charge
     const caps = new Set(this.net.circuit.elements.flatMap((e) => (e.kind === 'K' ? [e.id] : [])))
     for (const id of [...this.charge.keys()]) if (!caps.has(id)) this.charge.delete(id)
+    const sig = JSON.stringify([this.net.circuit, [...this.net.partPins], [...this.net.partRef]])
+    if (sig === this.sig && this.solved?.converged) {
+      // same electrical circuit, only the geometry moved: the voltages and currents stand, the wire dots and readings are redone
+      this.show(this.solved)
+      return
+    }
+    this.sig = sig
+    this.settled = false
     this.show(advance(this.net.circuit, this.charge, 0, this.warm))
   }
 
   /** Take a solve as the state of the circuit: current in the wires, and every part's readings and stress. */
   private show(res: SolveResult & { raw: Float64Array }): void {
     this.warm = res.raw
+    this.solved = res
     this.result = res
     const flow = computeFlow(this.world, this.net, res)
     this.flow = flow.byWire
@@ -94,7 +108,13 @@ export class Simulation {
     this.clock += dt
     this.refresh()
     // capacitors charge and discharge in real time
-    if (this.hasCaps && dt > 0) this.show(advance(this.net.circuit, this.charge, Math.min(dt, 0.25), this.warm))
+    if (this.hasCaps && dt > 0 && !this.settled) {
+      const before = new Map(this.charge)
+      this.show(advance(this.net.circuit, this.charge, Math.min(dt, 0.25), this.warm))
+      let moved = 0
+      for (const [id, v] of this.charge) moved = Math.max(moved, Math.abs(v - (before.get(id) ?? 0)))
+      if (moved < 1e-7) this.settled = true
+    }
     let failedNow = false
     // a solve that did not converge gives numbers that mean nothing (a cold start after loading a file, or a wiring change that
     // the solver could not follow): never heat or burn a part on them, wait for a solve that did converge

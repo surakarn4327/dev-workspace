@@ -58,10 +58,49 @@ export interface CableShape {
   lit: Array<[number, number]>
   mid: Array<[number, number]>
   dark: Array<[number, number]>
+  /** The cells of each layer as one Path2D, made the first time the layer is drawn and kept with the shape. */
+  paths?: Partial<Record<'shadow' | 'outline' | 'mid' | 'lit' | 'dark', Path2D>>
+}
+
+type Layer = 'shadow' | 'outline' | 'mid' | 'lit' | 'dark'
+
+function fillLayer(c: CanvasRenderingContext2D, shape: CableShape, layer: Layer, color: string): void {
+  const cells = shape[layer]
+  if (cells.length === 0) return
+  const paths = (shape.paths ??= {})
+  let path = paths[layer]
+  if (!path) {
+    path = new Path2D()
+    for (const [x, y] of cells) path.rect(x * PX, y * PX, PX, PX)
+    paths[layer] = path
+  }
+  c.fillStyle = color
+  c.fill(path)
+}
+
+/**
+ * Shapes are a pure function of the rounded polyline, and working one out is the costliest thing a frame can do (a hundred wires
+ * took ~175 ms when redone every frame), so they are remembered. Shapes are shared: callers only read them.
+ */
+const shapeCache = new Map<string, CableShape>()
+const SHAPE_CACHE_MAX = 2000
+
+function remember(k: string, make: () => CableShape): CableShape {
+  let shape = shapeCache.get(k)
+  if (!shape) {
+    if (shapeCache.size >= SHAPE_CACHE_MAX) shapeCache.clear() // a wire being dragged makes a new key every frame
+    shape = make()
+    shapeCache.set(k, shape)
+  }
+  return shape
 }
 
 /** Work out which art pixels a cable covers and how each is shaded. */
 export function cableShape(pts: PixelPoint[]): CableShape {
+  return remember(pts.map((p) => `${Math.round(p.x / PX)},${Math.round(p.y / PX)}`).join(';'), () => buildCable(pts))
+}
+
+function buildCable(pts: PixelPoint[]): CableShape {
   const body = new Set<number>()
   for (const [x, y] of rasterize(pts)) {
     body.add(key(x, y))
@@ -81,6 +120,10 @@ export function cableShape(pts: PixelPoint[]): CableShape {
 export function junctionShape(at: PixelPoint): CableShape {
   const cx = Math.round(at.x / PX)
   const cy = Math.round(at.y / PX)
+  return remember(`j${cx},${cy}`, () => buildJunction(cx, cy))
+}
+
+function buildJunction(cx: number, cy: number): CableShape {
   const body = new Set<number>()
   for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) if (Math.abs(dx) + Math.abs(dy) < 4) body.add(key(cx + dx, cy + dy)) // 5x5 minus its four corner cells
   return shapeOf(body)
@@ -120,14 +163,14 @@ function shapeOf(body: Set<number>): CableShape {
 
 /** The drop shadow and dark outline. Draw these for every cable before any body so joined cables merge cleanly. */
 export function drawCableBase(c: CanvasRenderingContext2D, shape: CableShape, color: string): void {
-  fillCells(c, shape.shadow, 'rgba(0,0,0,0.38)')
-  fillCells(c, shape.outline, mix(color, '#000000', 0.78))
+  fillLayer(c, shape, 'shadow', 'rgba(0,0,0,0.38)')
+  fillLayer(c, shape, 'outline', mix(color, '#000000', 0.78))
 }
 
 export function drawCableBody(c: CanvasRenderingContext2D, shape: CableShape, color: string): void {
-  fillCells(c, shape.mid, color)
-  fillCells(c, shape.lit, mix(color, '#ffffff', 0.4))
-  fillCells(c, shape.dark, mix(color, '#000000', 0.35))
+  fillLayer(c, shape, 'mid', color)
+  fillLayer(c, shape, 'lit', mix(color, '#ffffff', 0.4))
+  fillLayer(c, shape, 'dark', mix(color, '#000000', 0.35))
 }
 
 /** Metal pins at the wire's ends and plugs; `skip` lists ends that rest on another wire and get no pin. */
