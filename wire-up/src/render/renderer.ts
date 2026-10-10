@@ -3,7 +3,7 @@
 import type { Simulation } from '../board/simulation.ts'
 import { G, pointKey, rotVec, wirePath } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
-import { defOf, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
+import { defOf, drawsOverWires, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
 import { effectiveColors, socketKeys, tapEnds } from '../board/wireJoin.ts'
 import { paintBurnt, canBurn } from './burnt.ts'
 import { ringOf } from './outline.ts'
@@ -13,8 +13,8 @@ import { straightMid } from '../board/wireEdit.ts'
 import { SELECT_GLOW_REACH, SELECT_GLOW_STEPS, cableShape, drawCableBase, drawCableSelection, drawCableBody, drawCableCaps, junctionShape, pixelProbeHead } from './pixelwire.ts'
 import type { CableShape } from './pixelwire.ts'
 import { scene } from './scene.ts'
-import { sameSigs, shiftOf } from './dragPlan.ts'
-import type { Sigs, Snap } from './dragPlan.ts'
+import { sameSigs } from './dragPlan.ts'
+import type { Sigs } from './dragPlan.ts'
 
 /** Pin names shown on the pin label: an LED or diode lead reads + or - instead of A or K. */
 /** The dot grid never packs its dots closer than this many screen px (see drawGrid). */
@@ -83,24 +83,6 @@ interface Layer {
 
 function makeLayer(): Layer {
   return { canvas: document.createElement('canvas'), key: '', ox: 0, oy: 0, empty: false }
-}
-
-/** Room around the dragged things for shadows, glows and labels (world px). */
-const MOVER_PAD = 80
-
-/** Biggest picture of dragged things worth keeping (device pixels); bigger is painted the long way. */
-const MAX_MOVER_PIXELS = 16_000_000
-
-/** Which parts and wires to draw: not these (`skip`), or only these (`only`). */
-interface Pick {
-  skip?: Set<string>
-  only?: Set<string>
-}
-
-function picks(f: Pick | undefined, id: string): boolean {
-  if (!f) return true
-  if (f.skip && f.skip.has(id)) return false
-  return !f.only || f.only.has(id)
 }
 
 const usedHashes = new WeakMap<Set<string>, number>()
@@ -322,22 +304,18 @@ export class Renderer {
    * The still part of the picture (parts and wires) is painted once into two off-screen layers (under and over the flowing dots), a
    * little larger than the screen, and each frame only copies them over: panning slides the copy, a quiet board costs almost nothing.
    *
-   * While something is being dragged, what moves rigidly (the dragged parts and the wires that go along with them, however many)
-   * is painted once into two more layers of its own and those are copied over shifted by the distance dragged; what changes shape
-   * (a wire stretching between a dragged part and one that stays) or reading (an LED lighting up) is painted live, a few at a time.
-   * So a frame costs the same whether one part or the whole circuit is being dragged.
-   *
-   * Nothing is ever stretched and nothing is ever missing: a frame that cannot be made from the layers is painted live exactly like
-   * before. The layers are painted again when the player stops moving things, or when the drag involves something new.
+   * Nothing is ever stretched and nothing is ever missing: a frame that cannot be made from the layers (the board is changing from
+   * frame to frame, as in a drag or a zoom) is painted live, and the layers are painted again on the first frame that holds still.
    */
   private layers = [makeLayer(), makeLayer()]
-  private movers = [makeLayer(), makeLayer()]
   private lastTokens = ''
   private lastBase = ''
   private lastZoom = 0
   private lastSigs: Sigs | null = null
-  /** What the layers were painted from. */
-  private snap: Snap | null = null
+  /** Counts the frames on which the board looked different from the frame before. */
+  private revision = 0
+  /** What the layers were painted for: if any of it has moved on, the layers are out of date. */
+  private painted: { revision: number; base: string; zoom: number } | null = null
   /** Frame meter switch: turn the layers off to see what painting everything every frame costs. */
   cacheOn = true
 
@@ -361,61 +339,42 @@ export class Renderer {
     else {
       const fresh = this.itemSigs(world, sim)
       stable = sigs !== null && this.lastBase === base && this.lastZoom === zoom && sameSigs(fresh, sigs)
+      if (!stable) this.revision++
       sigs = fresh
     }
     this.lastTokens = tokens
     this.lastBase = base
     this.lastZoom = zoom
     this.lastSigs = sigs
-    const snap = this.snap
+    const painted = this.painted
     const inView = Math.abs(view.camX - below.ox - m) <= m * 0.9 && Math.abs(view.camY - below.oy - m) <= m * 0.9
-    const usable = snap !== null && snap.base === base && snap.zoom === zoom && inView
-    let shift = usable ? shiftOf(sigs, snap) : null // how far the dragged things have gone, when the layers can show this frame
-    if (shift && stable && snap && (snap.moving.size > 0 || snap.live.size > 0)) shift = null // nothing moves any more: put everything back into the still layers
-    if (!shift) {
-      let plan: { moving: Set<string>; live: Set<string> } | null = null
-      // nothing is moving: the layers take everything in, in its proper place. While things are moving the frame is painted live (no
-      // picture of the dragged things is taken first: that made every drag start and stop with a stall)
-      if (stable) plan = { moving: new Set(), live: new Set() }
-      if (!plan || !this.paintLayers(world, sim, view, ov, now, base, plan, sigs)) {
+    const usable = painted !== null && painted.revision === this.revision && painted.base === base && painted.zoom === zoom && inView
+    if (!usable) {
+      // a board that changes from frame to frame (a drag, a zoom) is painted live, no layer is made for it; once it holds still the
+      // layers take it in, in its proper place
+      if (!stable) {
         main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
         main.imageSmoothingEnabled = false
         this.drawContent(world, sim, ov, now)
         return
       }
-      shift = { dx: 0, dy: 0 }
+      this.paintLayers(world, sim, view, ov, now)
+      this.painted = { revision: this.revision, base, zoom }
     }
-    const live = this.snap!.live
-    const only = live.size > 0 ? { only: live } : undefined
-    const [moveBelow, moveAbove] = this.movers
     this.blit(below, view)
-    if (!moveBelow.empty) this.blitShifted(moveBelow, view, shift.dx, shift.dy)
     main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
     main.imageSmoothingEnabled = false
-    if (only) this.drawBelow(world, sim, ov, now, only)
     if (!this.hide.dots) this.drawFlow(sim, now)
     if (!above.empty) this.blit(above, view)
-    if (!moveAbove.empty) this.blitShifted(moveAbove, view, shift.dx, shift.dy)
     main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
     main.imageSmoothingEnabled = false
-    if (only) this.drawAbove(world, sim, ov, now, only)
     this.drawLive(world, sim, ov, now)
   }
 
-  /**
-   * Paint the layers from scratch: the still things into the two big layers, `plan.moving` into the two layers that get shifted.
-   * `plan.live` is left out of both (it is painted every frame). False when the moving things are too big to keep as a picture.
-   */
-  private paintLayers(world: World, sim: Simulation, view: View, ov: Overlay, now: number, base: string, plan: { moving: Set<string>; live: Set<string> }, sigs: Sigs): boolean {
+  /** Paint the two layers from scratch: everything under the flowing dots, and everything over them. */
+  private paintLayers(world: World, sim: Simulation, view: View, ov: Overlay, now: number): void {
     const s = this.dpr * view.zoom
     const m = LAYER_MARGIN / view.zoom
-    const out = new Set([...plan.moving, ...plan.live])
-    // the dragged things get a picture just big enough for them
-    let box: { x0: number; y0: number; x1: number; y1: number } | null = null
-    if (plan.moving.size > 0) {
-      box = this.boxOf(world, plan.moving)
-      if (!box || (box.x1 - box.x0) * s * (box.y1 - box.y0) * s > MAX_MOVER_PIXELS) return false
-    }
     const w = Math.ceil((this.width + 2 * LAYER_MARGIN) * this.dpr)
     const h = Math.ceil((this.height + 2 * LAYER_MARGIN) * this.dpr)
     const [below, above] = this.layers
@@ -427,57 +386,11 @@ export class Renderer {
       layer.ox = view.camX - m
       layer.oy = view.camY - m
     }
-    const skip = { skip: out }
-    this.paintLayer(below, s, () => this.drawBelow(world, sim, ov, now, skip))
-    this.paintLayer(above, s, () => this.drawAbove(world, sim, ov, now, skip))
+    this.paintLayer(below, s, () => this.drawBelow(world, sim, ov, now))
+    this.paintLayer(above, s, () => this.drawAbove(world, sim, ov, now))
     const { stack, front } = this.stackOf(world, ov)
-    const aboveParts = [...stack.filter((p) => layerOf(p.type) >= 4), ...(front ? [front] : [])]
-    above.empty = aboveParts.every((p) => out.has(p.id))
+    above.empty = !front && !stack.some((p) => drawsOverWires(p.type))
     below.empty = false
-    const [moveBelow, moveAbove] = this.movers
-    moveBelow.empty = true
-    moveAbove.empty = true
-    if (box) {
-      const mw = Math.ceil((box.x1 - box.x0) * s)
-      const mh = Math.ceil((box.y1 - box.y0) * s)
-      for (const layer of this.movers) {
-        if (layer.canvas.width !== mw || layer.canvas.height !== mh) {
-          layer.canvas.width = mw
-          layer.canvas.height = mh
-        }
-        layer.ox = box.x0
-        layer.oy = box.y0
-      }
-      const only = { only: plan.moving }
-      this.paintLayer(moveBelow, s, () => this.drawBelow(world, sim, ov, now, only))
-      this.paintLayer(moveAbove, s, () => this.drawAbove(world, sim, ov, now, only))
-      moveBelow.empty = false
-      moveAbove.empty = aboveParts.every((p) => !plan.moving.has(p.id))
-    }
-    this.snap = { look: sigs.look, pos: new Map(sigs.pos), vals: sigs.vals, moving: plan.moving, live: plan.live, base, zoom: view.zoom }
-    return true
-  }
-
-  /** Smallest box (world px, with room for shadows and glows) around the given parts and wires. */
-  private boxOf(world: World, ids: Set<string>): { x0: number; y0: number; x1: number; y1: number } | null {
-    let x0 = Infinity
-    let y0 = Infinity
-    let x1 = -Infinity
-    let y1 = -Infinity
-    const add = (x: number, y: number): void => {
-      if (x < x0) x0 = x
-      if (x > x1) x1 = x
-      if (y < y0) y0 = y
-      if (y > y1) y1 = y
-    }
-    for (const p of world.parts) {
-      if (!ids.has(p.id)) continue
-      const b = defOf(p.type).bounds(p)
-      for (const c of [rotVec({ x: b.x, y: b.y }, p.rot), rotVec({ x: b.x + b.w, y: b.y }, p.rot), rotVec({ x: b.x, y: b.y + b.h }, p.rot), rotVec({ x: b.x + b.w, y: b.y + b.h }, p.rot)]) add(p.x + c.x, p.y + c.y)
-    }
-    for (const w of world.wires) if (ids.has(w.id)) for (const v of wirePath(w)) add(v.x, v.y)
-    if (!(x1 >= x0)) return null
-    return { x0: x0 - MOVER_PAD, y0: y0 - MOVER_PAD, x1: x1 + MOVER_PAD, y1: y1 + MOVER_PAD }
   }
 
   /** A fingerprint of every part and wire: what it looks like (`look`, the same when it only moved) and where it is (`pos`). */
@@ -526,15 +439,6 @@ export class Renderer {
     main.drawImage(layer.canvas, dx, dy, this.canvas.width, this.canvas.height, 0, 0, this.canvas.width, this.canvas.height)
   }
 
-  /** Copy a layer of dragged things, moved by (dx, dy) world px from where it was painted. */
-  private blitShifted(layer: Layer, view: View, dx: number, dy: number): void {
-    const main = this.main
-    const s = this.dpr * view.zoom
-    main.setTransform(1, 0, 0, 1, 0, 0)
-    main.imageSmoothingEnabled = false
-    main.drawImage(layer.canvas, Math.round((layer.ox + dx - view.camX) * s), Math.round((layer.oy + dy - view.camY) * s))
-  }
-
   /** Wire colours and branch joins depend only on the layout, so they are worked out when the layout changes, not every frame. */
   private wireCache: { world: World; version: number; colors: Map<string, string>; taps: Map<string, Vec[]>; dots: { at: Vec; color: string; wire: string }[] } | null = null
 
@@ -562,24 +466,24 @@ export class Renderer {
     this.drawLive(world, sim, ov, now)
   }
 
-  /** Stacking: breadboard, flat parts, tall parts, then wires, then batteries and bench tools; the selected part (not the board) goes on top. */
+  /** Stacking: every part (breadboard, flat, tall, the rest), then all wires over them, then the switches; the selected part (not the board) goes on top. */
   private stackOf(world: World, ov: Overlay): { stack: PartInstance[]; front: PartInstance | undefined } {
     const sel = ov.selectedPart ? world.getPart(ov.selectedPart) : undefined
     const front = sel && layerOf(sel.type) > 0 ? sel : undefined
     return { stack: stackOrder(world.parts).filter((p) => p !== front), front }
   }
 
-  /** Everything under the flowing dots: the board and flat parts, the wires and their junction dots. */
-  private drawBelow(world: World, sim: Simulation, ov: Overlay, now: number, f?: Pick): void {
+  /** Everything under the flowing dots: all parts, then the wires and their junction dots. */
+  private drawBelow(world: World, sim: Simulation, ov: Overlay, now: number): void {
     const c = this.ctx
     const { stack } = this.stackOf(world, ov)
-    if (!this.hide.parts) for (const part of stack) if (layerOf(part.type) < 4 && picks(f, part.id)) this.drawPart(part, sim, now, 1)
+    if (!this.hide.parts) for (const part of stack) if (!drawsOverWires(part.type)) this.drawPart(part, sim, now, 1)
     const { colors, taps, dots: tapDots } = this.wireInfo(world)
     // every cable's shadow and outline first, then the bodies: a branch merges into its main wire with no dark seam
     const shapes = new Map<string, CableShape>()
     // a round dot wherever a branch wire joins the middle of another (same colour as the main wire)
-    const dots: { at: Vec; color: string; wire: string; shape?: CableShape }[] = tapDots.filter((d) => picks(f, d.wire)).map((d) => ({ ...d }))
-    const wires = f ? world.wires.filter((w) => picks(f, w.id)) : world.wires
+    const dots: { at: Vec; color: string; shape?: CableShape }[] = tapDots.map((d) => ({ ...d }))
+    const wires = world.wires
     if (this.pixelMode && !this.hide.wires && !this.hide.bodies) {
       for (const w of wires) {
         const shape = cableShape(wirePath(w))
@@ -607,11 +511,11 @@ export class Renderer {
     }
   }
 
-  /** Over the dots: batteries and bench tools, then the selected part. */
-  private drawAbove(world: World, sim: Simulation, ov: Overlay, now: number, f?: Pick): void {
+  /** Over the dots: the switches, then the selected part. */
+  private drawAbove(world: World, sim: Simulation, ov: Overlay, now: number): void {
     const { stack, front } = this.stackOf(world, ov)
-    if (!this.hide.parts) for (const part of stack) if (layerOf(part.type) >= 4 && picks(f, part.id)) this.drawPart(part, sim, now, 1)
-    if (front && !this.hide.parts && picks(f, front.id)) this.drawPart(front, sim, now, 1)
+    if (!this.hide.parts) for (const part of stack) if (drawsOverWires(part.type)) this.drawPart(part, sim, now, 1)
+    if (front && !this.hide.parts) this.drawPart(front, sim, now, 1)
   }
 
   /** Things that move or follow the mouse: loose leads, the part being placed, smoke. */

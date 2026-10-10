@@ -114,14 +114,21 @@ const LOW_PARTS = new Set(['resistor', 'diode'])
 const TALL_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc', 'cap-ceramic', 'cap-electro', 'supply'])
 
 /**
- * Draw layer of a part: 0 breadboard, 1 flat parts, 2 tall parts, 4 bench tools and batteries.
- * Wires are drawn between layers 2 and 4; ties keep placement order. Hit testing uses the same order.
+ * Order of parts among themselves: 0 breadboard, 1 flat parts, 2 tall parts, 4 everything else; ties keep placement order.
+ * Wires are drawn over every part except switches (`drawsOverWires`); the selected part is over the wires. Hit testing uses the same order.
  */
 export function layerOf(type: string): number {
   if (type.startsWith('breadboard')) return 0
   if (LOW_PARTS.has(type)) return 1
   if (TALL_PARTS.has(type)) return 2
   return 4
+}
+
+const OVER_WIRES = new Set(['switch', 'slide-switch', 'button'])
+
+/** Switches and push buttons are drawn (and hit) over the wires, so a wire never hides the thing you press. */
+export function drawsOverWires(type: string): boolean {
+  return OVER_WIRES.has(type)
 }
 
 /** Parts from bottom to top: by layer, then by the order they were placed. */

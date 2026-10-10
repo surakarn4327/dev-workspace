@@ -1,6 +1,6 @@
 // Pointer hit testing in world coordinates.
 
-import { defOf, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
+import { defOf, drawsOverWires, layerOf, pinWorld, stackOrder } from '../parts/index.ts'
 import { holeNear } from '../parts/breadboard.ts'
 import { straightMid } from './wireEdit.ts'
 import { unrotVec, wirePath } from './world.ts'
@@ -28,6 +28,13 @@ function segDist(p: Vec, a: Vec, b: Vec): number {
   if (l2 === 0) return dist(p, a)
   const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2))
   return dist(p, { x: a.x + t * dx, y: a.y + t * dy })
+}
+
+/** Is the world point inside the part's box (a 2 px margin)? */
+function partAt(part: PartInstance, p: Vec): boolean {
+  const local = unrotVec({ x: p.x - part.x, y: p.y - part.y }, part.rot)
+  const b = defOf(part.type).bounds(part)
+  return local.x >= b.x - 2 && local.x <= b.x + b.w + 2 && local.y >= b.y - 2 && local.y <= b.y + b.h + 2
 }
 
 export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string | null, skipWires = false, frontId: string | null = null): Hit {
@@ -70,6 +77,15 @@ export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string
   }
   if (bestPin) return bestPin
 
+  // the selected part is drawn over the wires, so it is hit before them
+  const frontPart = frontId ? world.getPart(frontId) : undefined
+  if (frontPart && layerOf(frontPart.type) > 0 && partAt(frontPart, p)) return { kind: 'part', part: frontPart, local: unrotVec({ x: p.x - frontPart.x, y: p.y - frontPart.y }, frontPart.rot) }
+
+  // switches are drawn over the wires too
+  for (const part of stackOrder(world.parts).reverse()) {
+    if (drawsOverWires(part.type) && partAt(part, p)) return { kind: 'part', part, local: unrotVec({ x: p.x - part.x, y: p.y - part.y }, part.rot) }
+  }
+
   for (let k = skipWires ? -1 : world.wires.length - 1; k >= 0; k--) {
     const w = world.wires[k]
     const path = wirePath(w)
@@ -79,15 +95,9 @@ export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string
   }
 
   // parts: the selected one first, then from the top of the stacking order down (same order as drawing)
-  const stacked = stackOrder(world.parts).reverse()
-  const frontPart = frontId ? world.getPart(frontId) : undefined
-  if (frontPart && layerOf(frontPart.type) > 0) stacked.unshift(frontPart)
-  for (const part of stacked) {
-    const def = defOf(part.type)
+  for (const part of stackOrder(world.parts).reverse()) {
     if (part.type.startsWith('breadboard')) continue
-    const local = unrotVec({ x: p.x - part.x, y: p.y - part.y }, part.rot)
-    const b = def.bounds(part)
-    if (local.x >= b.x - 2 && local.x <= b.x + b.w + 2 && local.y >= b.y - 2 && local.y <= b.y + b.h + 2) return { kind: 'part', part, local }
+    if (partAt(part, p)) return { kind: 'part', part, local: unrotVec({ x: p.x - part.x, y: p.y - part.y }, part.rot) }
   }
 
   for (let k = world.parts.length - 1; k >= 0; k--) {
