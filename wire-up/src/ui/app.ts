@@ -2,6 +2,8 @@ import { World } from '../board/world.ts'
 import type { WorldData } from '../board/world.ts'
 import { SceneBuilder } from '../lessons/lessons.ts'
 import { icon } from './icons.ts'
+import { buildBench } from './bench.ts'
+import { FrameMeter } from './perf.ts'
 import { MenuBar } from './menubar.ts'
 import type { Action } from './menubar.ts'
 import type { IconName } from './icons.ts'
@@ -99,6 +101,45 @@ export class App {
     this.afterEdit()
   }
 
+  private meter: FrameMeter | null = null
+
+  /** Show or hide the frame meter (timings of every frame, and big test circuits to measure with). */
+  private toggleMeter(): void {
+    if (!this.meter) {
+      this.meter = new FrameMeter($('perf'), {
+        bench: (n) => {
+          this.enterLesson((b) => {
+            const made = buildBench(b, n)
+            this.benchParts = made
+          })
+          $('save-state').textContent = 'test circuit (lab is kept safe)'
+        },
+        back: () => {
+          this.leaveMission()
+          this.benchParts = 0
+        },
+        hide: (what, off) => {
+          this.ws.renderer.hide[what] = off
+        },
+        cache: (on) => {
+          this.ws.renderer.cacheOn = on
+        },
+        info: () => `${this.world.parts.length} parts, ${this.world.wires.length} wires${this.benchParts > 0 ? '  (test circuit)' : ''}  ${$('status-right').textContent ?? ''}`,
+      })
+      this.ws.meter = this.meter
+    }
+    this.meter.setVisible(!this.meter.visible)
+  }
+
+  private benchParts = 0
+
+  /** Back to the player's own lab from a mission or from a test circuit. */
+  private leaveMission(): void {
+    if (!this.inLesson) return
+    if (this.lessons.active) this.lessons.exit()
+    else this.exitLesson()
+  }
+
   private buildMenus(): void {
     const ws = this.ws
     const hasSel = (): boolean => {
@@ -118,7 +159,7 @@ export class App {
             label: 'New lab',
             run: () => {
               if (!window.confirm('Clear the whole lab? (You can undo this.)')) return
-              if (this.inLesson) this.lessons.exit()
+              this.leaveMission()
               this.world.clear()
               ws.select(null)
               this.afterEdit()
@@ -126,6 +167,7 @@ export class App {
           },
           { icon: 'import', label: 'Import file', run: () => $<HTMLInputElement>('file-import').click() },
           { icon: 'export', label: 'Export file', run: () => exportFile(this.world.serialize()) },
+          { icon: 'gauge', label: 'Frame meter', run: () => this.toggleMeter() },
         ],
       },
       '|',
@@ -179,7 +221,7 @@ export class App {
         this.toast('Import failed', res.error, false)
         return
       }
-      if (this.inLesson) this.lessons.exit()
+      this.leaveMission()
       this.world.load(res.lab.data)
       untangle(this.world)
       this.world.commit()

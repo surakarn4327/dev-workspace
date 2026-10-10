@@ -38,6 +38,8 @@ export class Simulation {
   events: FailEvent[] = []
   log: LogEntry[] = []
   clock = 0
+  /** Counts every new answer shown (readings, stress, wire currents): a picture of the circuit is stale when this moved. */
+  stamp = 0
   private builtVersion = -1
   private builtClock = 0
   private warm?: Float64Array
@@ -82,6 +84,7 @@ export class Simulation {
   /** Take a solve as the state of the circuit: current in the wires, and every part's readings and stress. */
   private show(res: SolveResult & { raw: Float64Array }): void {
     this.warm = res.raw
+    this.stamp++
     this.solved = res
     this.result = res
     const flow = computeFlow(this.world, this.net, res)

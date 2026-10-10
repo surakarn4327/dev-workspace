@@ -786,3 +786,40 @@ dialog li {
   src: url('/fonts/Silver.ttf') format('truetype');
   font-display: block;
 }
+
+/* Frame meter (File > Frame meter): timings of every frame, and buttons that load a big test circuit */
+#perf {
+  position: absolute;
+  top: 8px;
+  right: calc(var(--rw) + 12px);
+  z-index: 5;
+  padding: 6px 8px;
+  background: rgba(14, 12, 28, 0.88);
+  border: 1px solid var(--line);
+  font-size: 11px;
+}
+
+#perf[hidden] {
+  display: none;
+}
+
+#perf pre {
+  margin: 0 0 6px;
+  font: inherit;
+  color: var(--green);
+  white-space: pre;
+}
+
+#perf .perf-row {
+  display: flex;
+  gap: 4px;
+}
+
+#perf .perf-row + .perf-row {
+  margin-top: 4px;
+}
+
+#perf button {
+  padding: 2px 8px;
+  font-size: 11px;
+}

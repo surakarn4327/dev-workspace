@@ -10,9 +10,11 @@ import { ringOf } from './outline.ts'
 import { PX } from './pixel.ts'
 import { COL, drawLabelAt, drawText, LABEL_GAP, labelBoxSize, mix, radialGlow, rrect } from './draw.ts'
 import { straightMid } from '../board/wireEdit.ts'
-import { cableShape, drawCableBase, drawCableBody, drawCableCaps, junctionShape, pixelProbeHead } from './pixelwire.ts'
+import { SELECT_GLOW_REACH, SELECT_GLOW_STEPS, cableShape, drawCableBase, drawCableSelection, drawCableBody, drawCableCaps, junctionShape, pixelProbeHead } from './pixelwire.ts'
 import type { CableShape } from './pixelwire.ts'
 import { scene } from './scene.ts'
+import { sameSigs, shiftOf } from './dragPlan.ts'
+import type { Sigs, Snap } from './dragPlan.ts'
 
 /** Pin names shown on the pin label: an LED or diode lead reads + or - instead of A or K. */
 /** The dot grid never packs its dots closer than this many screen px (see drawGrid). */
@@ -63,10 +65,136 @@ interface Particle {
   spark: boolean
 }
 
+/** What the frame meter can leave out of a frame. `wires` leaves out all of the wire drawing; `bodies` and `caps` only that half of it. */
+export type HideKind = 'grid' | 'parts' | 'wires' | 'bodies' | 'caps' | 'dots' | 'selection'
+
+/** How far past the screen edge (CSS px) a layer reaches, so panning does not need a repaint until it runs out. */
+const LAYER_MARGIN = 256
+
+interface Layer {
+  canvas: HTMLCanvasElement
+  key: string
+  /** World position of the layer's top-left corner. */
+  ox: number
+  oy: number
+  /** Nothing drawn on it: skip the copy. */
+  empty: boolean
+}
+
+function makeLayer(): Layer {
+  return { canvas: document.createElement('canvas'), key: '', ox: 0, oy: 0, empty: false }
+}
+
+/** Room around the dragged things for shadows, glows and labels (world px). */
+const MOVER_PAD = 80
+
+/** Biggest picture of dragged things worth keeping (device pixels); bigger is painted the long way. */
+const MAX_MOVER_PIXELS = 16_000_000
+
+/** Which parts and wires to draw: not these (`skip`), or only these (`only`). */
+interface Pick {
+  skip?: Set<string>
+  only?: Set<string>
+}
+
+function picks(f: Pick | undefined, id: string): boolean {
+  if (!f) return true
+  if (f.skip && f.skip.has(id)) return false
+  return !f.only || f.only.has(id)
+}
+
+const usedHashes = new WeakMap<Set<string>, number>()
+
+/** A number that changes when the set of plugged holes does (the breadboard draws plugged holes differently). */
+function usedHash(keys: Set<string>): number {
+  let h = usedHashes.get(keys)
+  if (h === undefined) {
+    h = keys.size
+    for (const k of keys) {
+      let x = 0
+      for (let i = 0; i < k.length; i++) x = (x * 31 + k.charCodeAt(i)) | 0
+      h = (h + x) | 0
+    }
+    usedHashes.set(keys, h)
+  }
+  return h
+}
+
+interface RingPictures {
+  /** Part-local world position of the pictures' top-left corner, and their size in art pixels. */
+  x: number
+  y: number
+  w: number
+  h: number
+  /** One picture for each of the four steps of the crawl of the dashes. */
+  pics: HTMLCanvasElement[]
+}
+
+const ringPictureCache = new WeakMap<object, Map<string, RingPictures>>()
+
+/**
+ * The outline of a selected part as pictures, one art pixel per picture pixel: the dashes in each of the four steps of their crawl
+ * with the two steps of glow round them. Drawing the outline from thousands of little squares each frame is the slowest thing a weak
+ * graphics card is asked to do; copying a picture is one operation.
+ */
+function ringPictures(ring: { cells: Array<[number, number]> }, color: string): RingPictures {
+  let byColor = ringPictureCache.get(ring)
+  if (!byColor) {
+    byColor = new Map()
+    ringPictureCache.set(ring, byColor)
+  }
+  let hit = byColor.get(color)
+  if (!hit) {
+    let x0 = Infinity
+    let y0 = Infinity
+    let x1 = -Infinity
+    let y1 = -Infinity
+    for (const [x, y] of ring.cells) {
+      const cx = Math.round(x / PX)
+      const cy = Math.round(y / PX)
+      if (cx < x0) x0 = cx
+      if (cx > x1) x1 = cx
+      if (cy < y0) y0 = cy
+      if (cy > y1) y1 = cy
+    }
+    x0 -= SELECT_GLOW_REACH
+    y0 -= SELECT_GLOW_REACH
+    x1 += SELECT_GLOW_REACH
+    y1 += SELECT_GLOW_REACH
+    const w = Math.max(1, x1 - x0 + 1)
+    const h = Math.max(1, y1 - y0 + 1)
+    const pics: HTMLCanvasElement[] = []
+    for (let phase = 0; phase < 4; phase++) {
+      const cv = document.createElement('canvas')
+      cv.width = w
+      cv.height = h
+      const g = cv.getContext('2d')!
+      g.fillStyle = color
+      // the two layers of glow from the outside in (each a fainter, fatter copy of the outline), then the dashes
+      for (const [grow, alpha] of SELECT_GLOW_STEPS) {
+        g.globalAlpha = alpha
+        g.beginPath()
+        for (const [x, y] of ring.cells) g.rect(Math.round(x / PX) - grow - x0, Math.round(y / PX) - grow - y0, 2 * grow + 1, 2 * grow + 1)
+        g.fill()
+      }
+      g.globalAlpha = 1
+      g.beginPath()
+      for (const [x, y] of ring.cells) if (((x + y) / PX + phase) % 4 !== 0) g.rect(Math.round(x / PX) - x0, Math.round(y / PX) - y0, 1, 1) // a gap, so the line reads as dashes
+      g.fill()
+      pics.push(cv)
+    }
+    hit = { x: x0 * PX, y: y0 * PX, w, h, pics }
+    byColor.set(color, hit)
+  }
+  return hit
+}
+
 export class Renderer {
   /** Context every draw method paints into. Points at the pixel layer while it is being drawn. */
   ctx: CanvasRenderingContext2D
   private readonly main: CanvasRenderingContext2D
+  /** Frame meter switches: leave a kind of drawing out to see how much frame time it costs (nothing else uses these). */
+  readonly hide: Record<HideKind, boolean> = { grid: false, parts: false, wires: false, bodies: false, caps: false, dots: false, selection: false }
   /** Use hand-made pixel sprites where they exist (parts without a sprite still draw as vectors). */
   pixelMode = true
   /** Device pixels per world unit while drawing (sets the resolution of the burnt-part scratch canvas). */
@@ -174,14 +302,15 @@ export class Renderer {
     main.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
     main.fillStyle = COL.bg
     main.fillRect(0, 0, this.width, this.height)
-    this.drawGrid(view)
+    if (!this.hide.grid) this.drawGrid(view)
 
     const sMain = this.dpr * zoom
     this.scale = sMain
     scene.pixel = this.pixelMode
     main.setTransform(sMain, 0, 0, sMain, -view.camX * sMain, -view.camY * sMain)
     main.imageSmoothingEnabled = false
-    this.drawContent(world, sim, ov, now)
+    if (this.cacheable(world)) this.drawCached(world, sim, view, ov, now)
+    else this.drawContent(world, sim, ov, now)
 
     // selection, handles and hints
     main.setTransform(sMain, 0, 0, sMain, -view.camX * sMain, -view.camY * sMain)
@@ -189,20 +318,237 @@ export class Renderer {
     main.setTransform(1, 0, 0, 1, 0, 0)
   }
 
-  /** Wire colours and branch joins depend only on the layout, so they are worked out when the layout changes, not every frame. */
-  private wireCache: { world: World; version: number; colors: Map<string, string>; taps: Map<string, Vec[]>; dots: { at: Vec; color: string }[] } | null = null
+  /**
+   * The still part of the picture (parts and wires) is painted once into two off-screen layers (under and over the flowing dots), a
+   * little larger than the screen, and each frame only copies them over: panning slides the copy, a quiet board costs almost nothing.
+   *
+   * While something is being dragged, what moves rigidly (the dragged parts and the wires that go along with them, however many)
+   * is painted once into two more layers of its own and those are copied over shifted by the distance dragged; what changes shape
+   * (a wire stretching between a dragged part and one that stays) or reading (an LED lighting up) is painted live, a few at a time.
+   * So a frame costs the same whether one part or the whole circuit is being dragged.
+   *
+   * Nothing is ever stretched and nothing is ever missing: a frame that cannot be made from the layers is painted live exactly like
+   * before. The layers are painted again when the player stops moving things, or when the drag involves something new.
+   */
+  private layers = [makeLayer(), makeLayer()]
+  private movers = [makeLayer(), makeLayer()]
+  private lastTokens = ''
+  private lastBase = ''
+  private lastZoom = 0
+  private lastSigs: Sigs | null = null
+  /** What the layers were painted from. */
+  private snap: Snap | null = null
+  /** Frame meter switch: turn the layers off to see what painting everything every frame costs. */
+  cacheOn = true
 
-  private wireInfo(world: World): { colors: Map<string, string>; taps: Map<string, Vec[]>; dots: { at: Vec; color: string }[] } {
+  /** A burnt or hot part animates with time, so the picture cannot be kept: such a frame is painted the long way. */
+  private cacheable(world: World): boolean {
+    return this.cacheOn && !world.parts.some((p) => p.state.failed || p.state.heat > 0.02)
+  }
+
+  private drawCached(world: World, sim: Simulation, view: View, ov: Overlay, now: number): void {
+    const main = this.main
+    const { zoom } = view
+    const s = this.dpr * zoom
+    const m = LAYER_MARGIN / zoom // margin in world units
+    const base = [this.pixelMode, this.dpr, this.width, this.height, ov.selectedPart, ov.labelPart, ov.selectedWire, [...ov.group.wires].join(','), Object.values(this.hide).join(',')].join('|')
+    const [below, above] = this.layers
+    // fingerprint the board only when something that can change it has happened
+    const tokens = `${base}|${zoom}|${world.version}|${sim.stamp}`
+    let sigs = this.lastSigs
+    let stable: boolean
+    if (sigs && tokens === this.lastTokens) stable = true
+    else {
+      const fresh = this.itemSigs(world, sim)
+      stable = sigs !== null && this.lastBase === base && this.lastZoom === zoom && sameSigs(fresh, sigs)
+      sigs = fresh
+    }
+    this.lastTokens = tokens
+    this.lastBase = base
+    this.lastZoom = zoom
+    this.lastSigs = sigs
+    const snap = this.snap
+    const inView = Math.abs(view.camX - below.ox - m) <= m * 0.9 && Math.abs(view.camY - below.oy - m) <= m * 0.9
+    const usable = snap !== null && snap.base === base && snap.zoom === zoom && inView
+    let shift = usable ? shiftOf(sigs, snap) : null // how far the dragged things have gone, when the layers can show this frame
+    if (shift && stable && snap && (snap.moving.size > 0 || snap.live.size > 0)) shift = null // nothing moves any more: put everything back into the still layers
+    if (!shift) {
+      let plan: { moving: Set<string>; live: Set<string> } | null = null
+      // nothing is moving: the layers take everything in, in its proper place. While things are moving the frame is painted live (no
+      // picture of the dragged things is taken first: that made every drag start and stop with a stall)
+      if (stable) plan = { moving: new Set(), live: new Set() }
+      if (!plan || !this.paintLayers(world, sim, view, ov, now, base, plan, sigs)) {
+        main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
+        main.imageSmoothingEnabled = false
+        this.drawContent(world, sim, ov, now)
+        return
+      }
+      shift = { dx: 0, dy: 0 }
+    }
+    const live = this.snap!.live
+    const only = live.size > 0 ? { only: live } : undefined
+    const [moveBelow, moveAbove] = this.movers
+    this.blit(below, view)
+    if (!moveBelow.empty) this.blitShifted(moveBelow, view, shift.dx, shift.dy)
+    main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
+    main.imageSmoothingEnabled = false
+    if (only) this.drawBelow(world, sim, ov, now, only)
+    if (!this.hide.dots) this.drawFlow(sim, now)
+    if (!above.empty) this.blit(above, view)
+    if (!moveAbove.empty) this.blitShifted(moveAbove, view, shift.dx, shift.dy)
+    main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
+    main.imageSmoothingEnabled = false
+    if (only) this.drawAbove(world, sim, ov, now, only)
+    this.drawLive(world, sim, ov, now)
+  }
+
+  /**
+   * Paint the layers from scratch: the still things into the two big layers, `plan.moving` into the two layers that get shifted.
+   * `plan.live` is left out of both (it is painted every frame). False when the moving things are too big to keep as a picture.
+   */
+  private paintLayers(world: World, sim: Simulation, view: View, ov: Overlay, now: number, base: string, plan: { moving: Set<string>; live: Set<string> }, sigs: Sigs): boolean {
+    const s = this.dpr * view.zoom
+    const m = LAYER_MARGIN / view.zoom
+    const out = new Set([...plan.moving, ...plan.live])
+    // the dragged things get a picture just big enough for them
+    let box: { x0: number; y0: number; x1: number; y1: number } | null = null
+    if (plan.moving.size > 0) {
+      box = this.boxOf(world, plan.moving)
+      if (!box || (box.x1 - box.x0) * s * (box.y1 - box.y0) * s > MAX_MOVER_PIXELS) return false
+    }
+    const w = Math.ceil((this.width + 2 * LAYER_MARGIN) * this.dpr)
+    const h = Math.ceil((this.height + 2 * LAYER_MARGIN) * this.dpr)
+    const [below, above] = this.layers
+    for (const layer of this.layers) {
+      if (layer.canvas.width !== w || layer.canvas.height !== h) {
+        layer.canvas.width = w
+        layer.canvas.height = h
+      }
+      layer.ox = view.camX - m
+      layer.oy = view.camY - m
+    }
+    const skip = { skip: out }
+    this.paintLayer(below, s, () => this.drawBelow(world, sim, ov, now, skip))
+    this.paintLayer(above, s, () => this.drawAbove(world, sim, ov, now, skip))
+    const { stack, front } = this.stackOf(world, ov)
+    const aboveParts = [...stack.filter((p) => layerOf(p.type) >= 4), ...(front ? [front] : [])]
+    above.empty = aboveParts.every((p) => out.has(p.id))
+    below.empty = false
+    const [moveBelow, moveAbove] = this.movers
+    moveBelow.empty = true
+    moveAbove.empty = true
+    if (box) {
+      const mw = Math.ceil((box.x1 - box.x0) * s)
+      const mh = Math.ceil((box.y1 - box.y0) * s)
+      for (const layer of this.movers) {
+        if (layer.canvas.width !== mw || layer.canvas.height !== mh) {
+          layer.canvas.width = mw
+          layer.canvas.height = mh
+        }
+        layer.ox = box.x0
+        layer.oy = box.y0
+      }
+      const only = { only: plan.moving }
+      this.paintLayer(moveBelow, s, () => this.drawBelow(world, sim, ov, now, only))
+      this.paintLayer(moveAbove, s, () => this.drawAbove(world, sim, ov, now, only))
+      moveBelow.empty = false
+      moveAbove.empty = aboveParts.every((p) => !plan.moving.has(p.id))
+    }
+    this.snap = { look: sigs.look, pos: new Map(sigs.pos), vals: sigs.vals, moving: plan.moving, live: plan.live, base, zoom: view.zoom }
+    return true
+  }
+
+  /** Smallest box (world px, with room for shadows and glows) around the given parts and wires. */
+  private boxOf(world: World, ids: Set<string>): { x0: number; y0: number; x1: number; y1: number } | null {
+    let x0 = Infinity
+    let y0 = Infinity
+    let x1 = -Infinity
+    let y1 = -Infinity
+    const add = (x: number, y: number): void => {
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (y < y0) y0 = y
+      if (y > y1) y1 = y
+    }
+    for (const p of world.parts) {
+      if (!ids.has(p.id)) continue
+      const b = defOf(p.type).bounds(p)
+      for (const c of [rotVec({ x: b.x, y: b.y }, p.rot), rotVec({ x: b.x + b.w, y: b.y }, p.rot), rotVec({ x: b.x, y: b.y + b.h }, p.rot), rotVec({ x: b.x + b.w, y: b.y + b.h }, p.rot)]) add(p.x + c.x, p.y + c.y)
+    }
+    for (const w of world.wires) if (ids.has(w.id)) for (const v of wirePath(w)) add(v.x, v.y)
+    if (!(x1 >= x0)) return null
+    return { x0: x0 - MOVER_PAD, y0: y0 - MOVER_PAD, x1: x1 + MOVER_PAD, y1: y1 + MOVER_PAD }
+  }
+
+  /** A fingerprint of every part and wire: what it looks like (`look`, the same when it only moved) and where it is (`pos`). */
+  private itemSigs(world: World, sim: Simulation): Sigs {
+    const look = new Map<string, string>()
+    const pos = new Map<string, [number, number]>()
+    const vals = new Map<string, number[]>()
+    const { colors, taps } = this.wireInfo(world)
+    const used = usedHash(sim.net.usedKeys)
+    for (const p of world.parts) {
+      const live = sim.live.get(p.id)
+      const board = p.type.startsWith('breadboard') ? `,${used}` : ''
+      look.set(p.id, `${p.rot},${p.state.failed ? 1 : 0},${JSON.stringify(p.params)},${p.leads ? JSON.stringify(p.leads) : ''},${live ? Object.keys(live).sort().join('|') : ''}${board}`)
+      if (live) vals.set(p.id, Object.keys(live).sort().map((k) => (live as Record<string, number>)[k]))
+      pos.set(p.id, [p.x, p.y])
+    }
+    for (const w of world.wires) {
+      const rel = (v: Vec): string => `${v.x - w.a.x}:${v.y - w.a.y}`
+      const list = (a: Vec[]): string => a.map(rel).join(';')
+      look.set(w.id, `${rel(w.b)}|${list(w.via)}|${colors.get(w.id) ?? w.color}|${list(taps.get(w.id) ?? [])}|${list(w.taps ?? [])}`)
+      pos.set(w.id, [w.a.x, w.a.y])
+    }
+    return { look, pos, vals }
+  }
+
+  private paintLayer(layer: Layer, s: number, paint: () => void): void {
+    const lc = layer.canvas.getContext('2d')!
+    lc.setTransform(1, 0, 0, 1, 0, 0)
+    lc.clearRect(0, 0, layer.canvas.width, layer.canvas.height)
+    lc.setTransform(s, 0, 0, s, -layer.ox * s, -layer.oy * s)
+    lc.imageSmoothingEnabled = false
+    this.ctx = lc
+    this.scale = s
+    paint()
+    this.ctx = this.main
+  }
+
+  /** Copy the part of a layer that is on screen. Whole device pixels, so pixel art stays sharp while panning. */
+  private blit(layer: Layer, view: View): void {
+    const main = this.main
+    const s = this.dpr * view.zoom
+    const dx = Math.round((view.camX - layer.ox) * s)
+    const dy = Math.round((view.camY - layer.oy) * s)
+    main.setTransform(1, 0, 0, 1, 0, 0)
+    main.imageSmoothingEnabled = false
+    main.drawImage(layer.canvas, dx, dy, this.canvas.width, this.canvas.height, 0, 0, this.canvas.width, this.canvas.height)
+  }
+
+  /** Copy a layer of dragged things, moved by (dx, dy) world px from where it was painted. */
+  private blitShifted(layer: Layer, view: View, dx: number, dy: number): void {
+    const main = this.main
+    const s = this.dpr * view.zoom
+    main.setTransform(1, 0, 0, 1, 0, 0)
+    main.imageSmoothingEnabled = false
+    main.drawImage(layer.canvas, Math.round((layer.ox + dx - view.camX) * s), Math.round((layer.oy + dy - view.camY) * s))
+  }
+
+  /** Wire colours and branch joins depend only on the layout, so they are worked out when the layout changes, not every frame. */
+  private wireCache: { world: World; version: number; colors: Map<string, string>; taps: Map<string, Vec[]>; dots: { at: Vec; color: string; wire: string }[] } | null = null
+
+  private wireInfo(world: World): { colors: Map<string, string>; taps: Map<string, Vec[]>; dots: { at: Vec; color: string; wire: string }[] } {
     const hit = this.wireCache
     if (hit && hit.world === world && hit.version === world.version) return hit
     const sockets = socketKeys(world)
     const colors = effectiveColors(world, sockets)
     const taps = new Map<string, Vec[]>()
-    const dots: { at: Vec; color: string }[] = []
+    const dots: { at: Vec; color: string; wire: string }[] = []
     for (const w of world.wires) {
       const ends = tapEnds(world, w, sockets)
       taps.set(w.id, ends)
-      for (const at of ends) dots.push({ at, color: colors.get(w.id) ?? w.color })
+      for (const at of ends) dots.push({ at, color: colors.get(w.id) ?? w.color, wire: w.id })
     }
     this.wireCache = { world, version: world.version, colors, taps, dots }
     return this.wireCache
@@ -210,19 +556,32 @@ export class Renderer {
 
   /** Things that are part of the circuit itself: parts, wires, leads, smoke. */
   private drawContent(world: World, sim: Simulation, ov: Overlay, now: number): void {
-    const c = this.ctx
-    // stacking: breadboard, flat parts, tall parts, then wires, then batteries and bench tools; the selected part (not the board) goes on top
+    this.drawBelow(world, sim, ov, now)
+    if (!this.hide.dots) this.drawFlow(sim, now)
+    this.drawAbove(world, sim, ov, now)
+    this.drawLive(world, sim, ov, now)
+  }
+
+  /** Stacking: breadboard, flat parts, tall parts, then wires, then batteries and bench tools; the selected part (not the board) goes on top. */
+  private stackOf(world: World, ov: Overlay): { stack: PartInstance[]; front: PartInstance | undefined } {
     const sel = ov.selectedPart ? world.getPart(ov.selectedPart) : undefined
     const front = sel && layerOf(sel.type) > 0 ? sel : undefined
-    const stack = stackOrder(world.parts).filter((p) => p !== front)
-    for (const part of stack) if (layerOf(part.type) < 4) this.drawPart(part, sim, now, 1)
+    return { stack: stackOrder(world.parts).filter((p) => p !== front), front }
+  }
+
+  /** Everything under the flowing dots: the board and flat parts, the wires and their junction dots. */
+  private drawBelow(world: World, sim: Simulation, ov: Overlay, now: number, f?: Pick): void {
+    const c = this.ctx
+    const { stack } = this.stackOf(world, ov)
+    if (!this.hide.parts) for (const part of stack) if (layerOf(part.type) < 4 && picks(f, part.id)) this.drawPart(part, sim, now, 1)
     const { colors, taps, dots: tapDots } = this.wireInfo(world)
     // every cable's shadow and outline first, then the bodies: a branch merges into its main wire with no dark seam
     const shapes = new Map<string, CableShape>()
     // a round dot wherever a branch wire joins the middle of another (same colour as the main wire)
-    const dots: { at: Vec; color: string; shape?: CableShape }[] = tapDots.map((d) => ({ ...d }))
-    if (this.pixelMode) {
-      for (const w of world.wires) {
+    const dots: { at: Vec; color: string; wire: string; shape?: CableShape }[] = tapDots.filter((d) => picks(f, d.wire)).map((d) => ({ ...d }))
+    const wires = f ? world.wires.filter((w) => picks(f, w.id)) : world.wires
+    if (this.pixelMode && !this.hide.wires && !this.hide.bodies) {
+      for (const w of wires) {
         const shape = cableShape(wirePath(w))
         shapes.set(w.id, shape)
         drawCableBase(c, shape, colors.get(w.id) ?? w.color)
@@ -232,8 +591,12 @@ export class Renderer {
         drawCableBase(c, d.shape, d.color)
       }
     }
-    for (const w of world.wires) this.drawWire(w, w.id === ov.selectedWire || ov.group.wires.has(w.id), colors.get(w.id) ?? w.color, shapes.get(w.id), taps.get(w.id) ?? [])
-    for (const d of dots) {
+    if (!this.hide.wires) {
+      const lit = wires.filter((w) => w.id === ov.selectedWire || ov.group.wires.has(w.id))
+      if (lit.length > 0 && !this.hide.selection) this.drawWireGlow(lit)
+    }
+    if (!this.hide.wires) for (const w of wires) this.drawWire(w, w.id === ov.selectedWire || ov.group.wires.has(w.id), colors.get(w.id) ?? w.color, shapes.get(w.id), taps.get(w.id) ?? [])
+    if (!this.hide.wires && !this.hide.bodies) for (const d of dots) {
       if (d.shape) drawCableBody(c, d.shape, d.color)
       else {
         c.fillStyle = d.color
@@ -242,10 +605,18 @@ export class Renderer {
         c.fill()
       }
     }
-    this.drawFlow(sim, now)
-    for (const part of stack) if (layerOf(part.type) >= 4) this.drawPart(part, sim, now, 1)
-    if (front) this.drawPart(front, sim, now, 1)
+  }
 
+  /** Over the dots: batteries and bench tools, then the selected part. */
+  private drawAbove(world: World, sim: Simulation, ov: Overlay, now: number, f?: Pick): void {
+    const { stack, front } = this.stackOf(world, ov)
+    if (!this.hide.parts) for (const part of stack) if (layerOf(part.type) >= 4 && picks(f, part.id)) this.drawPart(part, sim, now, 1)
+    if (front && !this.hide.parts && picks(f, front.id)) this.drawPart(front, sim, now, 1)
+  }
+
+  /** Things that move or follow the mouse: loose leads, the part being placed, smoke. */
+  private drawLive(world: World, sim: Simulation, ov: Overlay, now: number): void {
+    const c = this.ctx
     for (const part of world.parts) {
       const def = defOf(part.type)
       if (def.freeLeads && part.leads) this.drawLeads(part, ov)
@@ -277,10 +648,10 @@ export class Renderer {
     const selWire = ov.selectedWire ? world.getWire(ov.selectedWire) : undefined
     if (selWire) this.drawBendHandles(selWire)
     const sel = ov.selectedPart ? world.getPart(ov.selectedPart) : undefined
-    if (sel) this.drawSelection(sel, now)
+    if (sel && !this.hide.selection) this.drawSelection(sel, now)
     for (const id of ov.group.parts) {
       const gp = world.getPart(id)
-      if (gp) this.drawSelection(gp, now)
+      if (gp && !this.hide.selection) this.drawSelection(gp, now)
     }
     for (const id of ov.badParts) {
       const bp = world.getPart(id)
@@ -445,25 +816,39 @@ export class Renderer {
     c.restore()
   }
 
+  /**
+   * The mark of the selected wires: a solid pixel line round each one with the same two-step glow as the dashed outline of a
+   * selected part (fainter, fatter copies of the line: no blur, which is what made selecting many things stutter).
+   */
+  private drawWireGlow(list: Wire[]): void {
+    const c = this.ctx
+    if (this.pixelMode) {
+      for (const w of list) drawCableSelection(c, cableShape(wirePath(w)), COL.cyan)
+      return
+    }
+    c.save()
+    c.lineCap = 'round'
+    c.lineJoin = 'round'
+    c.strokeStyle = COL.cyan
+    c.globalAlpha = 0.45
+    c.lineWidth = 9
+    for (const w of list) {
+      this.tracePath(wirePath(w))
+      c.stroke()
+    }
+    c.restore()
+  }
+
   private drawWire(w: Wire, selected: boolean, color: string, shape: CableShape | undefined, bare: Vec[]): void {
     const c = this.ctx
     const path = wirePath(w)
     c.lineCap = 'round'
     c.lineJoin = 'round'
-    if (selected) {
-      c.strokeStyle = COL.cyan
-      c.shadowColor = COL.cyan
-      c.shadowBlur = 12
-      c.lineWidth = 8
-      this.tracePath(path)
-      c.stroke()
-      c.shadowBlur = 0
-    }
     if (this.pixelMode) {
       c.shadowBlur = 0
-      if (shape) drawCableBody(c, shape, color)
-      drawCableCaps(c, path, w.taps ?? [], bare)
-      if (selected) {
+      if (shape && !this.hide.bodies) drawCableBody(c, shape, color)
+      if (!this.hide.caps) drawCableCaps(c, path, w.taps ?? [], bare)
+      if (selected && !this.hide.selection) {
         for (const e of [w.a, w.b]) {
           c.strokeStyle = COL.cyan
           c.lineWidth = 1.5
@@ -498,7 +883,7 @@ export class Renderer {
       c.beginPath()
       c.arc(e.x, e.y, 1.6, 0, Math.PI * 2)
       c.fill()
-      if (selected) {
+      if (selected && !this.hide.selection) {
         c.strokeStyle = COL.cyan
         c.lineWidth = 1.5
         c.beginPath()
@@ -592,19 +977,13 @@ export class Renderer {
   private drawSelection(part: PartInstance, now: number, color: string = COL.cyan): void {
     const c = this.ctx
     const ring = ringOf(part, defOf(part.type))
-    const phase = Math.floor(now * 8)
+    const phase = ((Math.floor(now * 8) % 4) + 4) % 4
+    const pic = ringPictures(ring, color)
     c.save()
     c.translate(part.x, part.y)
     c.rotate((part.rot * Math.PI) / 2)
-    c.fillStyle = color
-    c.shadowColor = color
-    c.shadowBlur = 6
-    c.beginPath()
-    for (const [x, y] of ring.cells) {
-      if (((x + y) / PX + phase) % 4 === 0) continue // a gap, so the line reads as dashes
-      c.rect(x, y, PX, PX)
-    }
-    c.fill()
+    c.imageSmoothingEnabled = false
+    c.drawImage(pic.pics[phase], pic.x, pic.y, pic.w * PX, pic.h * PX)
     c.restore()
   }
 

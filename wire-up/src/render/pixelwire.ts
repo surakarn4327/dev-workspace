@@ -46,9 +46,8 @@ function rasterize(pts: PixelPoint[]): Array<[number, number]> {
 function fillCells(c: CanvasRenderingContext2D, cells: Array<[number, number]>, color: string): void {
   if (cells.length === 0) return
   c.fillStyle = color
-  c.beginPath()
-  for (const [x, y] of cells) c.rect(x * PX, y * PX, PX, PX)
-  c.fill()
+  // a few cells: plain rectangles are the cheapest thing a graphics card is asked to draw (a path of them is not)
+  for (const [x, y] of cells) c.fillRect(x * PX, y * PX, PX, PX)
 }
 
 export interface CableShape {
@@ -59,7 +58,88 @@ export interface CableShape {
   mid: Array<[number, number]>
   dark: Array<[number, number]>
   /** The cells of each layer as one Path2D, made the first time the layer is drawn and kept with the shape. */
-  paths?: Partial<Record<'shadow' | 'outline' | 'mid' | 'lit' | 'dark', Path2D>>
+  paths: Partial<Record<'shadow' | 'outline' | 'mid' | 'lit' | 'dark' | 'select' | 'halo1' | 'halo2', Path2D>>
+  /** The cable as two small pictures, one art pixel per canvas pixel, for each colour it has been drawn in (see `cablePictures`). */
+  pictures: Map<string, CablePictures | null>
+  /**
+   * The cells above are relative to this art pixel. A shape does not depend on where the cable lies, so a cable that is only moved
+   * (a dragged wire) uses the shape it already had, put down at the new place: see `place`.
+   */
+  ox: number
+  oy: number
+}
+
+interface CablePictures {
+  /** Shadow and outline. */
+  base: HTMLCanvasElement
+  /** The three shades of the body. */
+  body: HTMLCanvasElement
+  /** Art pixel of the picture's top-left corner. */
+  x: number
+  y: number
+}
+
+/** A cable bigger than this many art pixels in its bounding box is painted from its cells instead of from a picture. */
+const MAX_PICTURE_PIXELS = 400_000
+
+function paintCells(g: CanvasRenderingContext2D, cells: Array<[number, number]>, ox: number, oy: number, color: string): void {
+  if (cells.length === 0) return
+  g.fillStyle = color
+  g.beginPath()
+  for (const [x, y] of cells) g.rect(x - ox, y - oy, 1, 1)
+  g.fill()
+}
+
+/**
+ * A cable is thousands of one-pixel squares. Filling them every frame is cheap for the script but slow for a weak graphics card
+ * (a path made of thousands of little squares), so the squares are painted once into a small picture, one art pixel per picture
+ * pixel, and each frame only copies the picture. Copying it with smoothing off keeps it sharp at every zoom level.
+ */
+function cablePictures(shape: CableShape, color: string): CablePictures | null {
+  const cache = shape.pictures
+  const hit = cache.get(color)
+  if (hit !== undefined) return hit
+  let x0 = Infinity
+  let y0 = Infinity
+  let x1 = -Infinity
+  let y1 = -Infinity
+  for (const cells of [shape.shadow, shape.outline, shape.bodyCells]) {
+    for (const [x, y] of cells) {
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (y < y0) y0 = y
+      if (y > y1) y1 = y
+    }
+  }
+  const w = x1 - x0 + 1
+  const h = y1 - y0 + 1
+  if (!(w > 0 && h > 0) || w * h > MAX_PICTURE_PIXELS) {
+    cache.set(color, null)
+    return null
+  }
+  const make = (): [HTMLCanvasElement, CanvasRenderingContext2D] => {
+    const cv = document.createElement('canvas')
+    cv.width = w
+    cv.height = h
+    return [cv, cv.getContext('2d')!]
+  }
+  const [base, gb] = make()
+  paintCells(gb, shape.shadow, x0, y0, 'rgba(0,0,0,0.38)')
+  paintCells(gb, shape.outline, x0, y0, mix(color, '#000000', 0.78))
+  const [body, gd] = make()
+  paintCells(gd, shape.mid, x0, y0, color)
+  paintCells(gd, shape.lit, x0, y0, mix(color, '#ffffff', 0.4))
+  paintCells(gd, shape.dark, x0, y0, mix(color, '#000000', 0.35))
+  const made = { base, body, x: x0, y: y0 }
+  cache.set(color, made)
+  return made
+}
+
+function copyPicture(c: CanvasRenderingContext2D, pic: HTMLCanvasElement, x: number, y: number): void {
+  const smooth = c.imageSmoothingEnabled
+  c.imageSmoothingEnabled = false
+  c.drawImage(pic, x * PX, y * PX, pic.width * PX, pic.height * PX)
+  c.imageSmoothingEnabled = smooth
 }
 
 type Layer = 'shadow' | 'outline' | 'mid' | 'lit' | 'dark'
@@ -67,7 +147,7 @@ type Layer = 'shadow' | 'outline' | 'mid' | 'lit' | 'dark'
 function fillLayer(c: CanvasRenderingContext2D, shape: CableShape, layer: Layer, color: string): void {
   const cells = shape[layer]
   if (cells.length === 0) return
-  const paths = (shape.paths ??= {})
+  const paths = shape.paths
   let path = paths[layer]
   if (!path) {
     path = new Path2D()
@@ -75,7 +155,10 @@ function fillLayer(c: CanvasRenderingContext2D, shape: CableShape, layer: Layer,
     paths[layer] = path
   }
   c.fillStyle = color
+  c.save()
+  c.translate(shape.ox * PX, shape.oy * PX)
   c.fill(path)
+  c.restore()
 }
 
 /**
@@ -97,12 +180,17 @@ function remember(k: string, make: () => CableShape): CableShape {
 
 /** Work out which art pixels a cable covers and how each is shaded. */
 export function cableShape(pts: PixelPoint[]): CableShape {
-  return remember(pts.map((p) => `${Math.round(p.x / PX)},${Math.round(p.y / PX)}`).join(';'), () => buildCable(pts))
+  // remembered by its form (every corner relative to the first), so a cable that only moved finds the shape it had
+  const ox = Math.round(pts[0].x / PX)
+  const oy = Math.round(pts[0].y / PX)
+  const form = pts.map((p) => `${Math.round(p.x / PX) - ox},${Math.round(p.y / PX) - oy}`).join(';')
+  return place(remember(form, () => buildCable(pts, ox, oy)), ox, oy)
 }
 
-function buildCable(pts: PixelPoint[]): CableShape {
+function buildCable(pts: PixelPoint[], ox: number, oy: number): CableShape {
   const body = new Set<number>()
-  for (const [x, y] of rasterize(pts)) {
+  const relative = pts.map((p) => ({ x: p.x - ox * PX, y: p.y - oy * PX }))
+  for (const [x, y] of rasterize(relative)) {
     body.add(key(x, y))
     body.add(key(x - 1, y))
     body.add(key(x + 1, y))
@@ -120,12 +208,12 @@ function buildCable(pts: PixelPoint[]): CableShape {
 export function junctionShape(at: PixelPoint): CableShape {
   const cx = Math.round(at.x / PX)
   const cy = Math.round(at.y / PX)
-  return remember(`j${cx},${cy}`, () => buildJunction(cx, cy))
+  return place(remember('junction', buildJunction), cx, cy)
 }
 
-function buildJunction(cx: number, cy: number): CableShape {
+function buildJunction(): CableShape {
   const body = new Set<number>()
-  for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) if (Math.abs(dx) + Math.abs(dy) < 4) body.add(key(cx + dx, cy + dy)) // 5x5 minus its four corner cells
+  for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) if (Math.abs(dx) + Math.abs(dy) < 4) body.add(key(dx, dy)) // 5x5 minus its four corner cells
   return shapeOf(body)
 }
 
@@ -158,16 +246,111 @@ function shapeOf(body: Set<number>): CableShape {
     const shade = !body.has(key(x, y + 1)) || !body.has(key(x + 1, y))
     ;(light && !shade ? lit : shade && !light ? dark : mid).push([x, y])
   }
-  return { bodyCells, outline: [...outlineMap.values()], shadow, lit, mid, dark }
+  return { bodyCells, outline: [...outlineMap.values()], shadow, lit, mid, dark, paths: {}, pictures: new Map(), ox: 0, oy: 0 }
+}
+
+/** The same shape put down at art pixel (ox, oy): shares the saved paths and pictures of `base`. */
+function place(base: CableShape, ox: number, oy: number): CableShape {
+  const placed = Object.create(base) as CableShape
+  placed.ox = ox
+  placed.oy = oy
+  return placed
+}
+
+/**
+ * The mark of a selected cable: a solid one-pixel line just outside its dark outline, in the same pixel style as the dashed outline
+ * of a selected part (but without the gaps). A ready-made path of art-pixel squares, kept with the shape.
+ */
+/**
+ * The glow round a selection: two layers from the outside in, each (how many art pixels it reaches out from the line, how strong it
+ * is): two art pixels wide in all.
+ */
+export const SELECT_GLOW_STEPS: ReadonlyArray<readonly [number, number]> = [
+  [2, 0.12],
+  [1, 0.25],
+]
+export const SELECT_GLOW_REACH = 2
+
+function selectionPicture(shape: CableShape, color: string): CablePictures | null {
+  const cache = shape.pictures
+  const id = `select|${color}`
+  const hit = cache.get(id)
+  if (hit !== undefined) return hit
+  {
+    const taken = new Set<number>()
+    for (const [x, y] of shape.bodyCells) taken.add(key(x, y))
+    for (const [x, y] of shape.outline) taken.add(key(x, y))
+    const ring = new Map<number, [number, number]>()
+    for (const [x, y] of shape.outline) {
+      for (const [nx, ny] of [
+        [x - 1, y],
+        [x + 1, y],
+        [x, y - 1],
+        [x, y + 1],
+      ]) {
+        const k = key(nx, ny)
+        if (!taken.has(k)) ring.set(k, [nx, ny])
+      }
+    }
+    let x0 = Infinity
+    let y0 = Infinity
+    let x1 = -Infinity
+    let y1 = -Infinity
+    for (const [x, y] of ring.values()) {
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (y < y0) y0 = y
+      if (y > y1) y1 = y
+    }
+    x0 -= SELECT_GLOW_REACH
+    y0 -= SELECT_GLOW_REACH
+    x1 += SELECT_GLOW_REACH
+    y1 += SELECT_GLOW_REACH
+    const w = x1 - x0 + 1
+    const h = y1 - y0 + 1
+    if (!(w > 0 && h > 0) || w * h > MAX_PICTURE_PIXELS) {
+      cache.set(id, null)
+      return null
+    }
+    const cv = document.createElement('canvas')
+    cv.width = w
+    cv.height = h
+    const g = cv.getContext('2d')!
+    g.fillStyle = color
+    // the two layers of glow from the outside in (each a fainter, fatter copy of the line), then the line itself
+    for (const [grow, alpha] of [...SELECT_GLOW_STEPS, [0, 1] as const]) {
+      g.globalAlpha = alpha
+      g.beginPath()
+      for (const [x, y] of ring.values()) g.rect(x - grow - x0, y - grow - y0, 2 * grow + 1, 2 * grow + 1)
+      g.fill()
+    }
+    const made = { base: cv, body: cv, x: x0, y: y0 }
+    cache.set(id, made)
+    return made
+  }
+}
+
+/**
+ * Draw the selection mark of a cable at the place it lies: the line, and two steps of glow round it that are fainter and fatter
+ * copies of it (`outer` and `inner` are how strong they are). No blur, and one picture copied per cable: thousands of little
+ * squares filled every frame (what it used to be) is the slowest thing a weak graphics card is asked to do.
+ */
+export function drawCableSelection(c: CanvasRenderingContext2D, shape: CableShape, color: string): void {
+  const pic = selectionPicture(shape, color)
+  if (pic) copyPicture(c, pic.base, pic.x + shape.ox, pic.y + shape.oy)
 }
 
 /** The drop shadow and dark outline. Draw these for every cable before any body so joined cables merge cleanly. */
 export function drawCableBase(c: CanvasRenderingContext2D, shape: CableShape, color: string): void {
+  const pic = cablePictures(shape, color)
+  if (pic) return copyPicture(c, pic.base, pic.x + shape.ox, pic.y + shape.oy)
   fillLayer(c, shape, 'shadow', 'rgba(0,0,0,0.38)')
   fillLayer(c, shape, 'outline', mix(color, '#000000', 0.78))
 }
 
 export function drawCableBody(c: CanvasRenderingContext2D, shape: CableShape, color: string): void {
+  const pic = cablePictures(shape, color)
+  if (pic) return copyPicture(c, pic.body, pic.x + shape.ox, pic.y + shape.oy)
   fillLayer(c, shape, 'mid', color)
   fillLayer(c, shape, 'lit', mix(color, '#ffffff', 0.4))
   fillLayer(c, shape, 'dark', mix(color, '#000000', 0.35))

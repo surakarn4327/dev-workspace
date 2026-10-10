@@ -3,6 +3,7 @@ const PATHS = {
   file: '<path d="M3 6h6l2 2h10v11H3z"/>',
   edit: '<path d="M4 20l1-5L16 4l4 4L9 19z M14 6l4 4"/>',
   board: '<path d="M4 4h16v16H4z M9.3 4v16 M14.7 4v16 M4 9.3h16 M4 14.7h16"/>',
+  gauge: '<path d="M4 18a8 8 0 1 1 16 0 M12 18l4-6 M8 18h.01 M16 18h.01"/>',
   help: '<path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7 M12 17v.5"/>',
   new: '<path d="M6 3h8l4 4v14H6z M14 3v4h4 M12 11v6 M9 14h6"/>',
   undo: '<path d="M8 5 3 10l5 5 M4 10h9a5 5 0 0 1 0 10h-4"/>',

@@ -20,6 +20,7 @@ import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
 import { holeNear } from '../parts/breadboard.ts'
 import { defOf, isRuntimeState, newPart, pinWorld, rotatePart } from '../parts/index.ts'
 import { keyName } from './keys.ts'
+import type { FrameMeter } from './perf.ts'
 import { Renderer } from '../render/renderer.ts'
 import type { Overlay, View } from '../render/renderer.ts'
 
@@ -108,16 +109,25 @@ export class Workspace {
 
   // ------------------------------------------------------------ main loop
 
+  /** Where the time of each frame goes, when the player has the frame meter on. */
+  meter: FrameMeter | null = null
+
   private frame(t: number): void {
     const dt = Math.min((t - this.last) / 1000, 0.05)
+    const gap = t - this.last
     this.last = t
+    const t0 = performance.now()
     if (!this.paused) {
       this.time += dt
       this.sim.step(dt)
     }
+    const t1 = performance.now()
     this.renderer.update(dt, this.world, this.sim, this.time)
     this.renderer.draw(this.world, this.sim, this.view, this.overlay(), this.time)
+    const t2 = performance.now()
     this.onFrame(dt)
+    const t3 = performance.now()
+    this.meter?.record({ gap, sim: t1 - t0, draw: t2 - t1, other: t3 - t2 }, t)
     requestAnimationFrame((n) => this.frame(n))
   }
 
