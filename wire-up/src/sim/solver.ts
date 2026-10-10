@@ -101,6 +101,9 @@ export interface RelayElement {
   com: number
   no: number
   nc: number
+  /** Coil voltage that pulls in / lets go (default `RELAY.vPull` / `RELAY.vDrop`): a driver stage uses it as a switch with its own levels. */
+  vPull?: number
+  vDrop?: number
 }
 
 /** 5 V relay (SRD-05VDC-SL-C datasheet figures): coil, switching levels and ratings. */
@@ -716,7 +719,7 @@ export function settleTimers(circuit: Circuit, state: Map<string, number>, v: Fl
     if (e.kind === 'Y') {
       const vc = Math.abs(v[e.c1] - v[e.c2])
       const was = (state.get(`${e.id}:on`) ?? 0) > 0.5
-      put(`${e.id}:on`, vc >= RELAY.vPull ? true : vc <= RELAY.vDrop ? false : was)
+      put(`${e.id}:on`, vc >= (e.vPull ?? RELAY.vPull) ? true : vc <= (e.vDrop ?? RELAY.vDrop) ? false : was)
       continue
     }
     if (e.kind !== 'T') continue

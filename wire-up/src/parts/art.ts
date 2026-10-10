@@ -1155,37 +1155,85 @@ function dipBody(key: string, perRow: number): Sprite {
   })
 }
 
-// ---------------------------------------------------------------- relay
-
-/** Where the five pins sit in the relay sprite, in art pixels (cell (0, 0) is at world (-8, -32)): coil, coil, COM, NC, NO. */
-export const RELAY_PADS: Array<[number, number]> = [[4, 16], [4, 46], [54, 16], [34, 46], [74, 46]]
+// ---------------------------------------------------------------- relay module
 
 /**
- * 5 V PCB relay seen from above (reference: the blue Songle SRD-05VDC-SL-C cube, 19 x 15.5 mm): a flat blue plastic box with a
- * bevel, light from the upper left. The pins come out of the bottom; as the part stands on a board they are drawn as small silver
- * pads at their grid points. 78 x 62 art pixels, cell (0, 0) at world (-8, -32). Text and the status lamp are drawn by the part.
+ * A 5 V relay module board seen from above (references: three product photos of the one-, two- and four-channel black PCB
+ * modules with blue SRD-05VDC-SL-C relays): a black board with four mounting holes; for each channel a blue three-way screw
+ * terminal on the top edge, the blue relay cube under it, and below that the opto-coupler, the driver transistor, two resistors and
+ * the status LED; along the bottom edge the black pin header (silver pads at the pin points). `channels` relays in a row, 140 world
+ * px apart: (70 n + 30) x 220 art pixels, cell (0, 0) at world (0, 0). Text, the trigger jumper and the lamps are drawn by the part.
  */
-export function relaySprite(): Sprite {
-  return sprite('relay', () => {
-    const W = 78
-    const H = 62
+export function relayModuleSprite(channels: number): Sprite {
+  return sprite(`relay-module-${channels}`, () => {
+    const W = 70 * channels + 30
+    const H = 220
     const g = new PixelGrid(W, H)
-    g.rrect(0, 0, W, H, 3, 'a')
+    g.rrect(0, 0, W, H, 5, 'k')
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         if (g.get(x, y) === '.') continue
-        const nearTL = x < 3 || y < 3
-        const nearBR = x >= W - 3 || y >= H - 3
-        g.set(x, y, nearTL && !nearBR ? 'h' : nearBR && !nearTL ? 'd' : y < H / 3 ? 'a' : y < (2 * H) / 3 ? 'b' : 'c')
+        const tl = x < 2 || y < 2
+        const br = x >= W - 2 || y >= H - 2
+        g.set(x, y, tl && !br ? 'l' : br && !tl ? 'q' : 'k')
       }
     }
-    for (const [cx, cy] of RELAY_PADS) {
+    // mounting holes
+    for (const [hx, hy] of [[11, 11], [W - 12, 11], [11, H - 12], [W - 12, H - 12]]) {
+      g.disc(hx, hy, 6, 'z')
+      g.disc(hx, hy, 4.2, '.')
+    }
+    const pad = (cx: number, cy: number) => {
       g.disc(cx, cy, 2.7, 'p')
       g.disc(cx, cy, 1.9, 'S')
       g.rect(cx, cy - 1, 2, 2, 'T')
       g.set(cx - 1, cy - 1, 'W')
     }
-    return g.build({ h: '#7fa8ff', a: '#4a80e0', b: '#3b6cc9', c: '#2f58ab', d: '#22448a', p: '#16161b', S: '#c9ced6', T: '#7d838f', W: '#ffffff' }, '#0c1d45')
+    for (let ch = 0; ch < channels; ch++) {
+      const cx = 50 + 70 * ch
+      // the three-way screw terminal, the screws at the pin points (world x 60, 100, 140 + 140 ch; y 40)
+      g.rrect(cx - 30, 6, 60, 29, 2, 'B')
+      g.rect(cx - 30, 6, 60, 3, 'b')
+      g.rect(cx - 10, 9, 1, 26, 'v')
+      g.rect(cx + 10, 9, 1, 26, 'v')
+      g.rect(cx - 29, 31, 58, 3, 'd')
+      for (const dx of [-20, 0, 20]) {
+        g.disc(cx + dx, 20, 7, 'p')
+        g.disc(cx + dx, 20, 6, 'S')
+        g.rect(cx + dx - 1, 14, 2, 12, 'p')
+        g.rect(cx + dx - 6, 19, 12, 2, 'p')
+      }
+      // the relay cube, 61 x 75
+      g.rrect(cx - 30, 40, 61, 75, 3, 'a')
+      for (let y = 40; y < 115; y++) {
+        for (let x = cx - 30; x < cx + 31; x++) {
+          if (g.get(x, y) === '.') continue
+          const tl = x < cx - 27 || y < 43
+          const br = x >= cx + 28 || y >= 112
+          g.set(x, y, tl && !br ? 'h' : br && !tl ? 'D' : y < 65 ? 'a' : y < 90 ? 'u' : 'c')
+        }
+      }
+      // opto-coupler (black, with a notch dot), driver transistor, two resistors, the LED
+      g.rect(cx - 8, 130, 16, 10, 'o')
+      g.rect(cx - 8, 130, 16, 1, 'O')
+      g.disc(cx - 5, 133, 1, 'O')
+      g.rect(cx + 14, 135, 6, 5, 'o')
+      g.rect(cx - 28, 125, 8, 4, 'r')
+      g.rect(cx - 28, 125, 2, 4, 'S')
+      g.rect(cx + 20, 125, 2, 4, 'S')
+      g.rect(cx - 28, 135, 8, 4, 'r')
+      g.rect(cx - 28, 135, 2, 4, 'S')
+      g.rect(cx - 19, 135, 2, 4, 'S')
+      g.rect(cx - 28, 148, 8, 5, 'e') // LED housing (the part draws its light)
+    }
+    // the control header along the bottom edge: a black strip with silver pads at the pin points
+    const n = channels + 2
+    g.rect(15, 193, 10 * n + 10, 14, 'o')
+    for (let k = 0; k < n; k++) pad(20 + 10 * k, 200)
+    return g.build(
+      { k: '#15151c', l: '#2c2c36', q: '#0b0b10', z: '#3a3a46', B: '#2f6cd6', b: '#6f9bf0', v: '#17306a', d: '#1d4aa8', p: '#16161b', S: '#c9ced6', T: '#7d838f', W: '#ffffff', a: '#4a80e0', h: '#7fa8ff', u: '#3b6cc9', c: '#2f58ab', D: '#22448a', o: '#0c0c12', O: '#3c3c46', r: '#26262e', e: '#e8f4ec' },
+      '#050509',
+    )
   })
 }
 

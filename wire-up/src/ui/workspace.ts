@@ -19,7 +19,7 @@ import type { BendMemo, WireShape } from '../board/wireEdit.ts'
 import { G, snap, unrotVec, WIRE_COLORS } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
 import { holeNear } from '../parts/breadboard.ts'
-import { defOf, isRuntimeState, newPart, pinWorld, rotatePart } from '../parts/index.ts'
+import { defOf, isRuntimeState, newPart, pinNamesOf, pinWorld, rotatePart } from '../parts/index.ts'
 import { keyName } from './keys.ts'
 import type { FrameMeter } from './perf.ts'
 import { Renderer } from '../render/renderer.ts'
@@ -795,7 +795,7 @@ export class Workspace {
         this.hoverPoint = hit.point
         this.hoverPart = hit.part.id
         cursor = 'pointer'
-        text = `${defOf(hit.part.type).pinLabels[hit.index]} lead, drag to move. ${point(hit.point)}`
+        text = `${pinNamesOf(hit.part)[hit.index]} lead, drag to move. ${point(hit.point)}`
         break
       case 'wireEnd':
         this.hoverPoint = hit.point
@@ -811,7 +811,7 @@ export class Workspace {
         this.hoverPoint = hit.point
         this.hoverPart = hit.part.id
         cursor = 'pointer'
-        text = `${defOf(hit.part.type).name} pin ${defOf(hit.part.type).pinLabels[hit.index]}: drag to wire. ${point(hit.point)}`
+        text = `${defOf(hit.part.type).name} pin ${pinNamesOf(hit.part)[hit.index]}: drag to wire. ${point(hit.point)}`
         break
       case 'hole':
         this.hoverPoint = hit.point

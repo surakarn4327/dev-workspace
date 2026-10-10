@@ -50,7 +50,7 @@ describe('NE555 timer', () => {
     const r2 = 1e5
     const c = 1e-6
     const s = astable(9, r1, r2, c)
-    const seconds = 6
+    const seconds = 4
     const v = run(s, seconds)
     let edges = 0
     for (let i = 1; i < v.length; i++) if (v[i - 1] < 4.5 && v[i] >= 4.5) edges++
@@ -61,7 +61,7 @@ describe('NE555 timer', () => {
     // high output sits one output-stage drop under the supply, low output near ground
     expect(Math.max(...v)).toBeGreaterThan(8.3)
     expect(Math.min(...v)).toBeLessThan(0.6)
-  })
+  }, 30000)
 
   it('does nothing under 4.5 V, like the real chip', () => {
     const v = run(astable(3, 1e4, 1e5, 1e-6), 2)

@@ -63,6 +63,8 @@ export interface PartDef {
   freeLeads?: boolean
   fixedRot?: boolean
   pinLabels: string[]
+  /** For parts whose number of pins follows a setting: the names of this instance's pins (`pinLabels` is then the default shape). */
+  pinLabelsOf?(p: PartInstance): string[]
   /** No pin label boxes on hover (the part carries its own printed markings, or has none worth showing). */
   hidePinLabels?: boolean
   /** Where pin labels sit: beside each lead along the part's axis, or straight above the pin. Default: below the pin. */

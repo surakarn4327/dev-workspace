@@ -4,7 +4,7 @@ import { rotVec, G, snap } from '../board/world.ts'
 import type { PartInstance, Rot, Vec } from '../board/world.ts'
 import { breadboardFull, breadboardMini } from './breadboard.ts'
 import { meter } from './instruments.ts'
-import { relay5v } from './relay.ts'
+import { relayModule } from './relay.ts'
 import { gateAnd, gateNand, gateNor, gateNot, gateOr, gateXnor, gateXor } from './logic.ts'
 import { ceramicCap, electroCap, ldr, ntc, potentiometer, resistor } from './passives.ts'
 import { battery, battery15, battery3, battery45, supply } from './power.ts'
@@ -41,7 +41,7 @@ export const ALL_PARTS: PartDef[] = [
   hc32,
   hc86,
   ne555,
-  relay5v,
+  relayModule,
   seg7,
   seg7x4,
   rockerSwitch,
@@ -93,6 +93,12 @@ export function newPart(id: string, type: string, x: number, y: number): PartIns
   }
   if (def.freeLeads) p.leads = def.pins(p).map((v) => ({ x: p.x + v.x * G, y: p.y + v.y * G }))
   return p
+}
+
+/** The names of a part's pins: per instance when the number of pins follows a setting (a relay module's channels). */
+export function pinNamesOf(p: PartInstance): string[] {
+  const def = defOf(p.type)
+  return def.pinLabelsOf ? def.pinLabelsOf(p) : def.pinLabels
 }
 
 /** World position of every pin of a part. */
