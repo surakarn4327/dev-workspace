@@ -3,10 +3,10 @@
 // (NC, COM, NO). The trigger jumper picks which level at IN pulls the relay in (low: IN to GND, high: IN to VCC).
 
 import { COL, drawLabelAbove, drawText, rrect } from '../render/draw.ts'
-import { drawSprite, pxRect, spriteInk } from '../render/pixel.ts'
+import { drawSprite, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, RELAY } from '../sim/models.ts'
-import { RELAY_CHANNEL_PITCH, relayHeaderStart, relayModuleSprite, relayModuleWidth } from './art.ts'
+import { RELAY_CHANNEL_PITCH, relayHeaderStart, relayJumperCapSprite, relayLensSprite, relayModuleSprite, relayModuleWidth } from './art.ts'
 import { eid, stress } from './common.ts'
 import type { PartInstance } from '../board/world.ts'
 import type { PartDef } from './types.ts'
@@ -40,11 +40,12 @@ function namesFor(n: number): string[] {
   return out
 }
 
-/** One SMD status LED at art (ax, ay): the 4 x 4 lens, dark while off, bright with a soft halo while on (normal blend, like the gates). */
-function statusLed(c: CanvasRenderingContext2D, ax: number, ay: number, on: boolean, rgb: string, lit: string, dark: string): void {
+/** One SMD status LED's lens at art (ax, ay): a small shaded dome, dim while off, bright with a soft halo while on (normal blend, like the gates). */
+function statusLed(c: CanvasRenderingContext2D, ax: number, ay: number, on: boolean, color: 'green' | 'red'): void {
   if (on) {
     const x = (ax + 2) * 2
     const y = (ay + 2) * 2
+    const rgb = color === 'red' ? '255,60,60' : '57,255,136'
     const g = c.createRadialGradient(x, y, 0, x, y, 12)
     g.addColorStop(0, `rgba(${rgb},0.7)`)
     g.addColorStop(0.5, `rgba(${rgb},0.3)`)
@@ -54,8 +55,7 @@ function statusLed(c: CanvasRenderingContext2D, ax: number, ay: number, on: bool
     c.arc(x, y, 12, 0, Math.PI * 2)
     c.fill()
   }
-  pxRect(c, 0, 0, ax, ay, 4, 4, on ? lit : dark)
-  if (on) pxRect(c, 0, 0, ax, ay, 2, 1, '#ffffff')
+  drawSprite(c, relayLensSprite(color, on), ax * 2, ay * 2)
 }
 
 /** Silkscreen text turned so the foot of the letters faces the board edge it is nearest to: left edge +90 degrees, right edge -90, top 180, bottom 0. */
@@ -80,10 +80,12 @@ export const relayModule: PartDef = {
   defaults: () => ({ channels: 1, trigger: 'low' }),
   pins(p) {
     const n = channelsOf(p)
-    // the header along the bottom edge: GND, IN1..INn, VCC
-    const out = []
+    // the header along the bottom edge, left to right: VCC, IN1..INn, GND (the array order stays GND, IN1..INn, VCC)
     const first = relayHeaderStart(n) / 10
-    for (let k = 0; k < n + 2; k++) out.push({ x: first + k, y: 14 })
+    const out = new Array<{ x: number; y: number }>(n + 2)
+    out[n + 1] = { x: first, y: 14 }
+    for (let k = 1; k <= n; k++) out[k] = { x: first + k, y: 14 }
+    out[0] = { x: first + n + 1, y: 14 }
     // the screw terminals, one block per channel in a row along the top edge, each reading NC, COM, NO from the left
     for (let i = 0; i < n; i++) out.push({ x: 2 + (PITCH / 20) * i, y: 2 }, { x: 4 + (PITCH / 20) * i, y: 2 }, { x: 6 + (PITCH / 20) * i, y: 2 })
     return out
@@ -170,53 +172,26 @@ export const relayModule: PartDef = {
         drawText(c, 'SRD-05VDC-SL-C', 80 + dx, 130, { color: INK, align: 'center', size: 8 })
         drawText(c, '10A 250VAC 10A 30VDC', 80 + dx, 146, { color: '#a9c2f2', align: 'center', size: 8 })
         // the red LED: this relay is pulled in; the green LED: the board has power (every channel shows its own)
-        statusLed(c, 38 + ax, 126, on, '255,60,60', '#ff4a4a', '#3a1a1a')
-        statusLed(c, 38 + ax, 116, (live.v ?? 0) >= 2.5, '57,255,136', COL.green, '#1a3a22')
+        statusLed(c, 38 + ax, 126, on, 'red')
+        statusLed(c, 38 + ax, 116, (live.v ?? 0) >= 2.5, 'green')
       }
       if (n === 1) {
-        // one channel: the jumper stands in a column at the right edge, a little higher than the header (names on its left)
-        const jx = relayModuleWidth(n) - 10
-        pxRect(c, 0, 0, jx, 126, 7, 17, '#0c0c12')
-        pxRect(c, 0, 0, jx, 126, 7, 1, '#3c3c46')
-        for (const y of [128, 133, 138]) {
-          pxRect(c, 0, 0, jx + 2, y, 3, 3, COL.metal)
-          pxRect(c, 0, 0, jx + 2, y, 1, 1, '#ffffff')
-        }
-        const cap = high ? 127 : 132
-        pxRect(c, 0, 0, jx + 1, cap + 1, 5, 5, '#f2d21b') // a rounded cap: the four corner pixels are left out
-        pxRect(c, 0, 0, jx + 2, cap, 3, 1, '#fff1a0')
-        pxRect(c, 0, 0, jx + 1, cap + 1, 1, 5, '#fff1a0')
-        pxRect(c, 0, 0, jx + 5, cap + 1, 1, 5, '#a88a0a')
-        pxRect(c, 0, 0, jx + 2, cap + 6, 3, 1, '#a88a0a')
+        // one channel: the jumper pins stand in a column at the right edge (names on their left); the cap covers H and COM
+        // (HIGH) or COM and L (LOW)
+        const jx = relayModuleWidth(n) - 11
+        drawSprite(c, relayJumperCapSprite(true), 2 * jx, 2 * (high ? 125 : 132))
         printed(c, 'H', 2 * (jx - 4), 2 * 129.5, 'left')
-        printed(c, 'L', 2 * (jx - 4), 2 * 139.5, 'left')
+        printed(c, 'L', 2 * (jx - 4), 2 * 140.5, 'left')
       } else {
-        // more channels: the header runs right from under the first socket as inputs are added, and the jumper is a row of three
-        // pins on the same line, 2 grid steps (20 art pixels) after the last header pin, its names outside (below) like the header's
+        // more channels: a row of three pins on the header's line, 2 grid steps after its last pin, the names outside (below)
         const jx = relayHeaderStart(n) + 10 * (n + 1) + 20
-        pxRect(c, 0, 0, jx - 6, 134, 32, 12, '#0c0c12')
-        pxRect(c, 0, 0, jx - 6, 134, 32, 1, '#3c3c46')
-        for (let k = 0; k < 3; k++) {
-          const x = jx + 10 * k
-          pxRect(c, 0, 0, x - 3, 137, 6, 6, '#16161b')
-          pxRect(c, 0, 0, x - 2, 138, 4, 4, '#7d838f')
-          pxRect(c, 0, 0, x - 2, 138, 3, 3, COL.metal)
-          pxRect(c, 0, 0, x - 2, 138, 1, 1, '#f4f7fb')
-        }
-        // the yellow cap lies over two pins: H and COM (HIGH) or COM and L (LOW)
-        const cx = high ? jx - 4 : jx + 6
-        pxRect(c, 0, 0, cx, 135, 18, 10, '#f2d21b')
-        pxRect(c, 0, 0, cx + 1, 135, 16, 1, '#fff1a0')
-        pxRect(c, 0, 0, cx, 136, 1, 8, '#fff1a0')
-        pxRect(c, 0, 0, cx + 17, 136, 1, 8, '#a88a0a')
-        pxRect(c, 0, 0, cx + 1, 144, 16, 1, '#a88a0a')
+        drawSprite(c, relayJumperCapSprite(false), 2 * (high ? jx - 4 : jx + 6), 2 * 135)
         printed(c, 'H', 2 * jx, 296, 'bottom')
         printed(c, 'L', 2 * (jx + 20), 296, 'bottom')
       }
       // the header names under the pins
-      namesFor(n)
-        .slice(0, n + 2)
-        .forEach((name, k) => printed(c, name, 2 * relayHeaderStart(n) + 20 * k, 296, 'bottom'))
+      const headerNames = namesFor(n).slice(0, n + 2)
+      ;['VCC', ...headerNames.slice(1, n + 1), 'GND'].forEach((name, k) => printed(c, name, 2 * relayHeaderStart(n) + 20 * k, 296, 'bottom'))
       if (scene.labeled.has(p.id)) drawLabelAbove(c, `Relay module ${n} ch`, width / 2, spriteInk(s, 0, 0).top)
       return
     }

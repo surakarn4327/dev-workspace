@@ -1249,40 +1249,59 @@ export function relayModuleSprite(channels: number): Sprite {
       // the relay cube: round corners, a lit rim, a flat top with tones and a darker front edge
       // the cube is exactly as wide as the screw terminal above it (60 art pixels, x 10..70 of the socket)
       put(g, shadedBlock(60, 71, 4, (y) => (y < 20 ? 'f' : y < 46 ? 'u' : 'c'), 'h', 'D', 3), dx + 10, 39)
-      // the opto-coupler: a black body with silver legs on both long sides and a pin-1 dot
-      put(g, shadedBlock(16, 10, 1, () => 'o', 'O', 'q', 1), dx + 14, 118)
-      g.disc(dx + 17, 122, 1, 'O')
+      // the opto-coupler: a black plastic body in six tones (light on the upper left), silver legs on both long sides, a pin-1 dot
+      put(g, shadedBlock(16, 10, 1, (y) => String(1 + Math.min(5, Math.floor((y * 6) / 10))), '1', '6', 1), dx + 14, 118)
+      g.disc(dx + 17, 122, 1, '6')
       for (const x of [16, 20, 24, 28]) {
-        g.rect(dx + x, 116, 1, 2, 'S')
-        g.rect(dx + x, 128, 1, 2, 'S')
+        for (const y of [116, 128]) {
+          g.rect(dx + x, y, 1, 2, 'S')
+          g.rect(dx + x + 1, y, 1, 2, 'T')
+        }
       }
-      // the driver transistor (SOT-23): a small black body, two legs below, one above
-      put(g, shadedBlock(6, 5, 1, () => 'o', 'O', 'q', 1), dx + 55, 120)
-      g.set(dx + 56, 125, 'S')
-      g.set(dx + 60, 125, 'S')
+      // the driver transistor (SOT-23): a small black body in four tones, two legs below, one above
+      put(g, shadedBlock(6, 5, 1, (y) => String(2 + Math.min(3, y)), '1', '6', 1), dx + 55, 120)
+      for (const x of [56, 60]) {
+        g.set(dx + x, 125, 'S')
+        g.set(dx + x + 1, 125, 'T')
+      }
       g.set(dx + 58, 119, 'S')
-      // the status LEDs (SMD): a dark body with a silver cap at each end, the lens in the middle is painted by the part. The
-      // upper one is this channel's green power LED, the lower one its red relay LED
+      g.set(dx + 59, 119, 'T')
+      // the status LEDs (SMD): a dark body in four tones, a shaded silver cap at each end; the lens in the middle is a small
+      // sprite of its own (`relayLensSprite`) placed by the part. The upper one is this channel's green power LED, the lower
+      // one its red relay LED
       for (const y of [116, 126]) {
-        g.rect(dx + 36, y, 8, 4, 'r')
-        g.rect(dx + 36, y, 2, 4, 'S')
-        g.rect(dx + 42, y, 2, 4, 'S')
-        g.set(dx + 36, y, 'T')
-        g.set(dx + 43, y + 3, 'T')
+        put(g, shadedBlock(8, 4, 1, (r) => String(2 + r), '1', '6', 1), dx + 36, y)
+        for (const x of [36, 42]) {
+          g.rect(dx + x, y, 1, 4, 'S')
+          g.rect(dx + x + 1, y, 1, 4, 'T')
+          g.set(dx + x, y, 's')
+        }
       }
     }
     // the control header: a black plastic strip with rounded ends and a lit top-left edge, the pins as small square posts
     put(g, shadedBlock(10 * (channels + 2) + 2, 12, 2, () => 'o', 'O', 'q', 1), hx - 6, 134)
-    for (let k = 0; k < channels + 2; k++) {
-      const x = hx + 10 * k
-      g.rect(x - 3, 137, 6, 6, 'p')
-      g.rect(x - 2, 138, 4, 4, 'T')
-      g.rect(x - 2, 138, 3, 3, 'S')
-      g.set(x - 2, 138, 's')
+    const post = (x: number, y: number, size: number): void => {
+      g.rect(x, y, size, size, 'p')
+      g.rect(x + 1, y + 1, size - 2, size - 2, 'T')
+      g.rect(x + 1, y + 1, size - 3, size - 3, 'S')
+      g.set(x + 1, y + 1, 's')
+    }
+    for (let k = 0; k < channels + 2; k++) post(hx + 10 * k - 3, 137, 6)
+    // part 3, the trigger jumper pins, drawn like the header (the yellow cap is a sprite of its own, see
+    // `relayJumperCapSprite`, placed by the part): one channel = a short column at the right edge, more = a row of three on the
+    // header's line, two grid steps after its last pin
+    if (channels === 1) {
+      put(g, shadedBlock(8, 19, 1, () => 'o', 'O', 'q', 1), W - 11, 125)
+      for (const y of [127, 133, 139]) post(W - 9, y, 4)
+    } else {
+      const jx = hx + 10 * (channels + 1) + 20
+      put(g, shadedBlock(10 * 3 + 2, 12, 2, () => 'o', 'O', 'q', 1), jx - 6, 134)
+      for (let k = 0; k < 3; k++) post(jx + 10 * k - 3, 137, 6)
     }
     return g.build(
       {
         k: '#15151c', K: '#1a1a23', l: '#2c2c36', q: '#0b0b10', z: '#3a3a46', y: '#23232e',
+        1: '#44444f', 2: '#35353f', 3: '#2a2a33', 4: '#202028', 5: '#17171e', 6: '#0f0f14',
         B: '#2f6cd6', b: '#6f9bf0', n: '#3f7ee8', m: '#2459b8', v: '#17306a', x: '#0a1633',
         p: '#16161b', S: '#c9ced6', s: '#f4f7fb', T: '#7d838f',
         a: '#4a80e0', h: '#8db3ff', f: '#5a8cea', u: '#3b6cc9', c: '#2f58ab', D: '#22448a', g: '#c4d8ff',
@@ -1290,6 +1309,45 @@ export function relayModuleSprite(channels: number): Sprite {
       },
       '#050509',
     )
+  })
+}
+
+/** The lens of a status LED, 4 x 4 art pixels: a small rounded dome in four tones, dim while off, bright with a spot while on. */
+export function relayLensSprite(color: 'green' | 'red', on: boolean): Sprite {
+  return sprite(`relay-lens-${color}-${on ? 'on' : 'off'}`, () => {
+    const g = new PixelGrid(4, 4)
+    g.rrect(0, 0, 4, 4, 1, 'a')
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if (g.get(x, y) !== '.') g.set(x, y, 'abcd'[y])
+    if (on) g.set(1, 1, 'w')
+    const tones =
+      color === 'red'
+        ? on
+          ? { a: '#ff9a9a', b: '#ff5a5a', c: '#ff3030', d: '#c01c1c', w: '#ffffff' }
+          : { a: '#5a2a2a', b: '#4a2020', c: '#3a1818', d: '#2a1010', w: '#5a2a2a' }
+        : on
+          ? { a: '#c8ffd8', b: '#6dffa0', c: '#39ff88', d: '#1fb85c', w: '#ffffff' }
+          : { a: '#2f5a3c', b: '#264a30', c: '#1d3a25', d: '#142a1a', w: '#2f5a3c' }
+    return g.build(tones, '#0a0a0e')
+  })
+}
+
+/**
+ * The yellow cap of the trigger jumper, a rounded block shaded from the upper left in six yellow tones with a lit top-left rim,
+ * a dark outline and the usual one pixel drop shadow (built like every other sprite). `vertical`: the one-channel board's short
+ * column of pins; otherwise the row of three on the header's line. It covers two pins; the part places it over H and COM or over
+ * COM and L.
+ */
+export function relayJumperCapSprite(vertical: boolean): Sprite {
+  return sprite(vertical ? 'relay-cap-v' : 'relay-cap-h', () => {
+    const w = vertical ? 8 : 18
+    const h = vertical ? 13 : 10
+    const g = new PixelGrid(w, h)
+    // the face runs from light at the top to dark at the bottom, six tones over the height
+    const tone = (y: number): string => 'abcdef'[Math.min(5, Math.floor((y / h) * 6))]
+    put(g, shadedBlock(w, h, 2, tone, 'L', 'D', 1), 0, 0)
+    // a specular spot at the upper left
+    g.set(2, 1, 'W')
+    return g.build({ L: '#fff6c4', a: '#ffe770', b: '#ffdd3c', c: '#f2d21b', d: '#dcbb10', e: '#bf9f0a', f: '#a08408', D: '#7a6405', W: '#ffffff' }, '#3d3202')
   })
 }
 
