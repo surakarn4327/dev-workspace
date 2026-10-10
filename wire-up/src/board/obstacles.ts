@@ -47,6 +47,13 @@ export function bodyRect(p: PartInstance): Rect {
 export interface Lead extends Vec {
   dx: number
   dy: number
+  /** How many grid units the wire must run straight out of the pin before it may bend (default 1). */
+  len?: number
+}
+
+/** A direction in the part's own frame, and the straight run in grid units. */
+interface LeadDir extends Vec {
+  len?: number
 }
 
 /**
@@ -55,15 +62,22 @@ export interface Lead extends Vec {
  *   bench supply (type 'supply')    -> down
  *   batteries (types 'battery*')    -> up
  *   74HC chips (types 'ic-*')       -> out of the package: top row up, bottom row down
+ *   relay module (type 'relay-module') -> screw terminals (NC/COM/NO) up, 3 grid straight; header pins down (the printed side), 2 grid straight
  *   switches (category 'switch')    -> out to the side (left leg left, right leg right), except the push button (type 'button'), which keeps free routing
  */
-function leadDirs(p: PartInstance): Vec[] | null {
+function leadDirs(p: PartInstance): LeadDir[] | null {
   const def = defOf(p.type)
   const up = { x: 0, y: -1 }
   const down = { x: 0, y: 1 }
   const left = { x: -1, y: 0 }
   const right = { x: 1, y: 0 }
   if (p.type === 'supply') return def.pins(p).map(() => down)
+  if (p.type === 'relay-module') {
+    // pins: the header (GND, IN1..INn, VCC) first, then three screw terminals per channel: total = (c + 2) + 3c
+    const total = def.pins(p).length
+    const header = (total - 2) / 4 + 2
+    return def.pins(p).map((_, i) => (i < header ? { ...down, len: 2 } : { ...up, len: 3 }))
+  }
   if (p.type.startsWith('battery')) return def.pins(p).map(() => up)
   if (p.type.startsWith('ic-') || p.type.startsWith('seg7')) return def.pins(p).map((v) => (v.y === 0 ? up : down))
   if (def.category === 'switch' && p.type !== 'button') {
@@ -83,7 +97,7 @@ export function leadPins(world: World): Lead[] {
     const pins = pinWorld(p)
     pins.forEach((v, i) => {
       const d = rotVec(dirs[i], p.rot)
-      out.push({ x: v.x, y: v.y, dx: d.x, dy: d.y })
+      out.push({ x: v.x, y: v.y, dx: d.x, dy: d.y, len: dirs[i].len })
     })
   }
   return out

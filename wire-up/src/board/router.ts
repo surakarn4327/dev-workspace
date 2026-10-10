@@ -120,9 +120,9 @@ export function routeVia(a: Vec, b: Vec, others: Wire[], parts: Rect[] = [], lea
   const leadA = leadOf(a)
   const leadB = leadOf(b)
   if (!leadA && !leadB) return route(a, b, others, parts)
-  // a lead pin is left or entered straight along its direction: step one grid unit out of it first, then route from there
-  const a2 = leadA ? { x: a.x + leadA.dx * G, y: a.y + leadA.dy * G } : a
-  const b2 = leadB ? { x: b.x + leadB.dx * G, y: b.y + leadB.dy * G } : b
+  // a lead pin is left or entered straight along its direction: step its straight run (1 grid unit, more for some parts) out of it first, then route from there
+  const a2 = leadA ? { x: a.x + leadA.dx * G * (leadA.len ?? 1), y: a.y + leadA.dy * G * (leadA.len ?? 1) } : a
+  const b2 = leadB ? { x: b.x + leadB.dx * G * (leadB.len ?? 1), y: b.y + leadB.dy * G * (leadB.len ?? 1) } : b
   const path = [a, ...(leadA ? [a2] : []), ...route(a2, b2, others, parts), ...(leadB ? [b2] : []), b]
   const out: Vec[] = []
   for (let i = 1; i + 1 < path.length; i++) {

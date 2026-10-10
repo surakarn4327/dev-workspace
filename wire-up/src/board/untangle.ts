@@ -5,7 +5,7 @@ import { leadPins, partObstacles, pathHitsRects } from './obstacles.ts'
 import type { Lead } from './obstacles.ts'
 import { routeVia } from './router.ts'
 import { socketKeys, tapTarget } from './wireJoin.ts'
-import { wirePath } from './world.ts'
+import { G, wirePath } from './world.ts'
 import type { Vec, World } from './world.ts'
 
 /**
@@ -16,7 +16,15 @@ import type { Vec, World } from './world.ts'
 function leavesSideways(pts: Vec[], leads: Lead[]): boolean {
   const ends: [Vec, Vec][] = [[pts[0], pts[1]], [pts[pts.length - 1], pts[pts.length - 2]]]
   return ends.some(([e, next]) =>
-    leads.some((d) => d.x === e.x && d.y === e.y && !(Math.sign(next.x - e.x) === d.dx && Math.sign(next.y - e.y) === d.dy)),
+    leads.some((d) => {
+      if (d.x !== e.x || d.y !== e.y) return false
+      if (Math.sign(next.x - e.x) !== d.dx || Math.sign(next.y - e.y) !== d.dy) return true
+      // the right way, but it must keep straight for `len` grid units (unless the wire is shorter than that overall)
+      const run = Math.abs(next.x - e.x) + Math.abs(next.y - e.y)
+      const far = e === pts[0] ? pts[pts.length - 1] : pts[0]
+      const total = Math.abs(far.x - e.x) + Math.abs(far.y - e.y)
+      return run < (d.len ?? 1) * G && total >= (d.len ?? 1) * G
+    }),
   )
 }
 

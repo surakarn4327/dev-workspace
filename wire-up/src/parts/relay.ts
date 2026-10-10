@@ -6,7 +6,7 @@ import { COL, drawLabelAbove, drawText, rrect } from '../render/draw.ts'
 import { drawSprite, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, RELAY } from '../sim/models.ts'
-import { RELAY_CHANNEL_PITCH, relayHeaderStart, relayJumperCapSprite, relayLensSprite, relayModuleSprite, relayModuleWidth } from './art.ts'
+import { RELAY_CHANNEL_PITCH, relayHeaderStart, relayJumperCapSprite, relayLensSprite, relayModuleSprite, relayModuleWidth, relayTerminalSprite } from './art.ts'
 import { eid, stress } from './common.ts'
 import type { PartInstance } from '../board/world.ts'
 import type { PartDef } from './types.ts'
@@ -157,6 +157,10 @@ export const relayModule: PartDef = {
         return `The module supply was ${eng(Math.abs(vs), 'V')}; the relay coils are 5 V parts and burn out above about ${RELAY.vCoilMax} V.`
       }),
     }
+  },
+  drawOver(c, p) {
+    // the screw terminals again, over the wires: a wire runs in under the block (the vector look has no such pass)
+    if (scene.pixel) drawSprite(c, relayTerminalSprite(channelsOf(p)), 0, 0)
   },
   draw(c, p, live) {
     const n = channelsOf(p)

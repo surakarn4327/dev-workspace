@@ -86,6 +86,8 @@ export interface PartDef {
   build(p: PartInstance, ctx: BuildCtx): void
   evaluate(p: PartInstance, env: Env): Eval
   draw(c: CanvasRenderingContext2D, p: PartInstance, live: PartLive, time: number): void
+  /** A second, small pass drawn ABOVE the wires (same transform as `draw`): for the one piece that wires must seem to go into. */
+  drawOver?(c: CanvasRenderingContext2D, p: PartInstance, live: PartLive, time: number): void
   fields(p: PartInstance): Field[]
   /** Short one-line summary for the inspector title. */
   summary(p: PartInstance): string

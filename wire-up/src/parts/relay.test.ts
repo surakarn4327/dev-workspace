@@ -3,6 +3,9 @@ import { SceneBuilder } from '../lessons/lessons.ts'
 import { Simulation } from '../board/simulation.ts'
 import { World } from '../board/world.ts'
 import { defOf, newPart, pinNamesOf, pinWorld } from './index.ts'
+import { leadPins } from '../board/obstacles.ts'
+import { routeVia } from '../board/router.ts'
+import { G } from '../board/world.ts'
 
 /**
  * A relay module on 5 V: the load battery (9 V) feeds the NO load and the NC load of channel 1 through COM. `drive` is the
@@ -198,6 +201,33 @@ describe('relay module, whole board', () => {
     for (const n of [2, 4, 8]) {
       expect(powered({ vcc: true, gnd: false }, n).live.pw).toBe(0)
       expect(powered({ vcc: true, gnd: true }, n).live.pw).toBe(1)
+    }
+  })
+
+  it('wires enter the screw terminals from the front (3 grid straight) and the header from the printed side (2 grid straight)', () => {
+    for (const n of [1, 2]) {
+      const w = new World()
+      const b = new SceneBuilder(w)
+      const mod = b.place('relay-module', 400, 100, { channels: n, trigger: 'low' })
+      const pins = pinWorld(mod)
+      const leads = leadPins(w)
+      const terminals = pins.slice(n + 2)
+      const header = pins.slice(0, n + 2)
+      for (const t of terminals) {
+        const l = leads.find((d) => d.x === t.x && d.y === t.y)!
+        expect([l.dx, l.dy, l.len]).toEqual([0, -1, 3])
+        // a target far to the lower right: the first bend may not come before 3 grid units
+        const via = routeVia(t, { x: t.x + 400, y: t.y + 300 }, [], [], leads)
+        expect(via[0].x).toBe(t.x)
+        expect(t.y - via[0].y).toBeGreaterThanOrEqual(3 * G)
+      }
+      for (const h of header) {
+        const l = leads.find((d) => d.x === h.x && d.y === h.y)!
+        expect([l.dx, l.dy, l.len]).toEqual([0, 1, 2])
+        const via = routeVia(h, { x: h.x + 400, y: h.y - 300 }, [], [], leads)
+        expect(via[0].x).toBe(h.x)
+        expect(via[0].y - h.y).toBeGreaterThanOrEqual(2 * G)
+      }
     }
   })
 

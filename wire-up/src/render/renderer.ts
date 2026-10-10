@@ -413,7 +413,7 @@ export class Renderer {
       this.glowsAbove = this.drawAbove(world, sim, ov, now)
     })
     const { stack, front } = this.stackOf(world, ov)
-    above.empty = !front && !stack.some((p) => drawsOverWires(p.type))
+    above.empty = !front && !stack.some((p) => drawsOverWires(p.type) || defOf(p.type).drawOver)
     below.empty = false
   }
 
@@ -565,7 +565,20 @@ export class Renderer {
   private paintAbove(world: World, sim: Simulation, ov: Overlay, now: number): void {
     const { stack, front } = this.stackOf(world, ov)
     if (!this.hide.parts) for (const part of stack) if (drawsOverWires(part.type)) this.drawPart(part, sim, now, 1)
+    // a piece of a part that wires must seem to go into (a screw terminal), drawn again over the wires
+    if (!this.hide.parts) for (const part of stack) if (!drawsOverWires(part.type) && !part.state.failed) this.drawPartOver(part, sim, now)
     if (front && !this.hide.parts) this.drawPart(front, sim, now, 1)
+  }
+
+  private drawPartOver(part: PartInstance, sim: Simulation, now: number): void {
+    const over = defOf(part.type).drawOver
+    if (!over) return
+    const c = this.ctx
+    c.save()
+    c.translate(part.x, part.y)
+    c.rotate((part.rot * Math.PI) / 2)
+    over(c, part, sim.live.get(part.id) ?? {}, now)
+    c.restore()
   }
 
   /** Things that move or follow the mouse: loose leads, the part being placed, smoke. */

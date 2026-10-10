@@ -1203,6 +1203,37 @@ function put(dst: PixelGrid, src: PixelGrid, x0: number, y0: number): void {
   }
 }
 
+/** One channel's screw terminal along the top edge: a rounded blue block with a lit top, a darker lower half, the wire openings facing up. */
+function drawTerminalBlock(g: PixelGrid, dx: number): void {
+  put(g, shadedBlock(60, 28, 3, (y) => (y < 5 ? 'n' : y < 16 ? 'B' : y < 24 ? 'm' : 'v'), 'b', 'v', 2), dx + 10, 6)
+  for (const x of [30, 50]) g.rect(dx + x, 9, 1, 22, 'v')
+  for (const x of [20, 40, 60]) {
+    g.rect(dx + x - 5, 6, 10, 4, 'x') // the wire opening
+    g.rect(dx + x - 4, 6, 8, 1, 'v')
+    g.disc(dx + x, 20, 7, 'p')
+    g.disc(dx + x, 20, 6, 'T')
+    g.disc(dx + x - 0.5, 19.5, 5, 'S')
+    g.disc(dx + x - 1.5, 18.5, 2.5, 's')
+    g.rect(dx + x - 1, 14, 2, 12, 'p')
+    g.rect(dx + x - 6, 19, 12, 2, 'p')
+  }
+}
+
+/**
+ * Only the screw terminals of the module, on a grid as big as the board's so it lays exactly over it. The part draws it again
+ * above the wires (`PartDef.drawOver`), so a wire seems to go in under the block instead of lying across it.
+ */
+export function relayTerminalSprite(channels: number): Sprite {
+  return sprite(`relay-terminals-${channels}`, () => {
+    const g = new PixelGrid(relayModuleWidth(channels), 156)
+    for (let ch = 0; ch < channels; ch++) drawTerminalBlock(g, RELAY_CHANNEL_PITCH * ch)
+    return g.build(
+      { B: '#2f6cd6', b: '#6f9bf0', n: '#3f7ee8', m: '#2459b8', v: '#17306a', x: '#0a1633', p: '#16161b', S: '#c9ced6', s: '#f4f7fb', T: '#7d838f' },
+      '#050509',
+    )
+  })
+}
+
 /**
  * A 5 V relay module board seen from above (references: the CyberTice, AllNewStep and Deva DIY product photos). One channel is
  * 82 x 156 art pixels: the screw terminal along the top edge reading NC, COM, NO from the left (screws at world x 40 / 80 / 120,
@@ -1233,19 +1264,7 @@ export function relayModuleSprite(channels: number): Sprite {
     for (let ch = 0; ch < channels; ch++) {
       const dx = RELAY_CHANNEL_PITCH * ch
       for (let x = 30; x <= 36; x++) g.set(dx + x, 122, 'y')
-      // the screw terminal along the top edge: a rounded blue block with a lit top, a darker lower half, the wire openings facing up
-      put(g, shadedBlock(60, 28, 3, (y) => (y < 5 ? 'n' : y < 16 ? 'B' : y < 24 ? 'm' : 'v'), 'b', 'v', 2), dx + 10, 6)
-      for (const x of [30, 50]) g.rect(dx + x, 9, 1, 22, 'v')
-      for (const x of [20, 40, 60]) {
-        g.rect(dx + x - 5, 6, 10, 4, 'x') // the wire opening
-        g.rect(dx + x - 4, 6, 8, 1, 'v')
-        g.disc(dx + x, 20, 7, 'p')
-        g.disc(dx + x, 20, 6, 'T')
-        g.disc(dx + x - 0.5, 19.5, 5, 'S')
-        g.disc(dx + x - 1.5, 18.5, 2.5, 's')
-        g.rect(dx + x - 1, 14, 2, 12, 'p')
-        g.rect(dx + x - 6, 19, 12, 2, 'p')
-      }
+      drawTerminalBlock(g, dx)
       // the relay cube: round corners, a lit rim, a flat top with tones and a darker front edge
       // the cube is exactly as wide as the screw terminal above it (60 art pixels, x 10..70 of the socket)
       put(g, shadedBlock(60, 71, 4, (y) => (y < 20 ? 'f' : y < 46 ? 'u' : 'c'), 'h', 'D', 3), dx + 10, 39)
