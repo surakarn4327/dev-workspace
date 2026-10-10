@@ -1,4 +1,3 @@
-import './style.css'
 import { App } from './ui/app.ts'
 
 // The board writes its text in the pixel font Silver. Start the board only once the font is here (or after a few seconds if it

@@ -133,6 +133,16 @@ export class App {
 
   private benchParts = 0
 
+  /** Current-flow dots on wires: on by default, the choice is remembered. */
+  private setFlowDots(on: boolean): void {
+    this.ws.renderer.hide.dots = !on
+    try {
+      localStorage.setItem('wire-up:flow', on ? '1' : '0')
+    } catch {
+      // no storage: the choice lasts this session only
+    }
+  }
+
   /** Back to the player's own lab from a mission or from a test circuit. */
   private leaveMission(): void {
     if (!this.inLesson) return
@@ -183,6 +193,13 @@ export class App {
         run: () => ws.setPaused(!ws.isPaused),
         active: () => ws.isPaused,
       }),
+      act({
+        icon: nodeIcon('flow'),
+        label: () => 'Flow',
+        tip: 'Show or hide the current-flow dots on wires',
+        run: () => this.setFlowDots(ws.renderer.hide.dots),
+        active: () => !ws.renderer.hide.dots,
+      }),
       '|',
       act({
         icon: nodeIcon('rotate'),
@@ -210,6 +227,11 @@ export class App {
   }
 
   private bindTopbar(): void {
+    try {
+      if (localStorage.getItem('wire-up:flow') === '0') this.ws.renderer.hide.dots = true
+    } catch {
+      // no storage: dots stay on
+    }
     this.buildMenus()
     const file = $<HTMLInputElement>('file-import')
     file.onchange = async () => {
