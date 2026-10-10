@@ -103,8 +103,45 @@ export function leadPins(world: World): Lead[] {
   return out
 }
 
+/**
+ * The relay module is covered edge to edge: no wire may lie over any of it, not even the strip with the screw terminals or the
+ * strip with the header. The only openings are the straight columns a wire takes out of its own pin (up from a terminal, down
+ * from a header pin), so the board is cut into pieces that touch those columns (touching an edge does not count as a hit).
+ */
+function moduleRects(p: PartInstance): Rect[] {
+  const b = defOf(p.type).bounds(p)
+  const pins = defOf(p.type).pins(p).map((v) => ({ x: v.x * 20, y: v.y * 20 }))
+  const top = Math.min(...pins.map((v) => v.y))
+  const bottom = Math.max(...pins.map((v) => v.y))
+  const xs = (y: number): number[] => [b.x, ...pins.filter((v) => v.y === y).map((v) => v.x), b.x + b.w].sort((m, n) => m - n)
+  const local: Rect[] = [{ x0: b.x, y0: top, x1: b.x + b.w, y1: bottom }]
+  const strip = (y: number, y0: number, y1: number): void => {
+    const cuts = xs(y)
+    for (let i = 0; i + 1 < cuts.length; i++) if (cuts[i + 1] > cuts[i]) local.push({ x0: cuts[i], y0, x1: cuts[i + 1], y1 })
+  }
+  strip(top, b.y, top)
+  strip(bottom, bottom, b.y + b.h)
+  return local.map((r) => {
+    const corners = [
+      { x: r.x0, y: r.y0 },
+      { x: r.x1, y: r.y0 },
+      { x: r.x0, y: r.y1 },
+      { x: r.x1, y: r.y1 },
+    ].map((c) => {
+      const v = rotVec(c, p.rot)
+      return { x: p.x + v.x, y: p.y + v.y }
+    })
+    return {
+      x0: Math.min(...corners.map((c) => c.x)),
+      y0: Math.min(...corners.map((c) => c.y)),
+      x1: Math.max(...corners.map((c) => c.x)),
+      y1: Math.max(...corners.map((c) => c.y)),
+    }
+  })
+}
+
 export function partObstacles(world: World): Rect[] {
-  return world.parts.filter((p) => !p.type.startsWith('breadboard')).map(bodyRect)
+  return world.parts.filter((p) => !p.type.startsWith('breadboard')).flatMap((p) => (p.type === 'relay-module' ? moduleRects(p) : [bodyRect(p)]))
 }
 
 /** Does the straight stretch a -> b pass through the inside of the rectangle? Touching the edge does not count. */

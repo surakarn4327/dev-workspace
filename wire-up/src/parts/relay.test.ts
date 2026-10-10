@@ -3,7 +3,7 @@ import { SceneBuilder } from '../lessons/lessons.ts'
 import { Simulation } from '../board/simulation.ts'
 import { World } from '../board/world.ts'
 import { defOf, newPart, pinNamesOf, pinWorld } from './index.ts'
-import { leadPins } from '../board/obstacles.ts'
+import { insideRects, leadPins, partObstacles, pathHitsRects } from '../board/obstacles.ts'
 import { routeVia } from '../board/router.ts'
 import { G } from '../board/world.ts'
 
@@ -228,6 +228,34 @@ describe('relay module, whole board', () => {
         expect(via[0].x).toBe(h.x)
         expect(via[0].y - h.y).toBeGreaterThanOrEqual(2 * G)
       }
+    }
+  })
+
+  it('no wire may lie over any part of the module, edge strips included, except straight out of its own pin', () => {
+    for (const rot of [0, 1, 2, 3]) {
+      const w = new World()
+      const b = new SceneBuilder(w)
+      const mod = b.place('relay-module', 400, 300, { channels: 2, trigger: 'low' })
+      mod.rot = rot as 0 | 1 | 2 | 3
+      const rects = partObstacles(w)
+      const bd = defOf('relay-module').bounds(mod)
+      const at = (lx: number, ly: number) => {
+        const v = [
+          { x: lx, y: ly },
+          { x: -ly, y: lx },
+          { x: -lx, y: -ly },
+          { x: ly, y: -lx },
+        ][rot]
+        return { x: mod.x + v.x, y: mod.y + v.y }
+      }
+      // inside the terminal strip between two pins, in the middle, and in the header strip between two pins
+      for (const [lx, ly] of [[60, 20], [bd.w / 2 + 10, 150], [90, 300]]) expect(insideRects(at(lx, ly), rects)).toBe(true)
+      // a path straight out of a pin is open, one lying along the strip is not
+      const pins = pinWorld(mod)
+      const term = pins[4]
+      const out = { x: term.x + (rot === 0 ? 0 : rot === 2 ? 0 : rot === 1 ? 60 : -60), y: term.y + (rot === 0 ? -60 : rot === 2 ? 60 : 0) }
+      expect(pathHitsRects([term, out], rects)).toBe(false)
+      expect(pathHitsRects([at(10, 20), at(bd.w - 10, 20)], rects)).toBe(true)
     }
   })
 
