@@ -39,7 +39,7 @@
 | ตัวเก็บประจุเซรามิก (`cap-ceramic`) | **pixel — ผู้ใช้อนุมัติ 2026-10-09** | `parts/art.ts` `ceramicCapSprite` — ดูหัวข้อ 5.18 |
 | ตัวเก็บประจุอิเล็กโทรไลต์ (`cap-electro`) | **pixel — ผู้ใช้อนุมัติ 2026-10-09** | `parts/art.ts` `electroCapSprite` — ดูหัวข้อ 5.18 |
 | ชิป 74HC DIP-14 (00, 02, 04, 08, 32, 86) | **pixel — ร่าง** | `parts/art.ts` `dipSprite` — ดูหัวข้อ 5.17 |
-| NE555 timer DIP-8 (`ic-ne555`) | **pixel — ร่าง เพิ่ม 2026-10-10 รอผู้ใช้ชม** | `parts/art.ts` `dip8Sprite` — ดูหัวข้อ 5.22 |
+| NE555 timer DIP-8 (`ic-ne555`) | **pixel — ผู้ใช้อนุมัติ 2026-10-10** | `parts/art.ts` `dip8Sprite` — ดูหัวข้อ 5.22 |
 | logic gate 7 ตัว (NOT, AND, OR, NAND, NOR, XOR, XNOR) | **pixel — ร่าง ยังรอผู้ใช้ชมหน้าตา** | `parts/art.ts` `gateSprite` — ดูหัวข้อ 5.16 |
 | สวิตช์ rocker (ชิ้น `switch` ชื่อ "Rocker switch") | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `rockerSwitchSprite` — ดูหัวข้อ 5.9 |
 | สวิตช์เลื่อน (ชิ้น `slide-switch`) | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `slideSwitchSprite` — ดูหัวข้อ 5.9b (นำกลับมาตามคำขอ เป็นอีกตัวเลือกคู่กับ rocker) |
@@ -91,7 +91,7 @@
 | `ic-74hc08` | draft | `dipSprite` |  |
 | `ic-74hc32` | draft | `dipSprite` |  |
 | `ic-74hc86` | draft | `dipSprite` |  |
-| `ic-ne555` | draft | `dip8Sprite` | ดูหัวข้อ 5.22 |
+| `ic-ne555` | approved | `dip8Sprite` | ดูหัวข้อ 5.22 |
 | `cap-ceramic` | approved | `ceramicCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
 | `cap-electro` | approved | `electroCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
 
@@ -452,7 +452,7 @@
 - ตัวอักษรรุ่น (เช่น 74HC08) `drawText` สี `COL.dim` กลางตัวที่โลก (60, 26); ป้ายชื่อเต็มตอน hover ใช้ `drawLabelAbove` เหนือขอบสไปรต์; ไม่มีป้ายชื่อขา (`hidePinLabels`) เพราะชิปจริงไม่พิมพ์ชื่อขา pinout อยู่ในคำอธิบาย
 - โหมดเวกเตอร์: กล่องมน `#26262c` + ขาเหล็ก + รอยบากสีพื้น
 
-### 5.22 NE555 timer (DIP-8) — `src/parts/art.ts` `dip8Sprite`, ชิ้นส่วนใน `src/parts/ic.ts` — ร่าง (เพิ่ม 2026-10-10 รอผู้ใช้ชม)
+### 5.22 NE555 timer (DIP-8) — `src/parts/art.ts` `dip8Sprite`, ชิ้นส่วนใน `src/parts/ic.ts` — ผู้ใช้อนุมัติ 2026-10-10
 - **อ้างอิง:** datasheet TI / ST NE555 (pinout และพิกัด); หน้าตาใช้แพ็กเกจเดียวกับ 74HC ตามที่ผู้ใช้ตกลง ("หน้าตาเหมือนกัน แค่ขาน้อยกว่า") ยังไม่มีภาพถ่ายจริงจาก Wikimedia Commons ที่ยืนยันได้
 - ตัวถัง 40 × 30 พิกเซลอาร์ต (ตัว 40 × 22 แถว 4–25) เซลล์ (0, 0) อยู่ที่โลก (−10, 0) สีและแสงเหมือน `dipSprite` (`DIP_COLORS`) รอยบากซ้าย จุดขา 1 ที่ (6, 21); ขา 8 ขา 4 ต่อแถว ศูนย์กลางตรงจุด pin ทุก 20 หน่วยโลก แถวบน y = 0 แถวล่าง y = 60 (คร่อมร่องกลาง breadboard)
 - pin: 1 GND, 2 TRIG, 3 OUT, 4 RESET, 5 CTRL, 6 THRES, 7 DISCH, 8 VCC (ขา 1 ซ้ายล่าง 1→4 ไปขวา, 5→8 ย้อนกลับแถวบน); ไม่มีป้ายชื่อขา (`hidePinLabels`) ข้อความ "NE555" `drawText` สี `COL.dim` กลางตัวที่โลก (30, 26); ป้ายชื่อเต็มตอนชี้ใช้ `drawLabelAbove`
