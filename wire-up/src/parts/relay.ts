@@ -183,11 +183,11 @@ export const relayModule: PartDef = {
           pxRect(c, 0, 0, jx + 2, y, 1, 1, '#ffffff')
         }
         const cap = high ? 127 : 132
-        pxRect(c, 0, 0, jx + 1, cap + 1, 5, 5, '#2f6cd6') // a rounded cap: the four corner pixels are left out
-        pxRect(c, 0, 0, jx + 2, cap, 3, 1, '#8db3ff')
-        pxRect(c, 0, 0, jx + 1, cap + 1, 1, 5, '#8db3ff')
-        pxRect(c, 0, 0, jx + 5, cap + 1, 1, 5, '#22448a')
-        pxRect(c, 0, 0, jx + 2, cap + 6, 3, 1, '#22448a')
+        pxRect(c, 0, 0, jx + 1, cap + 1, 5, 5, '#f2d21b') // a rounded cap: the four corner pixels are left out
+        pxRect(c, 0, 0, jx + 2, cap, 3, 1, '#fff1a0')
+        pxRect(c, 0, 0, jx + 1, cap + 1, 1, 5, '#fff1a0')
+        pxRect(c, 0, 0, jx + 5, cap + 1, 1, 5, '#a88a0a')
+        pxRect(c, 0, 0, jx + 2, cap + 6, 3, 1, '#a88a0a')
         printed(c, 'H', 2 * (jx - 4), 2 * 129.5, 'left')
         printed(c, 'L', 2 * (jx - 4), 2 * 139.5, 'left')
       } else {
@@ -203,13 +203,13 @@ export const relayModule: PartDef = {
           pxRect(c, 0, 0, x - 2, 138, 3, 3, COL.metal)
           pxRect(c, 0, 0, x - 2, 138, 1, 1, '#f4f7fb')
         }
-        // the blue cap lies over two pins: H and COM (HIGH) or COM and L (LOW)
+        // the yellow cap lies over two pins: H and COM (HIGH) or COM and L (LOW)
         const cx = high ? jx - 4 : jx + 6
-        pxRect(c, 0, 0, cx, 135, 18, 10, '#2f6cd6')
-        pxRect(c, 0, 0, cx + 1, 135, 16, 1, '#8db3ff')
-        pxRect(c, 0, 0, cx, 136, 1, 8, '#8db3ff')
-        pxRect(c, 0, 0, cx + 17, 136, 1, 8, '#22448a')
-        pxRect(c, 0, 0, cx + 1, 144, 16, 1, '#22448a')
+        pxRect(c, 0, 0, cx, 135, 18, 10, '#f2d21b')
+        pxRect(c, 0, 0, cx + 1, 135, 16, 1, '#fff1a0')
+        pxRect(c, 0, 0, cx, 136, 1, 8, '#fff1a0')
+        pxRect(c, 0, 0, cx + 17, 136, 1, 8, '#a88a0a')
+        pxRect(c, 0, 0, cx + 1, 144, 16, 1, '#a88a0a')
         printed(c, 'H', 2 * jx, 296, 'bottom')
         printed(c, 'L', 2 * (jx + 20), 296, 'bottom')
       }

@@ -115,3 +115,51 @@ describe('relay module', () => {
     expect(stress.reason()).toContain('burn out above')
   })
 })
+
+describe('relay module, whole board', () => {
+  it('every pin is on its own grid point, for every channel count', () => {
+    for (const n of [1, 2, 4, 8]) {
+      const p = newPart('t', 'relay-module', 0, 0)
+      p.params.channels = n
+      const pins = defOf('relay-module').pins(p)
+      const keys = new Set(pins.map((v) => `${v.x},${v.y}`))
+      expect(keys.size, `${n} channels`).toBe(pins.length)
+      for (const v of pins) {
+        expect(Number.isInteger(v.x) && Number.isInteger(v.y)).toBe(true)
+      }
+      // the header (GND, IN1..INn, VCC) sits in one row, the screw terminals in another
+      const names = pinNamesOf(p)
+      expect(names[0]).toBe('GND')
+      expect(names[n + 1]).toBe('VCC')
+      expect(new Set(pins.slice(0, n + 2).map((v) => v.y)).size).toBe(1)
+      expect(new Set(pins.slice(n + 2).map((v) => v.y)).size).toBe(1)
+    }
+  })
+
+  it('each channel of a four channel board switches on its own input', () => {
+    const w = new World()
+    const b = new SceneBuilder(w)
+    const mod = b.place('relay-module', 400, 100, { channels: 4, trigger: 'low' })
+    const sup = b.place('battery', 0, 0, { volts: 5 })
+    const pins = pinWorld(mod)
+    const [sp, sm] = pinWorld(sup)
+    const n = 4
+    b.wire(sp, pins[n + 1])
+    b.wire(sm, pins[0], '#2f6fe0')
+    b.wire(pins[2], pins[0], '#2ea043') // IN2 to GND: channel 2 only
+    w.commit()
+    const sim = new Simulation(w)
+    run(sim, 0.3)
+    const live = sim.live.get(mod.id)!
+    expect([live.on0, live.on1, live.on2, live.on3]).toEqual([0, 1, 0, 0])
+    expect(live.on).toBe(1)
+  })
+
+  it('the sprite and the hit box agree on the width', () => {
+    for (const n of [1, 2, 4, 8]) {
+      const p = newPart('t', 'relay-module', 0, 0)
+      p.params.channels = n
+      expect(defOf('relay-module').bounds(p).w).toBe((60 * n + 20) * 2)
+    }
+  })
+})
