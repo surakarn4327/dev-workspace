@@ -182,3 +182,8 @@
 - **Cause:** the LED was drawn from the VCC pin voltage only (`v(vcc) - v(gnd)`, floating GND reads 0 V), and the board drew no current of its own, so there was nothing for the meter or flow to show.
 - **Fix:** `src/parts/relay.ts` adds a 1.2 kΩ element `pw` between VCC and GND (the power LED branch); the green LED lights only when its current is >= 0.5 mA (`live.pw`). Open GND = no current = LED off.
 - **Prevention:** `src/parts/behaviour.test.ts` drives each pin of every part alone and requires zero current and an unchanged drawing; the old relay code fails it. Same sweep fixed the plain LED, which glowed by about 1e-6 from solver leakage (now dark under 1 µA, `semis.ts`).
+
+## Wire hooks back over its straight run out of a terminal
+- **Symptom:** relay module wire went up 3 grid from a terminal, came back down 1 and then turned (a hook folded over itself), so the real straight run was only 2 grid.
+- **Cause:** `routeVia` stepped out to the end of the straight run and then routed from there as if the run did not exist, so the cheapest path could step straight back into it. `untangle` only checked the first segment's direction, so saved hooks were never found.
+- **Fix:** `src/board/router.ts` blocks the cells of the straight run for the route (`lane`); `src/board/untangle.ts` treats an end that doubles back on itself as wrong and re-routes it (also on load). Test in `src/parts/relay.test.ts`.

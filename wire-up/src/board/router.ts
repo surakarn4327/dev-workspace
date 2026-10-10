@@ -119,11 +119,18 @@ export function routeVia(a: Vec, b: Vec, others: Wire[], parts: Rect[] = [], lea
   const leadOf = (p: Vec) => leads.find((d) => d.x === p.x && d.y === p.y)
   const leadA = leadOf(a)
   const leadB = leadOf(b)
-  if (!leadA && !leadB) return route(a, b, others, parts)
+  if (!leadA && !leadB) return route(a, b, others, parts, new Set())
   // a lead pin is left or entered straight along its direction: step its straight run (1 grid unit, more for some parts) out of it first, then route from there
   const a2 = leadA ? { x: a.x + leadA.dx * G * (leadA.len ?? 1), y: a.y + leadA.dy * G * (leadA.len ?? 1) } : a
   const b2 = leadB ? { x: b.x + leadB.dx * G * (leadB.len ?? 1), y: b.y + leadB.dy * G * (leadB.len ?? 1) } : b
-  const path = [a, ...(leadA ? [a2] : []), ...route(a2, b2, others, parts), ...(leadB ? [b2] : []), b]
+  // the straight run out of a pin is part of the wire already: the route may not come back through it (that makes a hook
+  // that doubles back over its own lead and leaves less straight run than asked for)
+  const lane = new Set<string>()
+  for (const [pin, lead] of [[a, leadA], [b, leadB]] as const) {
+    if (!lead) continue
+    for (let k = 0; k < (lead.len ?? 1); k++) lane.add(nk(Math.round(pin.x / G) + lead.dx * k, Math.round(pin.y / G) + lead.dy * k))
+  }
+  const path = [a, ...(leadA ? [a2] : []), ...route(a2, b2, others, parts, lane), ...(leadB ? [b2] : []), b]
   const out: Vec[] = []
   for (let i = 1; i + 1 < path.length; i++) {
     const p = path[i - 1]
@@ -136,7 +143,7 @@ export function routeVia(a: Vec, b: Vec, others: Wire[], parts: Rect[] = [], lea
   return out
 }
 
-function route(a: Vec, b: Vec, others: Wire[], parts: Rect[]): Vec[] {
+function route(a: Vec, b: Vec, others: Wire[], parts: Rect[], lane: Set<string>): Vec[] {
   const sx = Math.round(a.x / G)
   const sy = Math.round(a.y / G)
   const ex = Math.round(b.x / G)
@@ -185,7 +192,7 @@ function route(a: Vec, b: Vec, others: Wire[], parts: Rect[]): Vec[] {
       if (near.length > 0 && hitsPart(cur.x, cur.y, nx, ny)) continue
       const isGoal = nx === ex && ny === ey
       const key = nk(nx, ny)
-      if (!isGoal && occ.blocked.has(key)) continue
+      if (!isGoal && (occ.blocked.has(key) || lane.has(key))) continue
       let g = cur.g + 1
       // the start node has no incoming direction, so its first move is free
       if (turn && !(cur.x === sx && cur.y === sy && cur.g === 0)) g += TURN_COST

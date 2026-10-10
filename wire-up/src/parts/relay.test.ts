@@ -5,6 +5,8 @@ import { World } from '../board/world.ts'
 import { defOf, newPart, pinNamesOf, pinWorld } from './index.ts'
 import { insideRects, leadPins, partObstacles, pathHitsRects } from '../board/obstacles.ts'
 import { routeVia } from '../board/router.ts'
+import { untangle } from '../board/untangle.ts'
+import { wirePath } from '../board/world.ts'
 import { G } from '../board/world.ts'
 
 /**
@@ -257,6 +259,33 @@ describe('relay module, whole board', () => {
       expect(pathHitsRects([term, out], rects)).toBe(false)
       expect(pathHitsRects([at(10, 20), at(bd.w - 10, 20)], rects)).toBe(true)
     }
+  })
+
+  it('a wire never doubles back over its straight run out of a terminal, and old hooks are straightened', () => {
+    const w = new World()
+    const b = new SceneBuilder(w)
+    const mod = b.place('relay-module', 400, 300, { channels: 2, trigger: 'low' })
+    const pins = pinWorld(mod)
+    const t = pins[4] // NC1
+    const leads = leadPins(w)
+    // the end sits 2 grid above the pin: the shortcut up 3 and back down 1 is not allowed
+    const target = { x: t.x - 300, y: t.y - 2 * G }
+    const via = routeVia(t, target, [], partObstacles(w), leads)
+    const path = [t, ...via, target]
+    expect(path[1].x).toBe(t.x)
+    expect(t.y - path[1].y).toBeGreaterThanOrEqual(3 * G)
+    for (let i = 2; i < path.length; i++) {
+      const d1 = { x: Math.sign(path[i - 1].x - path[i - 2].x), y: Math.sign(path[i - 1].y - path[i - 2].y) }
+      const d2 = { x: Math.sign(path[i].x - path[i - 1].x), y: Math.sign(path[i].y - path[i - 1].y) }
+      expect(d1.x === -d2.x && d1.y === -d2.y && (d1.x !== 0 || d1.y !== 0)).toBe(false)
+    }
+    // a saved wire with the hook: up 3, back down 1, then left
+    const up = { x: t.x, y: t.y - 3 * G }
+    w.addWire(t, target, '#2ea043', [up, { x: t.x, y: t.y - 2 * G }])
+    expect(untangle(w)).toBe(1)
+    const fixed = wirePath(w.wires[0])
+    expect(t.y - fixed[1].y).toBeGreaterThanOrEqual(3 * G)
+    expect(fixed[2]?.x === fixed[1].x).toBe(false) // it turns at the end of the run, it does not come back
   })
 
   it('the sprite and the hit box agree on the width', () => {

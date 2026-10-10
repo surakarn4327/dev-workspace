@@ -15,9 +15,16 @@ import type { Vec, World } from './world.ts'
 /** Does an end of this wire sit on a lead pin (supply post, battery terminal) without leaving along the pin's direction? */
 function leavesSideways(pts: Vec[], leads: Lead[]): boolean {
   const ends: [Vec, Vec][] = [[pts[0], pts[1]], [pts[pts.length - 1], pts[pts.length - 2]]]
-  return ends.some(([e, next]) =>
+  return ends.some(([e, next], k) =>
     leads.some((d) => {
       if (d.x !== e.x || d.y !== e.y) return false
+      // a hook: the wire runs out of the pin, then doubles back along itself, which leaves less straight run than it looks
+      const after = k === 0 ? pts[2] : pts[pts.length - 3]
+      if (after) {
+        const dx1 = Math.sign(next.x - e.x)
+        const dy1 = Math.sign(next.y - e.y)
+        if (Math.sign(after.x - next.x) === -dx1 && Math.sign(after.y - next.y) === -dy1 && (dx1 !== 0 || dy1 !== 0)) return true
+      }
       if (Math.sign(next.x - e.x) !== d.dx || Math.sign(next.y - e.y) !== d.dy) return true
       // the right way, but it must keep straight for `len` grid units (unless the wire is shorter than that overall)
       const run = Math.abs(next.x - e.x) + Math.abs(next.y - e.y)
