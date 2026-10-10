@@ -1,6 +1,10 @@
 import { World } from '../board/world.ts'
 import type { WorldData } from '../board/world.ts'
 import { SceneBuilder } from '../lessons/lessons.ts'
+import { icon } from './icons.ts'
+import { MenuBar } from './menubar.ts'
+import type { Action } from './menubar.ts'
+import type { IconName } from './icons.ts'
 import { exportFile, loadLab, parseImport, saveLab } from '../save/storage.ts'
 import { History } from '../save/history.ts'
 import { defOf, isRuntimeState } from '../parts/index.ts'
@@ -54,7 +58,7 @@ export class App {
       this.followSelection()
       this.inspector.rebuild()
       updateChipSheet($<HTMLCanvasElement>('ic-sheet'), this.ws.selectedPart ? this.world.getPart(this.ws.selectedPart) : undefined)
-      $('btn-wire').classList.toggle('on', this.ws.wireMode)
+      this.menubar?.refresh()
     }
     this.ws.onEdit = () => this.afterEdit()
     this.ws.onRuntime = () => this.scheduleSave()
@@ -79,42 +83,93 @@ export class App {
     this.world.commit()
   }
 
+  private menubar: MenuBar | null = null
+
+  /** Ids of selected parts that are burnt out or running hot (what Replace can fix). */
+  private damagedSelected(): string[] {
+    const s = this.ws.selection()
+    return this.world.parts.filter((p) => s.parts.has(p.id) && (p.state.failed || p.state.heat > 0.05)).map((p) => p.id)
+  }
+
+  private replaceSelected(): void {
+    const ids = this.damagedSelected()
+    if (ids.length === 0) return
+    for (const id of ids) this.ws.sim.replace(id)
+    this.inspector.rebuild()
+    this.afterEdit()
+  }
+
+  private buildMenus(): void {
+    const ws = this.ws
+    const hasSel = (): boolean => {
+      const s = ws.selection()
+      return s.parts.size + s.wires.size > 0
+    }
+    const act = (a: Omit<Action, 'kind'>): Action => ({ kind: 'action', ...a })
+    const nodeIcon = (n: IconName) => () => n
+    this.menubar = new MenuBar($('menubar'), [
+      {
+        kind: 'menu',
+        label: 'File',
+        icon: 'file',
+        items: [
+          {
+            icon: 'new',
+            label: 'New lab',
+            run: () => {
+              if (!window.confirm('Clear the whole lab? (You can undo this.)')) return
+              if (this.inLesson) this.lessons.exit()
+              this.world.clear()
+              ws.select(null)
+              this.afterEdit()
+            },
+          },
+          { icon: 'import', label: 'Import file', run: () => $<HTMLInputElement>('file-import').click() },
+          { icon: 'export', label: 'Export file', run: () => exportFile(this.world.serialize()) },
+        ],
+      },
+      '|',
+      act({ icon: nodeIcon('undo'), label: () => 'Undo', tip: 'Undo (Ctrl+Z)', run: () => this.undo(), enabled: () => this.history.canUndo }),
+      act({ icon: nodeIcon('redo'), label: () => 'Redo', tip: 'Redo (Ctrl+Y)', run: () => this.redo(), enabled: () => this.history.canRedo }),
+      '|',
+      act({ icon: nodeIcon('wire'), label: () => 'Wire', tip: 'Wire mode (W): drag anywhere to draw a wire', run: () => ws.setWireMode(!ws.wireMode), active: () => ws.wireMode }),
+      act({ icon: nodeIcon('fit'), label: () => 'Fit', tip: 'Fit everything in view (F)', run: () => ws.fitView() }),
+      act({
+        icon: () => (ws.isPaused ? 'play' : 'pause'),
+        label: () => (ws.isPaused ? 'Resume' : 'Pause'),
+        tip: 'Freeze or resume the simulation',
+        run: () => ws.setPaused(!ws.isPaused),
+        active: () => ws.isPaused,
+      }),
+      '|',
+      act({
+        icon: nodeIcon('rotate'),
+        label: () => 'Rotate',
+        tip: 'Rotate the selected part (R)',
+        run: () => ws.rotateSelected(),
+        enabled: () => {
+          const p = ws.selectedPart ? this.world.getPart(ws.selectedPart) : undefined
+          return !!p && !defOf(p.type).fixedRot
+        },
+      }),
+      act({ icon: nodeIcon('duplicate'), label: () => 'Duplicate', tip: 'Duplicate the selection (Ctrl+D)', run: () => ws.duplicateSelected(), enabled: hasSel }),
+      act({
+        icon: nodeIcon('replace'),
+        label: () => {
+          const n = this.damagedSelected().length
+          return n > 1 ? `Replace ${n}` : 'Replace'
+        },
+        tip: 'Swap burnt-out or overheated selected parts for fresh ones',
+        run: () => this.replaceSelected(),
+        enabled: () => this.damagedSelected().length > 0,
+      }),
+      act({ icon: nodeIcon('delete'), label: () => 'Delete', tip: 'Delete the selection (Del)', run: () => ws.deleteSelected(), enabled: hasSel, danger: true }),
+    ])
+  }
+
   private bindTopbar(): void {
-    $('btn-new').onclick = () => {
-      if (!window.confirm('Clear the whole lab? (You can undo this.)')) return
-      if (this.inLesson) this.lessons.exit()
-      this.world.clear()
-      this.ws.select(null)
-      this.afterEdit()
-    }
-    $('btn-undo').onclick = () => this.undo()
-    $('btn-redo').onclick = () => this.redo()
-    $('btn-wire').onclick = () => this.ws.setWireMode(!this.ws.wireMode)
-    $('btn-fit').onclick = () => this.ws.fitView()
-    const pixelKey = 'wire-up:pixel'
-    try {
-      if (localStorage.getItem(pixelKey) === 'off') this.ws.renderer.pixelMode = false
-    } catch {
-      // no storage: pixel look stays on
-    }
-    $('btn-pixel').classList.toggle('on', this.ws.renderer.pixelMode)
-    $('btn-pixel').onclick = () => {
-      this.ws.renderer.pixelMode = !this.ws.renderer.pixelMode
-      $('btn-pixel').classList.toggle('on', this.ws.renderer.pixelMode)
-      try {
-        localStorage.setItem(pixelKey, this.ws.renderer.pixelMode ? 'on' : 'off')
-      } catch {
-        // ignore
-      }
-    }
-    $('btn-pause').onclick = () => {
-      this.ws.setPaused(!this.ws.isPaused)
-      $('btn-pause').textContent = this.ws.isPaused ? 'Resume' : 'Pause'
-      $('btn-pause').classList.toggle('on', this.ws.isPaused)
-    }
-    $('btn-export').onclick = () => exportFile(this.world.serialize())
+    this.buildMenus()
     const file = $<HTMLInputElement>('file-import')
-    $('btn-import').onclick = () => file.click()
     file.onchange = async () => {
       const f = file.files?.[0]
       file.value = ''
@@ -135,6 +190,7 @@ export class App {
       this.toast('Imported', f.name, true)
     }
     this.bindPanels()
+    $('btn-help').innerHTML = `${icon('help')}<span>Help</span>`
     $('btn-help').onclick = () => $<HTMLDialogElement>('help').showModal()
     const tabs = $('side-tabs').querySelectorAll('button')
     tabs.forEach((t) => {
@@ -286,8 +342,7 @@ export class App {
   }
 
   private syncButtons(): void {
-    ;($('btn-undo') as HTMLButtonElement).disabled = !this.history.canUndo
-    ;($('btn-redo') as HTMLButtonElement).disabled = !this.history.canRedo
+    this.menubar?.refresh()
   }
 
   private scheduleSave(): void {
@@ -373,6 +428,7 @@ export class App {
     if (this.uiAcc > 0.12) {
       this.uiAcc = 0
       this.inspector.update()
+      this.menubar?.refresh()
       const res = this.ws.sim.result
       $('status-right').textContent = res
         ? res.converged

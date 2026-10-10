@@ -131,9 +131,150 @@ button:disabled {
   text-shadow: 0 0 10px var(--magenta);
 }
 
-.group {
+/* Menu bar: icon over caption; each title opens a drop-down of commands */
+#topbar {
+  position: relative;
+  z-index: 20;
+}
+
+#menubar {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu-title {
+  width: 56px;
+  height: 40px;
+  padding: 3px 0 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: var(--dim);
+  background: transparent;
+  border-color: transparent;
+}
+
+.menu-title svg,
+.menu-item svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.menu-title svg {
+  color: var(--text);
+}
+
+.bar-sep {
+  width: 1px;
+  height: 26px;
+  margin: 0 6px;
+  background: var(--line);
+}
+
+.menu-title:disabled,
+.menu-title:disabled svg {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.menu-title.danger:hover:not(:disabled),
+.menu-title.danger:hover:not(:disabled) svg {
+  color: var(--red);
+}
+
+.menu-title:hover:not(:disabled),
+.menu-title:hover:not(:disabled) svg {
+  color: var(--cyan);
+}
+
+.menu-title.on {
+  background: #0b3a40;
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+.menu-title.on svg {
+  color: var(--cyan);
+}
+
+.menu-drop {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--cyan);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), 0 0 10px rgba(56, 249, 255, 0.25);
+  z-index: 30;
+}
+
+.menu-drop[hidden] {
+  display: none;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+}
+
+.menu-item .lbl {
+  flex: 1;
+}
+
+.menu-item kbd {
+  font: inherit;
+  font-size: 10px;
+  color: var(--dim);
+  min-width: 34px;
+  text-align: right;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: var(--panel2);
+  border-color: var(--line);
+}
+
+.menu-item.danger:hover:not(:disabled) {
+  color: var(--red);
+}
+
+.menu-item .chk {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--dim);
+}
+
+.menu-item .chk.lit {
+  background: var(--cyan);
+  border-color: var(--cyan);
+  box-shadow: 0 0 6px var(--cyan);
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--line);
 }
 
 .spacer {

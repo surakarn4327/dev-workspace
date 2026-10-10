@@ -192,7 +192,7 @@ export class Workspace {
   }
 
   /** Everything currently selected, whether a single item or a group. */
-  private selection(): { parts: Set<string>; wires: Set<string> } {
+  selection(): { parts: Set<string>; wires: Set<string> } {
     if (this.groupSize() > 0) return { parts: new Set(this.group.parts), wires: new Set(this.group.wires) }
     return {
       parts: new Set(this.selectedPart ? [this.selectedPart] : []),

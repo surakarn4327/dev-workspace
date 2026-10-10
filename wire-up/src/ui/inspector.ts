@@ -60,20 +60,6 @@ export class Inspector {
       this.readouts.className = 'readouts'
       this.root.appendChild(this.readouts)
       for (const f of def.fields(part)) this.root.appendChild(this.fieldEl(part.id, f))
-      const row = document.createElement('div')
-      row.className = 'row'
-      if (!def.fixedRot) row.appendChild(this.btn('Rotate (R)', () => ws.rotateSelected()))
-      if (part.state.failed || part.state.heat > 0.05) {
-        row.appendChild(
-          this.btn(part.type === 'meter' ? 'Replace fuse' : 'Replace part', () => {
-            ws.sim.replace(part.id)
-            this.rebuild()
-            ws.onEdit()
-          }),
-        )
-      }
-      row.appendChild(this.btn('Delete', () => ws.deleteSelected()))
-      this.root.appendChild(row)
       this.update()
     } else if (wire) {
       const h = document.createElement('div')
@@ -95,7 +81,6 @@ export class Inspector {
         sw.appendChild(b)
       }
       this.root.appendChild(sw)
-      this.root.appendChild(this.btn('Delete wire', () => ws.deleteSelected()))
     } else if (ws.groupSize() > 0) {
       const np = ws.group.parts.size
       const nw = ws.group.wires.size
@@ -103,23 +88,11 @@ export class Inspector {
       const what = [np > 0 ? `${np} part${np === 1 ? '' : 's'}` : '', nw > 0 ? `${nw} wire${nw === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')
       h.innerHTML = `<h3>${what} selected</h3><div class="sub">Drag any of them to move the lot. Arrow keys nudge one grid step. Ctrl+click adds or removes one. Ctrl+C / Ctrl+V copy and paste, Ctrl+D duplicates, Delete removes.</div>`
       this.root.appendChild(h)
-      const row = document.createElement('div')
-      row.className = 'row'
-      row.appendChild(this.btn('Duplicate (Ctrl+D)', () => ws.duplicateSelected()))
-      row.appendChild(this.btn('Delete', () => ws.deleteSelected()))
-      this.root.appendChild(row)
     } else {
       this.root.innerHTML = '<h3>Nothing selected</h3><div class="sub">Click a part to see its live voltage, current and settings. Drag parts in from the toolbox on the left.</div>'
     }
     this.lastLogLen = -1
     this.renderLog()
-  }
-
-  private btn(label: string, fn: () => void): HTMLButtonElement {
-    const b = document.createElement('button')
-    b.textContent = label
-    b.onclick = fn
-    return b
   }
 
   private fieldEl(partId: string, f: Field): HTMLElement {

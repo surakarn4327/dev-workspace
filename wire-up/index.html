@@ -10,25 +10,11 @@
     <div id="app">
       <header id="topbar">
         <div class="brand">WIRE<span>-</span>UP</div>
-        <div class="group">
-          <button id="btn-new" title="Clear the lab">New</button>
-          <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
-          <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
-        </div>
-        <div class="group">
-          <button id="btn-wire" title="Wire mode (W): drag anywhere to draw a wire">Wire</button>
-          <button id="btn-fit" title="Fit everything in view (F)">Fit</button>
-          <button id="btn-pixel" title="Pixel look on / off">Pixel</button>
-          <button id="btn-pause" title="Freeze the simulation">Pause</button>
-        </div>
-        <div class="group">
-          <button id="btn-export" title="Download this lab as a file">Export</button>
-          <button id="btn-import" title="Load a lab file">Import</button>
-          <input id="file-import" type="file" accept="application/json,.json" hidden />
-        </div>
+        <nav id="menubar"></nav>
+        <input id="file-import" type="file" accept="application/json,.json" hidden />
         <div class="spacer"></div>
         <span id="save-state">autosave on</span>
-        <button id="btn-help">Help</button>
+        <button id="btn-help" class="menu-title" title="How to use Wire-Up"></button>
       </header>
       <aside id="toolbox" class="float-panel left">
         <div id="tool-head">
