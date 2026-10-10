@@ -2,7 +2,7 @@
 // just the package (notch on the left), numbered pin boxes, the words VCC and GND, and the gates inside wired to their real
 // pins, in white lines straight on the dark board (style.md 4.02).
 
-import { CHIP_INFO } from '../parts/ic.ts'
+import { CHIP_INFO, NE555_PINS } from '../parts/ic.ts'
 import type { ChipInfo } from '../parts/ic.ts'
 import { gateGeometry } from '../parts/art.ts'
 import { SEG_INFO, SEGMENTS } from '../parts/display.ts'
@@ -166,11 +166,48 @@ function drawSegSheet(c: CanvasRenderingContext2D, type: string): void {
   }
 }
 
+// ---------------------------------------------------------------- NE555 timer
+
+const TIMER_SIZE = { w: 190, h: 150 }
+
+/** The timer's pinout: the eight-pin package with its notch on the left, numbered pin boxes and the pin names beyond them. */
+function drawTimerSheet(c: CanvasRenderingContext2D): void {
+  c.strokeStyle = SHEET.ink
+  c.lineWidth = 1.5
+  c.lineCap = 'square'
+  c.lineJoin = 'miter'
+  const pitch = 36
+  const x = 14
+  const y = 48
+  const w = 3 * pitch + 60
+  const h = 52
+  const mid = y + h / 2
+  c.beginPath()
+  c.moveTo(x, y)
+  c.lineTo(x + w, y)
+  c.lineTo(x + w, y + h)
+  c.lineTo(x, y + h)
+  c.lineTo(x, mid + 8)
+  c.arc(x, mid, 8, Math.PI / 2, -Math.PI / 2, true)
+  c.closePath()
+  c.stroke()
+  const x0 = x + 30
+  for (let k = 1; k <= 8; k++) {
+    const top = k > 4
+    const px = x0 + (top ? 8 - k : k - 1) * pitch
+    const by = top ? y - BOX : y + h
+    c.strokeRect(px - BOX / 2, by, BOX, BOX)
+    drawText(c, String(k), px, by + 3, { color: SHEET.ink, align: 'center', size: 10 })
+    drawText(c, NE555_PINS[k - 1], px, top ? by - 14 : by + BOX + 3, { color: SHEET.ink, align: 'center', size: 9 })
+  }
+}
+
 /** Show the pinout for the selected chip or display, or hide it when anything else (or nothing) is selected. */
 export function updateChipSheet(canvas: HTMLCanvasElement, part: PartInstance | undefined): void {
   const info = part ? CHIP_INFO.get(part.type) : undefined
   const seg = part ? SEG_INFO.has(part.type) : false
-  if (!info && !seg) {
+  const timer = part?.type === 'ic-ne555'
+  if (!info && !seg && !timer) {
     canvas.style.display = 'none'
     canvas.dataset.chip = ''
     return
@@ -179,7 +216,7 @@ export function updateChipSheet(canvas: HTMLCanvasElement, part: PartInstance | 
   const key = part!.type
   if (canvas.dataset.chip === key) return
   canvas.dataset.chip = key
-  const size = seg ? segSize(SEG_INFO.get(key)!.digits) : { w: W, h: H }
+  const size = seg ? segSize(SEG_INFO.get(key)!.digits) : timer ? TIMER_SIZE : { w: W, h: H }
   const dpr = window.devicePixelRatio || 1
   canvas.width = Math.round(size.w * dpr)
   canvas.height = Math.round(size.h * dpr)
@@ -190,5 +227,6 @@ export function updateChipSheet(canvas: HTMLCanvasElement, part: PartInstance | 
   c.setTransform(dpr, 0, 0, dpr, 0, 0)
   c.clearRect(0, 0, size.w, size.h)
   if (seg) drawSegSheet(c, key)
+  else if (timer) drawTimerSheet(c)
   else drawSheet(c, info!)
 }

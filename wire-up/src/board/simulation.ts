@@ -66,9 +66,9 @@ export class Simulation {
     this.builtVersion = this.world.version
     this.builtClock = this.clock
     this.net = buildNetlist(this.world, this.clock)
-    this.hasCaps = this.net.circuit.elements.some((e) => e.kind === 'K')
-    // a capacitor that is gone (deleted, burnt, replaced) lets go of its charge
-    const caps = new Set(this.net.circuit.elements.flatMap((e) => (e.kind === 'K' ? [e.id] : [])))
+    this.hasCaps = this.net.circuit.elements.some((e) => e.kind === 'K' || e.kind === 'T')
+    // a capacitor that is gone (deleted, burnt, replaced) lets go of its charge; a timer chip that is gone, of its latch
+    const caps = new Set(this.net.circuit.elements.flatMap((e) => (e.kind === 'K' ? [e.id] : e.kind === 'T' ? [`${e.id}:q`, `${e.id}:en`] : [])))
     for (const id of [...this.charge.keys()]) if (!caps.has(id)) this.charge.delete(id)
     const sig = JSON.stringify([this.net.circuit, [...this.net.partPins], [...this.net.partRef]])
     if (sig === this.sig && this.solved?.converged) {

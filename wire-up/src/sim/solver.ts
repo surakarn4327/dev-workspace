@@ -22,6 +22,7 @@ export type Element =
   | { kind: 'K'; id: string; a: number; b: number; c: number }
   | GateElement
   | CmosGateElement
+  | TimerElement
 
 export type GateFn = 'not' | 'and' | 'or' | 'nand' | 'nor' | 'xor' | 'xnor'
 
@@ -62,6 +63,42 @@ export interface CmosGateElement {
   rout: number
   /** Width of the input switching step, in volts. */
   w: number
+}
+
+/**
+ * The analog core of a 555 timer. The comparators and the latch are not part of the solve: the latch (`q`) and whether the chip is
+ * powered (`en`) are kept in the same map as the capacitor voltages, under `${id}:q` and `${id}:en`, and are moved on after every
+ * step by `settleTimers`. A solve only sees the output stage that state gives: output high = `vcc - dropHigh` behind `rHigh`,
+ * low = `rLow` to GND with the discharge pin `rDis` to GND; with the chip off nothing is stamped. The comparators read `thr`
+ * against `ctl` (the 2/3 point, pin 5) and `trg` against `ref` (the 1/3 point), `rst` held low resets.
+ */
+export interface TimerElement {
+  kind: 'T'
+  id: string
+  vcc: number
+  gnd: number
+  trg: number
+  thr: number
+  out: number
+  rst: number
+  ctl: number
+  ref: number
+  dis: number
+}
+
+/** NE555 numbers (TI / ST datasheets): ratings, output stages, and the internal divider. */
+export const TIMER = {
+  vMax: 18,
+  vOn: 4.5,
+  vOff: 4,
+  iMax: 0.225,
+  rHigh: 7.5,
+  dropHigh: 0.2,
+  rLow: 10,
+  rDis: 10,
+  rDiv: 5000,
+  rQuiescent: 1800,
+  vResetLow: 0.7,
 }
 
 /** One time step of a transient solve: `dt` seconds, with each capacitor's voltage (a minus b) at the start of the step, by element id. */
@@ -389,6 +426,18 @@ class Problem {
           })
           break
         }
+        case 'T': {
+          const st = this.tran?.vPrev
+          if ((st?.get(`${e.id}:en`) ?? 1) < 0.5) break
+          if ((st?.get(`${e.id}:q`) ?? 0) > 0.5) {
+            this.stampG(A, e.out, e.vcc, 1 / TIMER.rHigh)
+            this.stampI(z, e.out, e.vcc, (TIMER.dropHigh / TIMER.rHigh) * scale)
+          } else {
+            this.stampG(A, e.out, e.gnd, 1 / TIMER.rLow)
+            this.stampG(A, e.dis, e.gnd, 1 / TIMER.rDis)
+          }
+          break
+        }
         case 'Q': {
           const nVt = VT
           const vcrit = vcritOf(nVt, e.is)
@@ -478,6 +527,20 @@ class Problem {
           out.set(e.id, { i: toVcc, ib: toGnd })
           break
         }
+        case 'T': {
+          const s = this.tran?.vPrev
+          let i = 0
+          let ib = 0
+          if ((s?.get(`${e.id}:en`) ?? 1) > 0.5) {
+            if ((s?.get(`${e.id}:q`) ?? 0) > 0.5) i = (nv(e.vcc) - nv(e.out) - TIMER.dropHigh) / TIMER.rHigh
+            else {
+              i = -(nv(e.out) - nv(e.gnd)) / TIMER.rLow
+              ib = (nv(e.dis) - nv(e.gnd)) / TIMER.rDis
+            }
+          }
+          out.set(e.id, { i, ib })
+          break
+        }
         case 'Q': {
           const u1 = e.pol * (nv(e.b) - nv(e.e))
           const u2 = e.pol * (nv(e.b) - nv(e.c))
@@ -563,6 +626,11 @@ export function transientStep(circuit: Circuit): number {
     if (k.kind !== 'K') continue
     let g = 0
     for (const e of circuit.elements) {
+      if (e.kind === 'T') {
+        // a timer's discharge pin pulls the capacitor down through its own saturation resistance
+        if (e.dis === k.a || e.dis === k.b) g += 1 / TIMER.rDis
+        continue
+      }
       if ((e.kind !== 'R' && e.kind !== 'B') || e.id.endsWith(':esr')) continue // a capacitor's own series resistance is not what it charges through
       if (e.a === k.a || e.a === k.b || e.b === k.a || e.b === k.b) g += 1 / Math.max(e.r, 1e-6)
     }
@@ -581,14 +649,50 @@ const MAX_SUBSTEPS = 200
  */
 export function advance(circuit: Circuit, charge: Map<string, number>, seconds: number, warm?: Float64Array): SolveResult & { raw: Float64Array } {
   const caps = circuit.elements.filter((e) => e.kind === 'K')
-  if (caps.length === 0 || seconds <= 0) return solve(circuit, warm, caps.length > 0 ? { dt: 1e-9, vPrev: charge } : undefined)
+  const timers = circuit.elements.some((e) => e.kind === 'T')
+  if (caps.length === 0 && !timers) return solve(circuit, warm)
+  if (seconds <= 0) {
+    let res = solve(circuit, warm, { dt: 1e-9, vPrev: charge })
+    // a timer that has just been powered, or that a new trigger level has put in another state, settles before it is shown
+    for (let k = 0; k < 3 && settleTimers(circuit, charge, res.v); k++) res = solve(circuit, res.raw, { dt: 1e-9, vPrev: charge })
+    return res
+  }
   const n = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(seconds / transientStep(circuit))))
   const dt = seconds / n
   let res = solve(circuit, warm, { dt, vPrev: charge })
   for (let k = 0; ; k++) {
     // commit the step just solved
     for (const e of caps) charge.set(e.id, res.v[e.a] - res.v[e.b])
+    settleTimers(circuit, charge, res.v)
     if (k + 1 >= n) return res
     res = solve(circuit, res.raw, { dt, vPrev: charge })
   }
+}
+
+/**
+ * Move the latch of every timer on to what its comparators ask for, given the node voltages `v` of a solve (state in `state`, see
+ * `TimerElement`). Reset low wins, then trigger below 1/3 sets the output, then threshold above 2/3 clears it. A chip whose supply
+ * is under `vOn` (`vOff` once running) is off: output and discharge float, latch cleared. Returns true if anything changed.
+ */
+export function settleTimers(circuit: Circuit, state: Map<string, number>, v: Float64Array): boolean {
+  let changed = false
+  const put = (key: string, on: boolean) => {
+    const was = (state.get(key) ?? (key.endsWith(':en') ? 1 : 0)) > 0.5
+    state.set(key, on ? 1 : 0)
+    if (was !== on) changed = true
+  }
+  for (const e of circuit.elements) {
+    if (e.kind !== 'T') continue
+    const g = v[e.gnd]
+    const vs = v[e.vcc] - g
+    const wasOn = (state.get(`${e.id}:en`) ?? 1) > 0.5
+    const on = wasOn ? vs >= TIMER.vOff : vs >= TIMER.vOn
+    let q = (state.get(`${e.id}:q`) ?? 0) > 0.5
+    if (!on || v[e.rst] - g < TIMER.vResetLow) q = false
+    else if (v[e.trg] - g < v[e.ref] - g) q = true
+    else if (v[e.thr] - g > v[e.ctl] - g) q = false
+    put(`${e.id}:en`, on)
+    put(`${e.id}:q`, q)
+  }
+  return changed
 }

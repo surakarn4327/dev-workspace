@@ -4,9 +4,9 @@
 import { COL, drawLabelAbove, drawText, rrect } from '../render/draw.ts'
 import { drawSprite, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
-import { eng, HC } from '../sim/models.ts'
+import { eng, HC, NE555 } from '../sim/models.ts'
 import type { GateFn } from '../sim/solver.ts'
-import { DIP_COLORS, dipSprite } from './art.ts'
+import { DIP_COLORS, dip8Sprite, dipSprite } from './art.ts'
 import { eid, stress } from './common.ts'
 import type { BuildCtx, PartDef } from './types.ts'
 
@@ -209,3 +209,102 @@ export const hc04 = makeChip('ic-74hc04', '74HC04', 'hex NOT', 'not', HEX_NOT)
 export const hc08 = makeChip('ic-74hc08', '74HC08', 'quad AND', 'and', QUAD)
 export const hc32 = makeChip('ic-74hc32', '74HC32', 'quad OR', 'or', QUAD)
 export const hc86 = makeChip('ic-74hc86', '74HC86', 'quad XOR', 'xor', QUAD)
+
+// ---------------------------------------------------------------- NE555 timer (DIP-8)
+
+/** Pin names in pin order, as printed on the datasheet pinout. */
+export const NE555_PINS = ['GND', 'TRIG', 'OUT', 'RESET', 'CTRL', 'THRES', 'DISCH', 'VCC']
+
+/** Pin k (1..8) in grid units: 1..4 left to right along the bottom row, 5..8 right to left along the top. */
+function pin8At(k: number): { x: number; y: number } {
+  return k <= 4 ? { x: k - 1, y: 3 } : { x: 8 - k, y: 0 }
+}
+
+const NE_BODY = { x: -10, y: 8, w: 80, h: 44 }
+
+export const ne555: PartDef = {
+  type: 'ic-ne555',
+  name: 'NE555 timer',
+  category: 'logic',
+  blurb:
+    'Real timer chip. Wire pin 8 to + (4.5-16 V) and pin 1 to -. Pin 1 is bottom left (dot), notch on the left. 1 GND, 2 TRIG, 3 OUT, 4 RESET, 5 CTRL, 6 THRES, 7 DISCH, 8 VCC. With R and C it blinks or times a pulse.',
+  pinLabels: NE555_PINS,
+  hidePinLabels: true,
+  defaults: () => ({}),
+  pins: () => Array.from({ length: 8 }, (_, i) => pin8At(i + 1)),
+  bounds: () => ({ x: -12, y: -2, w: 84, h: 64 }),
+  build(p, ctx) {
+    if (p.state.failed) return
+    // a real chip does nothing until both supply pins are wired
+    if (!ctx.wired(0) || !ctx.wired(7)) return
+    const pin = (k: number) => ctx.pins[k - 1]
+    const gnd = pin(1)
+    const vcc = pin(8)
+    const ctl = pin(5)
+    const ref = ctx.newNode() // the one-third point of the internal divider
+    // the divider of three equal resistors: CTRL is the two-thirds point, the trigger comparator reads the one-third point
+    ctx.add({ kind: 'R', id: ctx.id('d1'), a: vcc, b: ctl, r: NE555.rDiv })
+    ctx.add({ kind: 'R', id: ctx.id('d2'), a: ctl, b: ref, r: NE555.rDiv })
+    ctx.add({ kind: 'R', id: ctx.id('d3'), a: ref, b: gnd, r: NE555.rDiv })
+    ctx.add({ kind: 'R', id: ctx.id('iq'), a: vcc, b: gnd, r: NE555.rQuiescent }) // the supply current the chip draws by itself
+    // the comparator inputs draw almost nothing: an unwired one floats like a 74HC input; an unwired RESET reads high
+    for (const k of [2, 6]) {
+      if (ctx.wired(k - 1)) continue
+      const u = drift(p.id, k, ctx.time)
+      ctx.add({ kind: 'R', id: ctx.id(`fu${k}`), a: vcc, b: pin(k), r: HC.rFloat * (1 - u) * 2 })
+      ctx.add({ kind: 'R', id: ctx.id(`fd${k}`), a: pin(k), b: gnd, r: HC.rFloat * u * 2 })
+      ctx.animate()
+    }
+    if (!ctx.wired(3)) ctx.add({ kind: 'R', id: ctx.id('rh'), a: vcc, b: pin(4), r: 10000 })
+    ctx.add({ kind: 'T', id: ctx.id('t'), vcc, gnd, trg: pin(2), thr: pin(6), out: pin(3), rst: pin(4), ctl, ref, dis: pin(7) })
+    // a supply wired the wrong way round drives a large current straight through the chip
+    ctx.add({ kind: 'D', id: ctx.id('sub'), a: gnd, b: vcc, is: HC.diodeIs, n: 1 })
+  },
+  evaluate(p, env) {
+    const v = (k: number) => env.v(env.pins[k - 1])
+    const vs = v(8) - v(1)
+    const t = env.cur(eid(p, 't'))
+    const iOut = Math.abs(t?.i ?? 0)
+    const iDis = Math.abs(t?.ib ?? 0)
+    const sub = Math.abs(env.cur(eid(p, 'sub'))?.i ?? 0)
+    const rV = vs / NE555.vMax
+    const rI = Math.max(iOut, iDis) / NE555.iMax
+    const rSub = sub / NE555.iMax
+    return {
+      live: { v: vs, out: v(3) - v(1), i: iOut + iDis },
+      stress: stress(Math.max(rV, rI, rSub), () => {
+        if (rSub >= Math.max(rV, rI)) return `NE555 has VCC and GND swapped: ${eng(sub, 'A')} ran straight through the chip (at most ${eng(NE555.iMax, 'A')}). Pin 8 goes to +, pin 1 to -.`
+        if (rV >= rI) return `NE555 supply was ${eng(vs, 'V')}; the absolute maximum is ${NE555.vMax} V (it works on 4.5-16 V).`
+        const outPin = iOut >= iDis
+        return `NE555 ${outPin ? 'output (pin 3)' : 'discharge pin (pin 7)'} carried ${eng(outPin ? iOut : iDis, 'A')}; the absolute maximum is ${eng(NE555.iMax, 'A')}. Use a resistor and do not short the pin.`
+      }),
+    }
+  },
+  draw(c, p) {
+    if (scene.pixel) {
+      const s = dip8Sprite()
+      drawSprite(c, s, -10, 0)
+      drawText(c, 'NE555', 30, 26, { color: COL.dim, align: 'center' })
+      if (scene.labeled.has(p.id)) drawLabelAbove(c, 'NE555 timer', 30, spriteInk(s, -10, 0).top)
+      return
+    }
+    const top = NE_BODY.y - LEG
+    const mid = NE_BODY.y + NE_BODY.h / 2
+    c.fillStyle = DIP_COLORS.S
+    for (let i = 0; i < 4; i++) {
+      c.fillRect(i * 20 - 2, top, 4, LEG)
+      c.fillRect(i * 20 - 2, NE_BODY.y + NE_BODY.h, 4, LEG)
+    }
+    c.fillStyle = DIP_COLORS.b
+    rrect(c, NE_BODY.x, NE_BODY.y, NE_BODY.w, NE_BODY.h, 3)
+    c.fill()
+    c.fillStyle = COL.bg
+    c.beginPath()
+    c.arc(NE_BODY.x, mid, 6, -Math.PI / 2, Math.PI / 2)
+    c.fill()
+    drawText(c, 'NE555', NE_BODY.x + NE_BODY.w / 2, mid - 4, { color: COL.dim, align: 'center' })
+    if (scene.labeled.has(p.id)) drawLabelAbove(c, 'NE555 timer', NE_BODY.x + NE_BODY.w / 2, top)
+  },
+  fields: () => [],
+  summary: () => 'timer, VCC pin 8, GND pin 1',
+}

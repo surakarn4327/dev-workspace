@@ -1,6 +1,7 @@
 // Device physics helpers shared by parts and tests. Pure numbers, no DOM.
 
 import { VT } from './solver.ts'
+export { TIMER as NE555 } from './solver.ts'
 
 export const E12 = [1.0, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 3.9, 4.7, 5.6, 6.8, 8.2]
 

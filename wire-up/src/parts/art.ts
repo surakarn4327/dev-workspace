@@ -1118,8 +1118,17 @@ export function gateSprite(shape: GateShape): Sprite {
 export const DIP_COLORS = { a: '#2c2c33', b: '#26262c', c: '#202026', L: '#5a5a66', M: '#3c3c45', D: '#111115', p: '#16161b', S: '#c9ced6', T: '#7d838f', edge: '#07070a' }
 
 export function dipSprite(): Sprite {
-  return sprite('dip14', () => {
-    const W = 70
+  return dipBody('dip14', 7)
+}
+
+/** The same package for the eight-pin timer chip: four pins a row, 40 x 30 art pixels, cell (0, 0) at world (-10, 0). */
+export function dip8Sprite(): Sprite {
+  return dipBody('dip8', 4)
+}
+
+function dipBody(key: string, perRow: number): Sprite {
+  return sprite(key, () => {
+    const W = 10 * perRow
     const H = 30
     const g = new PixelGrid(W, H)
     g.rrect(0, 4, W, 22, 1, 'F')
@@ -1134,7 +1143,7 @@ export function dipSprite(): Sprite {
       g.set(x, y, litEdge && !darkEdge ? 'L' : darkEdge && !litEdge ? 'D' : inner ? 'M' : face(y))
     }
     g.disc(6, 21, 1, 'p') // pin-1 dimple
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < perRow; i++) {
       const x = 4 + 10 * i
       for (const y of [0, 26]) {
         g.rect(x, y, 2, 4, 'S')
