@@ -21,9 +21,9 @@ function circuit(drive: number | null, trigger: 'low' | 'high', channels = 1) {
   const gnd = pins[0]
   const in1 = pins[1]
   const vcc = pins[n + 1]
-  const no = pins[n + 2]
+  const nc = pins[n + 2]
   const com = pins[n + 3]
-  const nc = pins[n + 4]
+  const no = pins[n + 4]
   const [sp, sm] = pinWorld(sup)
   const [lp, lm] = pinWorld(loadBat)
   const [n0, n1] = pinWorld(rNo)
@@ -94,6 +94,7 @@ describe('relay module', () => {
         expect(v.x * 20).toBeLessThanOrEqual(b.x + b.w)
         expect(v.y * 20).toBeLessThanOrEqual(b.y + b.h)
       }
+      expect(pinNamesOf(p).slice(n + 2, n + 5)).toEqual(n === 1 ? ['NC', 'COM', 'NO'] : ['NC1', 'COM1', 'NO1'])
     }
   })
 

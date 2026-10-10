@@ -1157,81 +1157,137 @@ function dipBody(key: string, perRow: number): Sprite {
 
 // ---------------------------------------------------------------- relay module
 
+/** Width of one relay socket (part 2) in art pixels: three screw cells of 20, six grid steps, so its screws stay on the grid and sockets stand side by side with no gap. */
+export const RELAY_CHANNEL_PITCH = 60
+/** Board width in art pixels: the sockets side by side and a 10 pixel margin of PCB on each side. */
+export function relayModuleWidth(channels: number): number {
+  return RELAY_CHANNEL_PITCH * channels + 20
+}
+
+/** Art x of the first pin of the control header (a multiple of 10, so the pins sit on the grid): under the first socket, running right as inputs are added. */
+export function relayHeaderStart(_channels: number): number {
+  return 30
+}
+
 /**
- * A 5 V relay module board seen from above (references: three product photos of the one-, two- and four-channel black PCB
- * modules with blue SRD-05VDC-SL-C relays): a black board with four mounting holes; for each channel a blue three-way screw
- * terminal on the top edge, the blue relay cube under it, and below that the opto-coupler, the driver transistor, two resistors and
- * the status LED; along the bottom edge the black pin header (silver pads at the pin points). `channels` relays in a row, 140 world
- * px apart: (70 n + 30) x 220 art pixels, cell (0, 0) at world (0, 0). Text, the trigger jumper and the lamps are drawn by the part.
+ * A rounded block (corner radius `r`) shaded from the upper left: the cells within `depth` pixels of an edge facing up or left
+ * get `lit`, those facing down or right get `dark`, the rest `face(y)`. The shading follows the rounded outline, so the corners
+ * are round and not squared off.
+ */
+function shadedBlock(w: number, h: number, r: number, face: (y: number) => string, lit: string, dark: string, depth: number): PixelGrid {
+  const mask = new PixelGrid(w, h)
+  mask.rrect(0, 0, w, h, r, 'a')
+  const out = new PixelGrid(w, h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (mask.get(x, y) === '.') continue
+      let l = false
+      let d = false
+      for (let k = 1; k <= depth; k++) {
+        if (mask.get(x - k, y) === '.' || mask.get(x, y - k) === '.') l = true
+        if (mask.get(x + k, y) === '.' || mask.get(x, y + k) === '.') d = true
+      }
+      out.set(x, y, l && !d ? lit : d && !l ? dark : face(y))
+    }
+  }
+  return out
+}
+
+/** Copy the painted cells of `src` onto `dst` with its corner at (x0, y0). */
+function put(dst: PixelGrid, src: PixelGrid, x0: number, y0: number): void {
+  for (let y = 0; y < src.h; y++) {
+    for (let x = 0; x < src.w; x++) {
+      const ch = src.get(x, y)
+      if (ch !== '.') dst.set(x0 + x, y0 + y, ch)
+    }
+  }
+}
+
+/**
+ * A 5 V relay module board seen from above (references: the CyberTice, AllNewStep and Deva DIY product photos). One channel is
+ * 82 x 156 art pixels: the screw terminal along the top edge reading NC, COM, NO from the left (screws at world x 40 / 80 / 120,
+ * y 40), the relay half a grid under it, the opto-coupler stage below the relay and the control header GND, IN, VCC near the
+ * bottom edge. A board with more channels is the same height with the channels side by side in a row (`RELAY_CHANNEL_PITCH` art
+ * pixels apart, all terminals on the top edge) and one header along the bottom edge. Cell (0, 0) is at world (0, 0). The part
+ * draws the text, the lamps and the jumpers.
  */
 export function relayModuleSprite(channels: number): Sprite {
   return sprite(`relay-module-${channels}`, () => {
-    const W = 70 * channels + 30
-    const H = 220
+    const W = relayModuleWidth(channels)
+    const PCB = W // part 1 grows with the sockets: 10 pixels of board on each side of them, as on the one-channel board
+    const H = 156
     const g = new PixelGrid(W, H)
-    g.rrect(0, 0, W, H, 5, 'k')
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        if (g.get(x, y) === '.') continue
-        const tl = x < 2 || y < 2
-        const br = x >= W - 2 || y >= H - 2
-        g.set(x, y, tl && !br ? 'l' : br && !tl ? 'q' : 'k')
-      }
+    // the board: round corners, a lit edge on the top and left, a dark one on the bottom and right, and a slightly lighter
+    // face towards the top (solder mask)
+    put(g, shadedBlock(PCB, H, 5, (y) => (y < H * 0.45 ? 'K' : 'k'), 'l', 'q', 2), 0, 0)
+    // four small mounting holes in the very corners, a lit upper-left half of the ring
+    for (const [hx, hy] of [[6, 6], [PCB - 7, 6], [6, H - 7], [PCB - 7, H - 7]]) {
+      g.disc(hx, hy, 4, 'z')
+      g.disc(hx + 0.5, hy + 0.5, 3, 'q')
+      g.disc(hx, hy, 2.5, '.')
     }
-    // mounting holes
-    for (const [hx, hy] of [[11, 11], [W - 12, 11], [11, H - 12], [W - 12, H - 12]]) {
-      g.disc(hx, hy, 6, 'z')
-      g.disc(hx, hy, 4.2, '.')
-    }
-    const pad = (cx: number, cy: number) => {
-      g.disc(cx, cy, 2.7, 'p')
-      g.disc(cx, cy, 1.9, 'S')
-      g.rect(cx, cy - 1, 2, 2, 'T')
-      g.set(cx - 1, cy - 1, 'W')
-    }
+    // a short copper trace from the header up towards the first opto-coupler
+    const hx = relayHeaderStart(channels)
+    for (let y = 131; y <= 133; y++) g.set(hx, y, 'y')
+    for (let x = 24; x <= hx; x++) g.set(x, 131, 'y')
     for (let ch = 0; ch < channels; ch++) {
-      const cx = 50 + 70 * ch
-      // the three-way screw terminal, the screws at the pin points (world x 60, 100, 140 + 140 ch; y 40)
-      g.rrect(cx - 30, 6, 60, 29, 2, 'B')
-      g.rect(cx - 30, 6, 60, 3, 'b')
-      g.rect(cx - 10, 9, 1, 26, 'v')
-      g.rect(cx + 10, 9, 1, 26, 'v')
-      g.rect(cx - 29, 31, 58, 3, 'd')
-      for (const dx of [-20, 0, 20]) {
-        g.disc(cx + dx, 20, 7, 'p')
-        g.disc(cx + dx, 20, 6, 'S')
-        g.rect(cx + dx - 1, 14, 2, 12, 'p')
-        g.rect(cx + dx - 6, 19, 12, 2, 'p')
+      const dx = RELAY_CHANNEL_PITCH * ch
+      for (let x = 30; x <= 36; x++) g.set(dx + x, 122, 'y')
+      // the screw terminal along the top edge: a rounded blue block with a lit top, a darker lower half, the wire openings facing up
+      put(g, shadedBlock(60, 28, 3, (y) => (y < 5 ? 'n' : y < 16 ? 'B' : y < 24 ? 'm' : 'v'), 'b', 'v', 2), dx + 10, 6)
+      for (const x of [30, 50]) g.rect(dx + x, 9, 1, 22, 'v')
+      for (const x of [20, 40, 60]) {
+        g.rect(dx + x - 5, 6, 10, 4, 'x') // the wire opening
+        g.rect(dx + x - 4, 6, 8, 1, 'v')
+        g.disc(dx + x, 20, 7, 'p')
+        g.disc(dx + x, 20, 6, 'T')
+        g.disc(dx + x - 0.5, 19.5, 5, 'S')
+        g.disc(dx + x - 1.5, 18.5, 2.5, 's')
+        g.rect(dx + x - 1, 14, 2, 12, 'p')
+        g.rect(dx + x - 6, 19, 12, 2, 'p')
       }
-      // the relay cube, 61 x 75
-      g.rrect(cx - 30, 40, 61, 75, 3, 'a')
-      for (let y = 40; y < 115; y++) {
-        for (let x = cx - 30; x < cx + 31; x++) {
-          if (g.get(x, y) === '.') continue
-          const tl = x < cx - 27 || y < 43
-          const br = x >= cx + 28 || y >= 112
-          g.set(x, y, tl && !br ? 'h' : br && !tl ? 'D' : y < 65 ? 'a' : y < 90 ? 'u' : 'c')
-        }
+      // the relay cube: round corners, a lit rim, a flat top with tones and a darker front edge
+      // the cube is exactly as wide as the screw terminal above it (60 art pixels, x 10..70 of the socket)
+      put(g, shadedBlock(60, 71, 4, (y) => (y < 20 ? 'f' : y < 46 ? 'u' : 'c'), 'h', 'D', 3), dx + 10, 39)
+      // the opto-coupler: a black body with silver legs on both long sides and a pin-1 dot
+      put(g, shadedBlock(16, 10, 1, () => 'o', 'O', 'q', 1), dx + 14, 118)
+      g.disc(dx + 17, 122, 1, 'O')
+      for (const x of [16, 20, 24, 28]) {
+        g.rect(dx + x, 116, 1, 2, 'S')
+        g.rect(dx + x, 128, 1, 2, 'S')
       }
-      // opto-coupler (black, with a notch dot), driver transistor, two resistors, the LED
-      g.rect(cx - 8, 130, 16, 10, 'o')
-      g.rect(cx - 8, 130, 16, 1, 'O')
-      g.disc(cx - 5, 133, 1, 'O')
-      g.rect(cx + 14, 135, 6, 5, 'o')
-      g.rect(cx - 28, 125, 8, 4, 'r')
-      g.rect(cx - 28, 125, 2, 4, 'S')
-      g.rect(cx + 20, 125, 2, 4, 'S')
-      g.rect(cx - 28, 135, 8, 4, 'r')
-      g.rect(cx - 28, 135, 2, 4, 'S')
-      g.rect(cx - 19, 135, 2, 4, 'S')
-      g.rect(cx - 28, 148, 8, 5, 'e') // LED housing (the part draws its light)
+      // the driver transistor (SOT-23): a small black body, two legs below, one above
+      put(g, shadedBlock(6, 5, 1, () => 'o', 'O', 'q', 1), dx + 55, 120)
+      g.set(dx + 56, 125, 'S')
+      g.set(dx + 60, 125, 'S')
+      g.set(dx + 58, 119, 'S')
+      // the status LEDs (SMD): a dark body with a silver cap at each end, the lens in the middle is painted by the part. The
+      // upper one is this channel's green power LED, the lower one its red relay LED
+      for (const y of [116, 126]) {
+        g.rect(dx + 36, y, 8, 4, 'r')
+        g.rect(dx + 36, y, 2, 4, 'S')
+        g.rect(dx + 42, y, 2, 4, 'S')
+        g.set(dx + 36, y, 'T')
+        g.set(dx + 43, y + 3, 'T')
+      }
     }
-    // the control header along the bottom edge: a black strip with silver pads at the pin points
-    const n = channels + 2
-    g.rect(15, 193, 10 * n + 10, 14, 'o')
-    for (let k = 0; k < n; k++) pad(20 + 10 * k, 200)
+    // the control header: a black plastic strip with rounded ends and a lit top-left edge, the pins as small square posts
+    put(g, shadedBlock(10 * (channels + 2) + 2, 12, 2, () => 'o', 'O', 'q', 1), hx - 6, 134)
+    for (let k = 0; k < channels + 2; k++) {
+      const x = hx + 10 * k
+      g.rect(x - 3, 137, 6, 6, 'p')
+      g.rect(x - 2, 138, 4, 4, 'T')
+      g.rect(x - 2, 138, 3, 3, 'S')
+      g.set(x - 2, 138, 's')
+    }
     return g.build(
-      { k: '#15151c', l: '#2c2c36', q: '#0b0b10', z: '#3a3a46', B: '#2f6cd6', b: '#6f9bf0', v: '#17306a', d: '#1d4aa8', p: '#16161b', S: '#c9ced6', T: '#7d838f', W: '#ffffff', a: '#4a80e0', h: '#7fa8ff', u: '#3b6cc9', c: '#2f58ab', D: '#22448a', o: '#0c0c12', O: '#3c3c46', r: '#26262e', e: '#e8f4ec' },
+      {
+        k: '#15151c', K: '#1a1a23', l: '#2c2c36', q: '#0b0b10', z: '#3a3a46', y: '#23232e',
+        B: '#2f6cd6', b: '#6f9bf0', n: '#3f7ee8', m: '#2459b8', v: '#17306a', x: '#0a1633',
+        p: '#16161b', S: '#c9ced6', s: '#f4f7fb', T: '#7d838f',
+        a: '#4a80e0', h: '#8db3ff', f: '#5a8cea', u: '#3b6cc9', c: '#2f58ab', D: '#22448a', g: '#c4d8ff',
+        o: '#0c0c12', O: '#3c3c46', r: '#26262e', R: '#3e3e4a', e: '#8fa797', E: '#c5d8ca',
+      },
       '#050509',
     )
   })

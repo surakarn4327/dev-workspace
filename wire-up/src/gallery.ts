@@ -27,13 +27,19 @@ function labelPainter(ctx: CanvasRenderingContext2D): { drawPinLabels(p: ReturnT
   return fake
 }
 
-function drawCell(cv: HTMLCanvasElement, def: PartDef, rot: number): void {
+/** Extra gallery entries for parts whose look follows a setting: the same part drawn with these params too. */
+const VARIANTS: Record<string, Record<string, number | string | boolean>[]> = {
+  'relay-module': [{ channels: 2 }, { channels: 4 }, { channels: 8 }],
+}
+
+function drawCell(cv: HTMLCanvasElement, def: PartDef, rot: number, params: Record<string, number | string | boolean> = {}): void {
   cv.width = CELL
   cv.height = CELL
   const c = cv.getContext('2d')!
   c.fillStyle = '#23232b'
   c.fillRect(0, 0, CELL, CELL)
   const part = newPart('g', def.type, 0, 0)
+  Object.assign(part.params, params)
   part.rot = rot as 0 | 1 | 2 | 3
   scene.labeled = new Set([part.id])
   // fit the part (any rotation) in the cell, centred on its hit box
@@ -60,24 +66,27 @@ function drawCell(cv: HTMLCanvasElement, def: PartDef, rot: number): void {
 }
 
 const list = document.getElementById('list')!
-const cells: [HTMLCanvasElement, PartDef, number][] = []
+const cells: [HTMLCanvasElement, PartDef, number, Record<string, number | string | boolean>][] = []
 
 for (const def of ALL_PARTS) {
-  const box = document.createElement('section')
-  box.className = 'part'
-  const st = status.get(def.type) ?? 'missing'
-  box.innerHTML = `<h2>${def.name} <span class="badge ${st}">${st}</span></h2><p>${def.type} · ${def.category} · ${def.blurb}</p><div class="row"></div>`
-  const row = box.querySelector('.row')!
-  for (let rot = 0; rot < 4; rot++) {
-    const cv = document.createElement('canvas')
-    row.appendChild(cv)
-    cells.push([cv, def, rot])
+  for (const params of [{}, ...(VARIANTS[def.type] ?? [])]) {
+    const box = document.createElement('section')
+    box.className = 'part'
+    const st = status.get(def.type) ?? 'missing'
+    const extra = Object.keys(params).length > 0 ? ` (${Object.entries(params).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''
+    box.innerHTML = `<h2>${def.name}${extra} <span class="badge ${st}">${st}</span></h2><p>${def.type} · ${def.category} · ${def.blurb}</p><div class="row"></div>`
+    const row = box.querySelector('.row')!
+    for (let rot = 0; rot < 4; rot++) {
+      const cv = document.createElement('canvas')
+      row.appendChild(cv)
+      cells.push([cv, def, rot, params])
+    }
+    list.appendChild(box)
   }
-  list.appendChild(box)
 }
 
 function redraw(): void {
-  for (const [cv, def, rot] of cells) drawCell(cv, def, rot)
+  for (const [cv, def, rot, params] of cells) drawCell(cv, def, rot, params)
 }
 
 // the canvas text needs the pixel font: draw again when it has loaded
