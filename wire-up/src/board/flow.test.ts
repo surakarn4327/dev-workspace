@@ -67,6 +67,30 @@ describe('wire flow', () => {
     expect(sim.flow.has(main.id)).toBe(false) // no single number for a cut wire
   })
 
+  it('cuts a wire that is plugged in on the way and gives each stretch its own current', () => {
+    // one wire from the + through R1's pin (a plugged corner) on to R2: both loads before the plug, only R2 after it
+    const w = new World()
+    const bat = newPart(w.nextId('p'), 'battery', 0, 0)
+    bat.params.volts = 9
+    const r1 = newPart(w.nextId('p'), 'resistor', 400, 0)
+    const r2 = newPart(w.nextId('p'), 'resistor', 400, 200)
+    w.parts.push(bat, r1, r2)
+    const [plus, minus] = pinWorld(bat)
+    const p1 = pinWorld(r1)
+    const p2 = pinWorld(r2)
+    const main = w.addWire(plus, p2[0], '#ff4a4a', [p1[0]])
+    main.taps = [p1[0]]
+    w.addWire(p1[1], minus, '#4a7aff')
+    w.addWire(p2[1], minus, '#4a7aff')
+    const sim = new Simulation(w)
+    sim.step(0.016)
+    const parts = sim.flowParts.filter((q) => q.wire === main.id)
+    expect(parts.length).toBe(2)
+    expect(Math.abs(parts[0].i)).toBeGreaterThan(0.017) // both loads
+    expect(Math.abs(parts[1].i)).toBeGreaterThan(0.0085) // only R2 after the plug
+    expect(Math.abs(parts[1].i)).toBeLessThan(Math.abs(parts[0].i) * 0.55)
+  })
+
   it('divides the current between two wires that form a loop, in inverse proportion to their lengths', () => {
     // + to the resistor by a short wire and by a longer one: the same two ends, so a loop of wires
     const w = new World()

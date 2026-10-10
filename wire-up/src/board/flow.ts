@@ -1,7 +1,7 @@
 // Current in each wire, for the flowing-dots animation. The solver only knows node voltages and element currents, so the
 // current in a wire is rebuilt from the currents each part draws at its pins. Wires are given a resistance in proportion to
 // their length, which is what makes the answer unique even where they form loops (the circuit's own results are untouched).
-// A wire with plugged corners of its own is left out (no dots) rather than guessed.
+// A wire with plugged corners (it passes through a pin or hole and carries on) is cut there like at a branch.
 
 import { boardHoles } from '../parts/breadboard.ts'
 import { pinWorld } from '../parts/index.ts'
@@ -107,15 +107,15 @@ export function computeFlow(world: World, net: Netlist, res: SolveResult): FlowR
     whole: boolean
   }
   const pieces: Piece[] = []
-  const unsupported = new Set<string>() // wires with plugged corners of their own: no answer
   for (const w of world.wires) {
-    if ((w.taps?.length ?? 0) > 0) unsupported.add(w.id)
     const path = wirePath(w)
-    const cuts = (junctions.get(w.id) ?? [])
+    const length = totalLength(path)
+    // cut where another wire rests on this one, and where this wire is plugged in on the way
+    const cuts = [...(junctions.get(w.id) ?? []), ...(w.taps ?? [])]
       .map((j) => alongPath(path, j))
       .filter((d): d is number => d !== null)
       .sort((p, q) => p - q)
-    const marks = [0, ...cuts.filter((d, i) => d > 0 && (i === 0 || d !== cuts[i - 1])), totalLength(path)]
+    const marks = [0, ...cuts.filter((d, i) => d > 0 && d < length && (i === 0 || d !== cuts[i - 1])), length]
     for (let m = 0; m + 1 < marks.length; m++) {
       const piece = slicePath(path, marks[m], marks[m + 1])
       pieces.push({
@@ -147,7 +147,6 @@ export function computeFlow(world: World, net: Netlist, res: SolveResult): FlowR
     else groups.set(r, [e])
   }
   for (const g of groups.values()) {
-    if (g.some((e) => unsupported.has(e.wire))) continue
     const nodes = [...new Set(g.flatMap((e) => [e.a, e.b]))]
     const demand = nodes.map((n) => need.get(n) ?? 0)
     if (nodes.length < 2 || demand.every((d) => Math.abs(d) < 1e-12)) continue
