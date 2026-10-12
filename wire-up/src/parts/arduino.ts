@@ -7,7 +7,7 @@ import { COL, drawLabelAbove, drawText, rrect } from '../render/draw.ts'
 import { drawSprite, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, LED_COLORS, LED_N, ledIs, MCU } from '../sim/models.ts'
-import { UNO_HEADERS, UNO_PAD, UNO_PLUG, UNO_USB, unoBoardSprite, unoHeaderSprite, unoLensSprite, unoPlugSprite, unoResetSprite } from './art.ts'
+import { UNO_HEADERS, UNO_LAMPS, UNO_PAD, UNO_PLUG, UNO_RESET, UNO_USB, unoBoardSprite, unoHeaderSprite, unoLensSprite, unoPlugSprite, unoResetSprite } from './art.ts'
 import { eid, flag, stress } from './common.ts'
 import type { PartInstance } from '../board/world.ts'
 import type { PartDef } from './types.ts'
@@ -52,12 +52,21 @@ function printedName(idx: number): string {
   return name === 'NC' ? '' : name
 }
 
-/** Silkscreen text turned so the foot of the letters faces the board edge it is nearest to (top 180 degrees, bottom upright). */
+/** Silkscreen lettering is heavier than the pixel font: the same text twice, one world pixel apart. */
+function bold(c: CanvasRenderingContext2D, text: string, x: number, y: number, align: 'left' | 'center' | 'right', color: string, size: number): void {
+  drawText(c, text, x, y, { color, align, size })
+  drawText(c, text, x + 1, y, { color, align, size })
+}
+
+/**
+ * A pin name printed on the board as on the real one: turned a quarter so it reads upward along the pin's column. Under the top
+ * header it ends at the header; over the bottom header it starts at it.
+ */
 function printed(c: CanvasRenderingContext2D, text: string, x: number, y: number, edge: 'top' | 'bottom'): void {
   c.save()
   c.translate(x, y)
-  if (edge === 'top') c.rotate(Math.PI)
-  drawText(c, text, 0, -4, { color: INK, align: 'center', size: 8 })
+  c.rotate(-Math.PI / 2)
+  bold(c, text, 0, -7, edge === 'top' ? 'right' : 'left', INK, 14)
   c.restore()
 }
 
@@ -180,32 +189,47 @@ export const arduinoUno: PartDef = {
       const board = unoBoardSprite()
       drawSprite(c, board, -2 * UNO_PAD, 0)
       // the lamps: ON (power), L (pin 13), and TX / RX which wait for the sketch's serial traffic
-      drawSprite(c, unoLensSprite('orange', (live.l ?? 0) > 0.5), 106 * 2, 46 * 2)
-      drawSprite(c, unoLensSprite('yellow', false), 106 * 2, 66 * 2)
-      drawSprite(c, unoLensSprite('yellow', false), 106 * 2, 75 * 2)
-      drawSprite(c, unoLensSprite('green', (live.pw ?? 0) > 0.5), 227 * 2, 68 * 2)
-      drawSprite(c, unoResetSprite(flag(p, 'pressed')), 28 * 2, 13 * 2)
-      // printed on the board, the foot of each name turned to the edge it is nearest to
+      const lamp = (at: { x: number; y: number }, color: 'green' | 'orange' | 'yellow', on: boolean): void => drawSprite(c, unoLensSprite(color, on), at.x * 2, at.y * 2)
+      lamp(UNO_LAMPS.l, 'orange', (live.l ?? 0) > 0.5)
+      lamp(UNO_LAMPS.tx, 'yellow', false)
+      lamp(UNO_LAMPS.rx, 'yellow', false)
+      lamp(UNO_LAMPS.on, 'green', (live.pw ?? 0) > 0.5)
+      drawSprite(c, unoResetSprite(flag(p, 'pressed')), UNO_RESET.x * 2, UNO_RESET.y * 2)
+      // the pin names, printed under the top header and over the bottom one
       let idx = 0
       for (const h of UNO_HEADERS) {
         for (let k = 0; k < h.n; k++, idx++) {
           const text = printedName(idx)
-          if (text) printed(c, text, (h.x + k) * 20, h.y < 10 ? 46 : 376, h.y < 10 ? 'top' : 'bottom')
+          if (text) printed(c, text, (h.x + k) * 20 + 4, h.y < 10 ? 30 : 386, h.y < 10 ? 'top' : 'bottom')
         }
       }
-      const upright = (text: string, x: number, y: number, align: 'left' | 'center' | 'right' = 'center', color = INK): void =>
-        drawText(c, text, x, y - 4, { color, align, size: 8 })
-      upright('DIGITAL (PWM~)', 432, 82)
-      upright('POWER', 346, 352)
-      upright('ANALOG IN', 470, 352)
-      upright('ARDUINO', 322, 160)
-      upright('UNO', 404, 123)
-      upright('L', 200, 94, 'right')
-      upright('TX', 200, 134, 'right')
-      upright('RX', 200, 152, 'right')
-      upright('ON', 472, 138, 'left')
-      upright('16.000', 158, 210, 'center', '#4a505c')
-      upright('ATMEGA328P', 366, 284, 'center', COL.dim)
+      const upright = (text: string, x: number, y: number, align: 'left' | 'center' | 'right', size: number, color = INK): void =>
+        bold(c, text, x, y - size / 2, align, color, size)
+      upright('DIGITAL (PWM~)', 412, 70, 'center', 17)
+      upright('POWER', 346, 356, 'center', 15)
+      upright('ANALOG IN', 470, 356, 'center', 14)
+      upright('ARDUINO', 302, 148, 'center', 24)
+      upright('UNO', 406, 107, 'center', 36)
+      upright('L', 198, 86, 'right', 15)
+      upright('TX', 198, 132, 'right', 15)
+      upright('RX', 198, 150, 'right', 15)
+      upright('ON', 478, 134, 'left', 15)
+      upright('ICSP', 514, 166, 'center', 10)
+      upright('WWW.ARDUINO.CC - MADE IN ITALY', 532, 242, 'right', 11)
+      upright('T16.000', 138, 216, 'center', 8, '#4a505c')
+      // the chip's marking, upside down like the real one, and the capacitors' values
+      c.save()
+      c.translate(366, 286)
+      c.rotate(Math.PI)
+      drawText(c, 'ATMEGA328P-PU', 0, -5, { color: '#4a4a55', align: 'center', size: 10 })
+      c.restore()
+      for (const cx of [142, 196]) {
+        c.save()
+        c.translate(cx, 352)
+        c.rotate(-Math.PI / 2)
+        drawText(c, '47 25V', 0, -4, { color: '#2a2e36', align: 'center', size: 8 })
+        c.restore()
+      }
       if (usb) drawSprite(c, unoPlugSprite(), PLUG_AT.x, PLUG_AT.y)
       if (scene.labeled.has(p.id)) drawLabelAbove(c, 'Arduino Uno R3', 270, spriteInk(board, -2 * UNO_PAD, 0).top)
       return
