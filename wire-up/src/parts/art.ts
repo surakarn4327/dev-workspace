@@ -1716,9 +1716,9 @@ export function unoBoardSprite(): Sprite {
 }
 
 /**
- * The four female header strips on a grid as big as the board's, so it lays exactly over it: the part draws it again above the
- * wires so a wire seems to go into a socket. Black plastic with a lit top edge, faint dividers between the cells and a square
- * hole with a lighter rim in each.
+ * The four female header strips on a grid as big as the board's, so it lays exactly over the board sprite (the part draws it
+ * right after the board; wires are drawn over it). Black plastic with a lit top edge, faint dividers between the cells and a
+ * square hole with a lighter rim in each.
  */
 export function unoHeaderSprite(): Sprite {
   return sprite('uno-headers', () => {

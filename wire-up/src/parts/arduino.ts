@@ -211,15 +211,13 @@ export const arduinoUno: PartDef = {
       }),
     }
   },
-  drawOver(c) {
-    // the sockets again, over the wires: a wire seems to go into the header (the vector look has no such pass)
-    if (scene.pixel) drawSprite(c, unoHeaderSprite(), -2 * UNO_PAD, 0)
-  },
   draw(c, p, live) {
     const usb = plugged(p)
     if (scene.pixel) {
       const board = unoBoardSprite()
       drawSprite(c, board, -2 * UNO_PAD, 0)
+      // the sockets are part of the board's picture: wires are drawn over them like over the rest of the board
+      drawSprite(c, unoHeaderSprite(), -2 * UNO_PAD, 0)
       // the lamps: ON (power), L (pin 13), and TX / RX which wait for the sketch's serial traffic
       const lamp = (at: { x: number; y: number }, color: 'green' | 'orange' | 'yellow', on: boolean): void => drawSprite(c, unoLensSprite(color, on), at.x * 2, at.y * 2)
       lamp(UNO_LAMPS.l, 'orange', (live.l ?? 0) > 0.5)
