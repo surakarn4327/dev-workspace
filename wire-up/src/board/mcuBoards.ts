@@ -4,7 +4,7 @@
 
 import { compile, CompileError } from '../mcu/compile.ts'
 import type { Program } from '../mcu/compile.ts'
-import { Machine } from '../mcu/vm.ts'
+import { EEPROM_SIZE, Machine } from '../mcu/vm.ts'
 import type { McuHost } from '../mcu/vm.ts'
 import { padOf } from '../parts/arduino.ts'
 import type { Simulation } from './simulation.ts'
@@ -30,6 +30,8 @@ interface Pad {
   acc: number
   seg: number
   sent: number
+  /** Frequency of the `tone()` running on the pin, 0 when none. */
+  tone: number
 }
 
 class Board {
@@ -45,10 +47,34 @@ class Board {
   rxAt = -1
   frameStart = 0
   slow = false
-  pads: Pad[] = Array.from({ length: 20 }, () => ({ eff: -1, mode: 'in', level: 0, pwm: null, acc: 0, seg: 0, sent: -1 }))
+  pads: Pad[] = Array.from({ length: 20 }, () => ({ eff: -1, mode: 'in', level: 0, pwm: null, acc: 0, seg: 0, sent: -1, tone: 0 }))
+}
+
+/** The EEPROM saved in a board's `eeprom` parameter (hex text); cells never written read 0xFF. */
+function loadEeprom(text: unknown): Uint8Array {
+  const out = new Uint8Array(EEPROM_SIZE).fill(0xff)
+  if (typeof text === 'string') {
+    for (let i = 0; i < EEPROM_SIZE && i * 2 + 1 < text.length; i++) {
+      const v = parseInt(text.slice(i * 2, i * 2 + 2), 16)
+      if (!Number.isNaN(v)) out[i] = v
+    }
+  }
+  return out
+}
+
+function saveEeprom(bytes: Uint8Array): string {
+  // all erased: nothing to keep
+  if (bytes.every((v) => v === 0xff)) return ''
+  let last = bytes.length - 1
+  while (last > 0 && bytes[last] === 0xff) last--
+  let s = ''
+  for (let i = 0; i <= last; i++) s += bytes[i].toString(16).padStart(2, '0')
+  return s
 }
 
 export class McuBoards {
+  /** Called when a sketch changed something worth saving (the EEPROM). */
+  onPersist: () => void = () => {}
   private boards = new Map<string, Board>()
   private cache = new Map<string, Program | string>()
 
@@ -71,6 +97,11 @@ export class McuBoards {
   info(partId: string): { state: BoardState; error: string; text: string; total: number; slow: boolean } {
     const b = this.boards.get(partId)
     return b ? { state: b.state, error: b.error, text: b.text, total: b.total, slow: b.slow } : { state: 'off', error: '', text: '', total: 0, slow: false }
+  }
+
+  /** The frequency of the `tone()` playing on a pin of a board (0 when silent): what a buzzer wired to the pin would sound. */
+  toneOf(partId: string, pin: number): number {
+    return this.boards.get(partId)?.pads[pin]?.tone ?? 0
   }
 
   serialInput(partId: string, text: string): void {
@@ -113,6 +144,7 @@ export class McuBoards {
       p.mode = 'in'
       p.level = 0
       p.pwm = null
+      p.tone = 0
       p.acc = 0
       if (p.sent !== -1) sim.setPad(partId, padOf(n), -1)
       p.sent = -1
@@ -153,7 +185,7 @@ export class McuBoards {
       b.error = ''
       b.startedAt = now - dt
       b.frameStart = now - dt
-      b.machine = new Machine(built, this.hostFor(sim, part.id, b))
+      b.machine = new Machine(built, this.hostFor(sim, part.id, b), loadEeprom(part.params.eeprom))
       b.state = 'running'
     }
     const m = b.machine
@@ -172,6 +204,12 @@ export class McuBoards {
     }
     m.advance(now - b.startedAt)
     b.slow = m.slow
+    if (m.eepromDirty) {
+      // the cells live in the board's parameters, so they survive a reset, a power cut and a save
+      m.eepromDirty = false
+      part.params.eeprom = saveEeprom(m.eeprom)
+      this.onPersist()
+    }
     b.state = m.slow ? 'stalled' : 'running'
     if (m.error !== null) {
       b.state = 'error'
@@ -216,6 +254,7 @@ export class McuBoards {
         if (n < 0) return
         change(n, t, (p) => {
           p.pwm = null
+          p.tone = 0
           if (mode === 1) p.mode = 'out'
           else {
             p.mode = 'in'
@@ -229,6 +268,7 @@ export class McuBoards {
         change(n, t, (p) => {
           p.level = value ? 1 : 0
           p.pwm = null
+          p.tone = 0
         })
       },
       digitalRead(pin) {
@@ -252,6 +292,26 @@ export class McuBoards {
             p.pwm = null
             p.level = value >= 128 ? 1 : 0
           }
+          p.tone = 0
+        })
+      },
+      tone(pin, freq, t) {
+        const n = index(pin)
+        if (n < 0) return
+        // tone() makes the pin an output and swings it at `freq`: over a frame that is half the time high
+        change(n, t, (p) => {
+          p.mode = 'out'
+          p.pwm = 0.5
+          p.tone = freq
+        })
+      },
+      noTone(pin, t) {
+        const n = index(pin)
+        if (n < 0) return
+        change(n, t, (p) => {
+          p.pwm = null
+          p.level = 0
+          p.tone = 0
         })
       },
       serialWrite(text, t) {

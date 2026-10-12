@@ -70,6 +70,7 @@ export class App {
     }
     this.ws.onEdit = () => this.afterEdit()
     this.ws.onRuntime = () => this.scheduleSave()
+    this.ws.sim.boards.onPersist = () => this.scheduleSave()
     this.ws.onHover = (h) => {
       $('status-text').textContent = h.text || 'Drag parts from the left onto the board. Drag from any hole or pin to pull a wire.'
     }

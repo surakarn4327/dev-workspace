@@ -122,9 +122,10 @@ export const arduinoUno: PartDef = {
   pinLabels: UNO_PINS,
   hidePinLabels: true, // the names are printed on the board
   // the plug, and the program text: live actions of the board, saved but never undo steps
-  runtimeKeys: ['usb', 'code', 'program'],
-  // `code` is what is typed in the code panel, `program` what was last uploaded (what the chip runs)
-  defaults: () => ({ usb: true, pressed: false, code: BLINK_SKETCH, program: BLINK_SKETCH }),
+  runtimeKeys: ['usb', 'code', 'program', 'eeprom'],
+  // `code` is what is typed in the code panel, `program` what was last uploaded (what the chip runs), `eeprom` the 1 kB EEPROM as hex
+  // text (empty = never written, all 0xFF)
+  defaults: () => ({ usb: true, pressed: false, code: BLINK_SKETCH, program: BLINK_SKETCH, eeprom: '' }),
   pins() {
     const out: { x: number; y: number }[] = []
     for (const h of UNO_HEADERS) for (let k = 0; k < h.n; k++) out.push({ x: h.x + k, y: h.y })

@@ -140,6 +140,13 @@ const BUILTINS: Record<string, { ret: RetRule; min: number; max: number }> = {
   ceil: { ret: 'float', min: 1, max: 1 },
   round: { ret: 'long', min: 1, max: 1 },
   bitRead: { ret: 'int', min: 2, max: 2 },
+  bit: { ret: 'ulong', min: 1, max: 1 },
+  tone: { ret: 'void', min: 2, max: 3 },
+  noTone: { ret: 'void', min: 1, max: 1 },
+  pulseIn: { ret: 'ulong', min: 2, max: 3 },
+  pulseInLong: { ret: 'ulong', min: 2, max: 3 },
+  shiftOut: { ret: 'void', min: 4, max: 4 },
+  shiftIn: { ret: 'byte', min: 3, max: 3 },
   lowByte: { ret: 'byte', min: 1, max: 1 },
   highByte: { ret: 'byte', min: 1, max: 1 },
   String: { ret: 'String', min: 1, max: 2 },
@@ -148,7 +155,7 @@ const BUILTINS: Record<string, { ret: RetRule; min: number; max: number }> = {
   degrees: { ret: 'float', min: 1, max: 1 },
 }
 
-const UNSUPPORTED = new Set(['tone', 'noTone', 'pulseIn', 'shiftOut', 'shiftIn', 'attachInterrupt', 'detachInterrupt', 'bitWrite', 'bitSet', 'bitClear', 'interrupts', 'noInterrupts'])
+const UNSUPPORTED = new Set(['attachInterrupt', 'detachInterrupt', 'interrupts', 'noInterrupts'])
 
 const SERIAL: Record<string, { ret: Type; min: number; max: number }> = {
   begin: { ret: 'void', min: 1, max: 2 },
@@ -163,6 +170,15 @@ const SERIAL: Record<string, { ret: Type; min: number; max: number }> = {
   parseFloat: { ret: 'float', min: 0, max: 0 },
   flush: { ret: 'void', min: 0, max: 0 },
   setTimeout: { ret: 'void', min: 1, max: 1 },
+}
+
+const EEPROM_METHODS: Record<string, { ret: Type; min: number; max: number }> = {
+  read: { ret: 'byte', min: 1, max: 1 },
+  write: { ret: 'void', min: 2, max: 2 },
+  update: { ret: 'void', min: 2, max: 2 },
+  length: { ret: 'int', min: 0, max: 0 },
+  put: { ret: 'void', min: 2, max: 2 },
+  get: { ret: 'void', min: 2, max: 2 },
 }
 
 const STRING_METHODS: Record<string, { ret: Type; min: number; max: number }> = {
@@ -724,6 +740,16 @@ class FnCompiler {
       if (!need) this.emit(OP.POP, e.line)
       return { t: fn.ret, arr: false }
     }
+    if (e.name === 'EEPROM.get') {
+      // built by `method`: the address, then the name of the type being read
+      this.expr(e.args[0], true)
+      const tag = (e.args[1] as Extract<Expr, { k: 'str' }>).v
+      this.emit(OP.PUSH, e.line, tag)
+      this.emit(OP.CALLB, e.line, 'EEPROM.get', 2)
+      if (!need) this.emit(OP.POP, e.line)
+      return { t: tag as Type, arr: false }
+    }
+    if (e.name === 'bitSet' || e.name === 'bitClear' || e.name === 'bitWrite') return this.bitStore(e, need)
     if (UNSUPPORTED.has(e.name)) throw new CompileError(`${e.name}() is not supported by this simulator yet`, e.line)
     const b = BUILTINS[e.name]
     if (!b) throw new CompileError(`'${e.name}' was not declared in this scope`, e.line)
@@ -748,6 +774,47 @@ class FnCompiler {
     return { t: ret, arr: false }
   }
 
+  /** bitSet / bitClear / bitWrite change their first argument, so they become an assignment to it: x = x | (1UL << n) and so on. */
+  private bitStore(e: Extract<Expr, { k: 'call' }>, need: boolean): Ty {
+    const want = e.name === 'bitWrite' ? 3 : 2
+    if (e.args.length !== want) throw new CompileError(`wrong number of arguments to ${e.name}(): it takes ${want}`, e.line)
+    const x = e.args[0]
+    if (x.k !== 'id' && x.k !== 'idx') throw new CompileError(`the first argument of ${e.name}() must be a variable`, e.line)
+    const line = e.line
+    const one: Expr = { k: 'cast', type: 'ulong', e: { k: 'num', v: 1, float: false, line }, line }
+    const mask: Expr = { k: 'bin', op: '<<', a: one, b: e.args[1], line }
+    const set: Expr = { k: 'bin', op: '|', a: x, b: mask, line }
+    const clear: Expr = { k: 'bin', op: '&', a: x, b: { k: 'un', op: '~', e: mask, line }, line }
+    const v: Expr = e.name === 'bitSet' ? set : e.name === 'bitClear' ? clear : { k: 'cond', c: e.args[2], a: set, b: clear, line }
+    return this.expr({ k: 'asg', op: '=', target: x, v, line }, need)
+  }
+
+  private eeprom(e: Extract<Expr, { k: 'method' }>, need: boolean): Ty {
+    const m = EEPROM_METHODS[e.name]
+    if (!m) throw new CompileError(`'EEPROM.${e.name}' is not supported by this simulator`, e.line)
+    if (e.args.length < m.min || e.args.length > m.max) throw new CompileError(`wrong number of arguments to EEPROM.${e.name}()`, e.line)
+    if (e.name === 'get') {
+      const target = e.args[1]
+      const v = target.k === 'id' ? this.lookup(target.name) : undefined
+      if (target.k !== 'id' || !v || v.array || v.type === 'String') throw new CompileError('EEPROM.get() fills a plain number variable: EEPROM.get(address, variable)', e.line)
+      const read: Expr = { k: 'call', name: 'EEPROM.get', args: [e.args[0], { k: 'str', v: v.type, line: e.line }], line: e.line }
+      this.expr({ k: 'asg', op: '=', target, v: read, line: e.line }, false)
+      if (need) throw new CompileError('void value not ignored as it ought to be', e.line)
+      return { t: 'void', arr: false }
+    }
+    const types: Type[] = []
+    for (const a of e.args) {
+      const t = this.expr(a, true)
+      if (t.arr || t.t === 'String') throw new CompileError(`EEPROM.${e.name}() stores numbers: not ${t.arr ? 'an array' : 'a String'}`, e.line)
+      types.push(t.t)
+    }
+    const at = this.emit(OP.CALLB, e.line, `EEPROM.${e.name}`, e.args.length)
+    this.code[at].ts = types
+    if (need && m.ret === 'void') throw new CompileError('void value not ignored as it ought to be', e.line)
+    if (!need) this.emit(OP.POP, e.line)
+    return { t: m.ret, arr: false }
+  }
+
   private method(e: Extract<Expr, { k: 'method' }>, need: boolean): Ty {
     if (e.obj.k === 'id' && e.obj.name === 'Serial' && !this.lookup('Serial')) {
       const m = SERIAL[e.name]
@@ -769,6 +836,7 @@ class FnCompiler {
       if (!need) this.emit(OP.POP, e.line)
       return { t: m.ret, arr: false }
     }
+    if (e.obj.k === 'id' && e.obj.name === 'EEPROM' && !this.lookup('EEPROM')) return this.eeprom(e, need)
     const o = this.expr(e.obj, true)
     if (o.t !== 'String' || o.arr) throw new CompileError(`request for member '${e.name}' in something that is not a String`, e.line)
     const m = STRING_METHODS[e.name]

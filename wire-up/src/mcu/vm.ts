@@ -15,9 +15,20 @@ export interface McuHost {
   analogRead(pin: number, t: number): number
   analogWrite(pin: number, value: number, t: number): void
   serialWrite(text: string, t: number): void
+  /** `tone()`: a 50 % square wave of `freq` Hz on the pin until `noTone` (the machine calls it again when a duration runs out). */
+  tone(pin: number, freq: number, t: number): void
+  noTone(pin: number, t: number): void
 }
 
 const CYCLE = 1 / 16e6
+/** Cycles one digitalWrite / digitalRead inside shiftOut and shiftIn costs, loop overhead included. */
+const SHIFT_CYCLES = 60
+/** Bytes of EEPROM on the ATmega328P; erased cells read 0xFF. */
+export const EEPROM_SIZE = 1024
+/** A write to the EEPROM takes this long, and the next one waits for it. */
+const EEPROM_WRITE = 0.0033
+/** How often `pulseIn` looks at the pin while it waits. */
+const PULSE_POLL = 20e-6
 const MAX_FRAMES = 40
 /** Operations one `advance` may run: a sketch that spins faster than this is slowed, not allowed to freeze the page. */
 const MAX_OPS = 400_000
@@ -32,6 +43,9 @@ const BUILTIN_CYCLES: Record<string, number> = {
   millis: 30,
   micros: 30,
   random: 200,
+  tone: 120,
+  noTone: 80,
+  pulseIn: 60,
   randomSeed: 40,
   map: 120,
   sqrt: 300,
@@ -104,10 +118,19 @@ export class Machine {
   private serialBusyUntil = 0
   private seed = 1
   private rxAt = -1
+  /** Running `tone(pin, f, ms)` calls: pin -> machine time the tone stops. */
+  private tones = new Map<number, number>()
+  /** A `pulseIn` that is still waiting for its pulse. */
+  private pulse: { phase: 0 | 1 | 2; started: number; begin: number } | null = null
+  private eepromReady = 0
+  /** The EEPROM contents; the caller keeps them between runs. `eepromDirty` is set by a write that changed a byte. */
+  readonly eeprom: Uint8Array
+  eepromDirty = false
 
-  constructor(prog: Program, host: McuHost) {
+  constructor(prog: Program, host: McuHost, eeprom?: Uint8Array) {
     this.prog = prog
     this.host = host
+    this.eeprom = eeprom ?? new Uint8Array(EEPROM_SIZE).fill(0xff)
     this.globals = new Array<unknown>(prog.nGlobals).fill(0)
     this.enter(prog.init, [])
   }
@@ -138,6 +161,22 @@ export class Machine {
     this.error = `line ${line}: ${msg}`
   }
 
+  /** Stop the tones whose time has run out. */
+  private expireTones(): void {
+    for (const [pin, end] of this.tones) {
+      if (end <= this.time) {
+        this.tones.delete(pin)
+        this.host.noTone(pin, end)
+      }
+    }
+  }
+
+  private nextToneEnd(): number {
+    let at = Infinity
+    for (const end of this.tones.values()) at = Math.min(at, end)
+    return at
+  }
+
   /** Run until virtual time `until` (seconds since reset), the sketch's own sleeps respected. */
   advance(until: number): void {
     this.slow = false
@@ -147,14 +186,18 @@ export class Machine {
     }
     let budget = MAX_OPS
     while (this.time < until && this.error === null) {
+      // a tone with a duration ends on time even while the sketch sleeps
+      const lim = Math.min(until, this.nextToneEnd())
       if (this.wake > this.time) {
-        if (this.wake >= until) {
-          this.time = until
-          return
+        if (this.wake >= lim) {
+          this.time = lim
+          this.expireTones()
+          continue
         }
         this.time = this.wake
       }
-      budget -= this.exec(until, budget)
+      budget -= this.exec(lim, budget)
+      this.expireTones()
       if (budget <= 0) {
         // the sketch spins faster than a frame allows: let it fall behind rather than hang
         this.slow = true
@@ -425,6 +468,22 @@ export class Machine {
         }
         case OP.CALLB: {
           const argc = op.b as number
+          if (op.a === 'pulseIn' || op.a === 'pulseInLong') {
+            // blocks across frames: while the pulse has not come the op runs again after a short sleep
+            const base = st.length - argc
+            const r = this.pulseStep(st[base] as number, st[base + 1] as number, argc > 2 ? (st[base + 2] as number) : 1e6, t)
+            if (r === null) {
+              this.wake = t + PULSE_POLL
+              f.pc = pc - 1
+              t += 60 * CYCLE
+              this.time = t
+              return n
+            }
+            st.length = base
+            st.push(r)
+            cycles = 60
+            break
+          }
           const args = argc > 0 ? st.splice(st.length - argc, argc) : []
           this.time = t
           f.pc = pc
@@ -488,6 +547,49 @@ export class Machine {
       default:
         return s === String(a[0]) ? 1 : 0
     }
+  }
+
+  /** One look at the pin for `pulseIn`: the microseconds of the pulse once it has come, or null while the sketch has to keep waiting. */
+  private pulseStep(pin: number, level: number, timeoutUs: number, t: number): number | null {
+    const p = (this.pulse ??= { phase: 0, started: t, begin: t })
+    const done = (v: number): number => {
+      this.pulse = null
+      return v
+    }
+    if (t - p.started > timeoutUs / 1e6) return done(0)
+    const now = this.host.digitalRead(pin, t) ? 1 : 0
+    const want = level ? 1 : 0
+    if (p.phase === 0) {
+      // a pulse already in progress does not count: wait for it to end
+      if (now !== want) p.phase = 1
+    }
+    if (p.phase === 1 && now === want) {
+      p.phase = 2
+      p.begin = t
+      return null
+    }
+    if (p.phase === 2 && now !== want) return done(Math.round((t - p.begin) * 1e6))
+    return null
+  }
+
+  private eepromAddr(a: number): number {
+    return a & (EEPROM_SIZE - 1)
+  }
+
+  /** `update` leaves a cell alone when it already holds the value; `write` burns it every time, as the real one does. */
+  private eepromWrite(addr: number, v: number, onlyIfChanged: boolean): void {
+    const i = this.eepromAddr(addr)
+    const b = v & 0xff
+    if (onlyIfChanged && this.eeprom[i] === b) return
+    // each write keeps the next one waiting while the cell burns in
+    if (this.time < this.eepromReady) this.time = this.eepromReady
+    this.eepromReady = this.time + EEPROM_WRITE
+    if (this.eeprom[i] !== b) this.eepromDirty = true
+    this.eeprom[i] = b
+  }
+
+  private eepromBytes(type: string): number {
+    return type === 'int' || type === 'uint' ? 2 : type === 'long' || type === 'ulong' || type === 'float' ? 4 : 1
   }
 
   private serialOut(text: string, t: number): void {
@@ -588,6 +690,78 @@ export class Machine {
         return (num(0) * 180) / Math.PI
       case 'bitRead':
         return (num(0) >>> num(1)) & 1
+      case 'bit':
+        return num(0) >= 0 && num(0) < 32 ? (1 << num(0)) >>> 0 : 0
+      case 'shiftOut': {
+        // the Arduino core's loop: data bit out, clock high, clock low, each a digitalWrite
+        const [data, clock, order, val] = [num(0), num(1), num(2), num(3)]
+        let at = t
+        const step = (pin: number, v: number): void => {
+          this.host.digitalWrite(pin, v, at)
+          at += SHIFT_CYCLES * CYCLE
+        }
+        for (let i = 0; i < 8; i++) {
+          step(data, (order ? val >> (7 - i) : val >> i) & 1)
+          step(clock, 1)
+          step(clock, 0)
+        }
+        this.time = at
+        return 0
+      }
+      case 'shiftIn': {
+        const [data, clock, order] = [num(0), num(1), num(2)]
+        let at = t
+        let value = 0
+        for (let i = 0; i < 8; i++) {
+          this.host.digitalWrite(clock, 1, at)
+          at += SHIFT_CYCLES * CYCLE
+          const bit = this.host.digitalRead(data, at) ? 1 : 0
+          value |= order ? bit << (7 - i) : bit << i
+          this.host.digitalWrite(clock, 0, at)
+          at += SHIFT_CYCLES * CYCLE
+        }
+        this.time = at
+        return value
+      }
+      case 'tone': {
+        const f = num(1)
+        if (f <= 0) return 0
+        this.host.tone(num(0), f, t)
+        if (a.length > 2 && num(2) > 0) this.tones.set(num(0), t + num(2) / 1000)
+        else this.tones.delete(num(0))
+        return 0
+      }
+      case 'noTone':
+        this.tones.delete(num(0))
+        this.host.noTone(num(0), t)
+        return 0
+      case 'EEPROM.read':
+        return this.eeprom[this.eepromAddr(num(0))]
+      case 'EEPROM.write':
+        this.eepromWrite(num(0), num(1), false)
+        return 0
+      case 'EEPROM.update':
+        this.eepromWrite(num(0), num(1), true)
+        return 0
+      case 'EEPROM.length':
+        return EEPROM_SIZE
+      case 'EEPROM.put': {
+        const type = ts[1] ?? 'int'
+        const buf = new DataView(new ArrayBuffer(4))
+        const n = this.eepromBytes(type)
+        if (type === 'float') buf.setFloat32(0, num(1), true)
+        else buf.setUint32(0, num(1) >>> 0, true)
+        for (let i = 0; i < n; i++) this.eepromWrite(num(0) + i, buf.getUint8(i), true)
+        return 0
+      }
+      case 'EEPROM.get': {
+        // the compiler adds the type of the variable being filled as a second argument
+        const type = a[1] as string
+        const n = this.eepromBytes(type)
+        const buf = new DataView(new ArrayBuffer(4))
+        for (let i = 0; i < n; i++) buf.setUint8(i, this.eeprom[this.eepromAddr(num(0) + i)])
+        return type === 'float' ? buf.getFloat32(0, true) : wrapType(type, buf.getUint32(0, true))
+      }
       case 'lowByte':
         return num(0) & 0xff
       case 'highByte':

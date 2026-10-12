@@ -1,50 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { compile, CompileError } from './compile.ts'
+import { compile } from './compile.ts'
 import { Machine } from './vm.ts'
-import type { McuHost } from './vm.ts'
-
-interface Log {
-  writes: [number, number, number][] // pin, value, time
-  modes: [number, number][]
-  serial: string
-  analog: Record<number, number>
-  digital: Record<number, number>
-  pwm: [number, number, number][]
-}
-
-function host(): { h: McuHost; log: Log } {
-  const log: Log = { writes: [], modes: [], serial: '', analog: {}, digital: {}, pwm: [] }
-  const h: McuHost = {
-    pinMode: (p, m) => log.modes.push([p, m]),
-    digitalWrite: (p, v, t) => log.writes.push([p, v, t]),
-    digitalRead: (p) => log.digital[p] ?? 0,
-    analogRead: (p) => log.analog[p] ?? 0,
-    analogWrite: (p, v, t) => log.pwm.push([p, v, t]),
-    serialWrite: (s) => {
-      log.serial += s
-    },
-  }
-  return { h, log }
-}
-
-function run(src: string, seconds: number, setup?: (log: Log) => void): { m: Machine; log: Log } {
-  const { h, log } = host()
-  setup?.(log)
-  const m = new Machine(compile(src), h)
-  // advance in 16 ms frames like the simulation does
-  for (let t = 0.016; t <= seconds + 1e-9; t += 0.016) m.advance(t)
-  return { m, log }
-}
-
-function errorOf(src: string): CompileError {
-  try {
-    compile(src)
-  } catch (e) {
-    if (e instanceof CompileError) return e
-    throw e
-  }
-  throw new Error('expected a compile error')
-}
+import { errorOf, host, run } from './testkit.ts'
 
 const BLINK = `
 void setup() { pinMode(LED_BUILTIN, OUTPUT); }
@@ -194,7 +151,7 @@ describe('Arduino sketches', () => {
     expect(semi.message).toContain("expected ';'")
     expect(errorOf('void setup() {}').message).toContain("'loop' was not declared")
     expect(errorOf('void setup() { x = 1; } void loop() {}').message).toContain("'x' was not declared")
-    expect(errorOf('void setup() { tone(8, 440); } void loop() {}').message).toContain('not supported')
+    expect(errorOf('void setup() { attachInterrupt(0, f, RISING); } void loop() {}').message).toContain('not supported')
     expect(errorOf('int f(int a) { return a; } void setup() { f(1, 2); } void loop() {}').message).toContain('too many arguments')
   })
 
