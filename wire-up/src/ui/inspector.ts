@@ -59,7 +59,7 @@ export class Inspector {
       this.readouts = document.createElement('div')
       this.readouts.className = 'readouts'
       this.root.appendChild(this.readouts)
-      for (const f of def.fields(part)) this.root.appendChild(this.fieldEl(part.id, f))
+      for (const f of def.fields(part)) this.root.appendChild(this.fieldEl([part.id], f))
       this.update()
     } else if (wire) {
       const h = document.createElement('div')
@@ -88,6 +88,7 @@ export class Inspector {
       const what = [np > 0 ? `${np} part${np === 1 ? '' : 's'}` : '', nw > 0 ? `${nw} wire${nw === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')
       h.innerHTML = `<h3>${what} selected</h3><div class="sub">Drag any of them to move the lot. Arrow keys nudge one grid step. Ctrl+click adds or removes one. Ctrl+C / Ctrl+V copy and paste, Ctrl+D duplicates, Delete removes.</div>`
       this.root.appendChild(h)
+      this.groupSettings()
     } else {
       this.root.innerHTML = '<h3>Nothing selected</h3><div class="sub">Click a part to see its live voltage, current and settings. Drag parts in from the toolbox on the left.</div>'
     }
@@ -95,9 +96,27 @@ export class Inspector {
     this.renderLog()
   }
 
-  private fieldEl(partId: string, f: Field): HTMLElement {
+  /** Several parts selected and all of one kind: their settings are shown once and a change goes to every one of them. */
+  private groupSettings(): void {
     const ws = this.ws
-    const part = ws.world.getPart(partId)!
+    const parts = [...ws.group.parts].map((id) => ws.world.getPart(id)).filter((p): p is NonNullable<typeof p> => p !== undefined)
+    if (parts.length < 2 || parts.some((p) => p.type !== parts[0].type)) return
+    const def = defOf(parts[0].type)
+    const fields = def.fields(parts[0])
+    if (fields.length === 0) return
+    const ids = parts.map((p) => p.id)
+    const note = document.createElement('div')
+    note.className = 'sub'
+    note.textContent = `Settings below change all ${parts.length} ${def.name} parts at once.`
+    this.root.appendChild(note)
+    for (const f of fields) this.root.appendChild(this.fieldEl(ids, f))
+  }
+
+  /** A control for one setting of a part; with several ids it sets all of them (the first one supplies the value shown). */
+  private fieldEl(partIds: string[], f: Field): HTMLElement {
+    const ws = this.ws
+    const targets = partIds.map((id) => ws.world.getPart(id)).filter((p): p is NonNullable<typeof p> => p !== undefined)
+    const part = targets[0]
     const wrap = document.createElement('div')
     wrap.className = 'field'
     const label = document.createElement('label')
@@ -108,7 +127,7 @@ export class Inspector {
     label.append(name, val)
     wrap.appendChild(label)
     const set = (v: number | string | boolean, commit: boolean) => {
-      part.params[f.key] = v
+      for (const t of targets) t.params[f.key] = v
       if (commit && isRuntimeState(part, f.key)) {
         ws.world.touch() // a flipped switch is not an undo step
         ws.onRuntime()
