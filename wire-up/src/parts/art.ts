@@ -1986,15 +1986,18 @@ export function lcd1602Sprite(): Sprite {
       g.disc(hx, hy, 7, 'f')
       g.disc(hx, hy, 5, '.')
     }
-    // the display header: 16 tinned pads, each a small steel-coloured block with a lit top left and a shaded bottom right and the hole of the pin
+    // the display header: 16 tinned pads, each a small steel-coloured block with a lit top left and a shaded bottom right
     for (let k = 0; k < 16; k++) {
       const x = LCD_PAD0.x + 10 * k - 3
       const y = LCD_PAD0.y - 5
       put(g, shadedBlock(7, 10, 1, () => 's', 'S', 'd', 1), x, y)
-      g.rect(x + 2, y + 4, 3, 2, 'o')
     }
     // the backlight's plastic tab at the right edge, partly under the frame
-    put(g, shadedBlock(10, 52, 1, (y) => (y < 26 ? 't' : 'u'), 'T', 'y', 1), 303, 33)
+    // centred on the frame's height; the two corners at the board's edge are rounded, the two that meet the frame stay square
+    const tab = new PixelGrid(10, 52)
+    tab.rrect(0, 0, 10, 52, 5, 'a')
+    tab.rect(0, 0, 5, 52, 'a')
+    put(g, shadedMask(tab, (y) => (y < 26 ? 't' : 'u'), 'T', 'y', 1), 303, LCD_BEZEL.y + (LCD_BEZEL.h - 52) / 2)
     // the frame: black metal with a lit top and left edge, and the dark recess the glass sits in (its lower and right rim catch the light)
     put(g, shadedBlock(LCD_BEZEL.w, LCD_BEZEL.h, 2, (y) => (y < 4 ? 'm' : 'j'), 'J', 'o', 2), LCD_BEZEL.x, LCD_BEZEL.y)
     g.rect(LCD_SCREEN.x - 2, LCD_SCREEN.y - 2, LCD_SCREEN.w + 4, LCD_SCREEN.h + 4, 'r')
