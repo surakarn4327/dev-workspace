@@ -1,10 +1,10 @@
 // Canvas renderer: dark neon backdrop, true-to-life parts, wires, leads, smoke.
 
 import type { Simulation } from '../board/simulation.ts'
-import { G, pointKey, rotVec, wirePath } from '../board/world.ts'
+import { G, pointKey, rotVec, unrotVec, wirePath } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
-import { defOf, drawsOverWires, layerOf, leadDir, pinWorld, stackOrder } from '../parts/index.ts'
-import { effectiveColors, socketKeys, tapEnds } from '../board/wireJoin.ts'
+import { defOf, layerOf, leadDir, pinWorld, seqOf, stackOrder } from '../parts/index.ts'
+import { effectiveColors, onPath, socketKeys, tapTarget, wireRanks } from '../board/wireJoin.ts'
 import { paintBurnt, canBurn } from './burnt.ts'
 import { ringOf } from './outline.ts'
 import { PX } from './pixel.ts'
@@ -26,6 +26,20 @@ const MIN_FLOW = 1e-5
 const GRID_ALPHA = 0.5
 
 const PIN_SHOWN: Record<string, string | undefined> = { A: '+', K: '-' }
+
+/** A branch wire resting on the body of another: where, in which colour, and which two wires. */
+interface JoinDot {
+  at: Vec
+  color: string
+  wire: string
+  main: string
+}
+
+interface WireInfo {
+  colors: Map<string, string>
+  taps: Map<string, Vec[]>
+  dots: JoinDot[]
+}
 
 export interface View {
   /** World coordinate at the top-left of the canvas. */
@@ -381,7 +395,7 @@ export class Renderer {
     main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
     main.imageSmoothingEnabled = false
     replayGlows(main, this.glowsBelow)
-    if (!this.hide.dots) this.drawFlow(sim, now)
+    if (!this.hide.dots) this.drawFlow(world, sim, now)
     if (!above.empty) {
       this.blit(above, view)
       main.setTransform(s, 0, 0, s, -view.camX * s, -view.camY * s)
@@ -415,7 +429,7 @@ export class Renderer {
       this.glowsAbove = this.drawAbove(world, sim, ov, now)
     })
     const { stack, front } = this.stackOf(world, ov)
-    above.empty = !front && !stack.some((p) => drawsOverWires(p.type) || defOf(p.type).drawOver)
+    above.empty = !front && world.wires.length === 0 && !stack.some((p) => defOf(p.type).drawOver)
     below.empty = false
   }
 
@@ -466,19 +480,24 @@ export class Renderer {
   }
 
   /** Wire colours and branch joins depend only on the layout, so they are worked out when the layout changes, not every frame. */
-  private wireCache: { world: World; version: number; colors: Map<string, string>; taps: Map<string, Vec[]>; dots: { at: Vec; color: string; wire: string }[] } | null = null
+  private wireCache: WireInfo & { world: World; version: number } | null = null
 
-  private wireInfo(world: World): { colors: Map<string, string>; taps: Map<string, Vec[]>; dots: { at: Vec; color: string; wire: string }[] } {
+  private wireInfo(world: World): WireInfo {
     const hit = this.wireCache
     if (hit && hit.world === world && hit.version === world.version) return hit
     const sockets = socketKeys(world)
     const colors = effectiveColors(world, sockets)
     const taps = new Map<string, Vec[]>()
-    const dots: { at: Vec; color: string; wire: string }[] = []
+    const dots: JoinDot[] = []
     for (const w of world.wires) {
-      const ends = tapEnds(world, w, sockets)
+      const ends: Vec[] = []
+      for (const at of [w.a, w.b]) {
+        const main = tapTarget(world, w, at, sockets)
+        if (!main) continue
+        ends.push(at)
+        dots.push({ at, color: colors.get(w.id) ?? w.color, wire: w.id, main: main.id })
+      }
       taps.set(w.id, ends)
-      for (const at of ends) dots.push({ at, color: colors.get(w.id) ?? w.color, wire: w.id })
     }
     this.wireCache = { world, version: world.version, colors, taps, dots }
     return this.wireCache
@@ -487,12 +506,12 @@ export class Renderer {
   /** Things that are part of the circuit itself: parts, wires, leads, smoke. */
   private drawContent(world: World, sim: Simulation, ov: Overlay, now: number): void {
     replayGlows(this.ctx, this.drawBelow(world, sim, ov, now))
-    if (!this.hide.dots) this.drawFlow(sim, now)
+    if (!this.hide.dots) this.drawFlow(world, sim, now)
     replayGlows(this.ctx, this.drawAbove(world, sim, ov, now))
     this.drawLive(world, sim, ov, now)
   }
 
-  /** Stacking: every part (breadboard, flat, tall, the rest), then all wires over them, then the switches; the selected part (not the board) goes on top. */
+  /** Stacking: the breadboards, then parts and wires together in the order they were born (later = on top); the selected part (not the board) goes on top of all. */
   private stackOf(world: World, ov: Overlay): { stack: PartInstance[]; front: PartInstance | undefined } {
     const sel = ov.selectedPart ? world.getPart(ov.selectedPart) : undefined
     const front = sel && layerOf(sel.type) > 0 ? sel : undefined
@@ -525,50 +544,131 @@ export class Renderer {
     return this.collectGlows(() => this.paintAbove(world, sim, ov, now))
   }
 
-  /** Everything under the flowing dots: all parts, then the wires and their junction dots. */
+  /** Everything under the flowing dots: the breadboards, then parts and wires (with their junction dots) in the order they were born. */
   private paintBelow(world: World, sim: Simulation, ov: Overlay, now: number): void {
-    const c = this.ctx
     const { stack } = this.stackOf(world, ov)
-    if (!this.hide.parts) for (const part of stack) if (!drawsOverWires(part.type)) this.drawPart(part, sim, now, 1)
-    const { colors, taps, dots: tapDots } = this.wireInfo(world)
-    // every cable's shadow and outline first, then the bodies: a branch merges into its main wire with no dark seam
-    const shapes = new Map<string, CableShape>()
-    // a round dot wherever a branch wire joins the middle of another (same colour as the main wire)
-    const dots: { at: Vec; color: string; shape?: CableShape }[] = tapDots.map((d) => ({ ...d }))
-    const wires = world.wires
-    if (this.pixelMode && !this.hide.wires && !this.hide.bodies) {
-      for (const w of wires) {
-        const shape = cableShape(wirePath(w))
-        shapes.set(w.id, shape)
-        drawCableBase(c, shape, colors.get(w.id) ?? w.color)
-      }
-      for (const d of dots) {
-        d.shape = junctionShape(d.at)
-        drawCableBase(c, d.shape, d.color)
-      }
+    const wireData = this.wireInfo(world)
+    const boards = stack.filter((p) => layerOf(p.type) === 0)
+    if (!this.hide.parts) for (const part of boards) this.drawPart(part, sim, now, 1)
+    const items: ({ part: PartInstance } | { wire: Wire })[] = [
+      ...stack.filter((p) => layerOf(p.type) > 0).map((part) => ({ part })),
+      ...world.wires.map((wire) => ({ wire })),
+    ]
+    const ranks = wireRanks(world)
+    const born = (e: { part: PartInstance } | { wire: Wire }): number => ('part' in e ? seqOf(e.part.id) : ranks.get(e.wire.id) ?? 0)
+    items.sort((a, b) => born(a) - born(b)) // every wire keeps its own place (the wire list order among wires)
+    // each wire is painted whole (outline, then body) in its own turn, so a wire that lies over another covers it completely
+    const done = { painted: new Set<string>(), shapes: new Map<string, CableShape>(), byId: new Map(world.wires.map((w) => [w.id, w])) }
+    for (const e of items) {
+      if ('wire' in e) this.paintWire(e.wire, ov, wireData, done)
+      else if (!this.hide.parts) this.drawPart(e.part, sim, now, 1)
     }
-    if (!this.hide.wires) {
-      const lit = wires.filter((w) => w.id === ov.selectedWire || ov.group.wires.has(w.id))
-      if (lit.length > 0 && !this.hide.selection) this.drawWireGlow(lit)
+  }
+
+  /**
+   * One wire, whole. Where it is joined to an earlier wire (a branch resting on its main wire, or the other way round) the
+   * join is finished now: a dark seam would show where the newer outline crosses the older body, so both bodies are painted
+   * again in a small square around the join, then the round junction dot (same colour as the main wire).
+   */
+  private paintWire(w: Wire, ov: Overlay, info: WireInfo, done: { painted: Set<string>; shapes: Map<string, CableShape>; byId: Map<string, Wire> }): void {
+    const c = this.ctx
+    const { colors } = info
+    const color = colors.get(w.id) ?? w.color
+    const solid = this.pixelMode && !this.hide.wires && !this.hide.bodies
+    const shapeOf = (id: string): CableShape | undefined => {
+      let s = done.shapes.get(id)
+      const wire = done.byId.get(id)
+      if (!s && wire) {
+        s = cableShape(wirePath(wire))
+        done.shapes.set(id, s)
+      }
+      return s
     }
-    if (!this.hide.wires) for (const w of wires) this.drawWire(w, w.id === ov.selectedWire || ov.group.wires.has(w.id), colors.get(w.id) ?? w.color, shapes.get(w.id), taps.get(w.id) ?? [])
-    if (!this.hide.wires && !this.hide.bodies) for (const d of dots) {
-      if (d.shape) drawCableBody(c, d.shape, d.color)
-      else {
+    const shape = solid ? shapeOf(w.id) : undefined
+    if (shape) drawCableBase(c, shape, color)
+    if (!this.hide.wires && (w.id === ov.selectedWire || ov.group.wires.has(w.id)) && !this.hide.selection) this.drawWireGlow([w])
+    if (!this.hide.wires) this.drawWire(w, color, shape)
+    done.painted.add(w.id)
+    if (this.hide.wires || this.hide.bodies) return
+    for (const d of info.dots) {
+      if (d.wire !== w.id && d.main !== w.id) continue
+      const other = d.wire === w.id ? d.main : d.wire
+      if (other === w.id || !done.painted.has(other)) continue
+      if (!solid) {
         c.fillStyle = d.color
         c.beginPath()
         c.arc(d.at.x, d.at.y, 3, 0, Math.PI * 2) // vector look: 6 px across, 1.5 x the 4 px wire
         c.fill()
+        continue
       }
+      const dot = junctionShape(d.at)
+      drawCableBase(c, dot, d.color)
+      for (const id of [other, w.id]) {
+        const s = shapeOf(id)
+        const wire = done.byId.get(id)
+        if (!s || !wire) continue
+        c.save()
+        c.beginPath()
+        c.rect(d.at.x - 14, d.at.y - 14, 28, 28) // wide enough for the whole dot outline (12 px gives the same pixels as the all-outlines-first order)
+        c.clip()
+        drawCableBody(c, s, colors.get(id) ?? wire.color)
+        c.restore()
+      }
+      drawCableBody(c, dot, d.color)
     }
   }
 
-  /** Over the dots: the switches, then the selected part. */
+  /** Over the dots: the pieces wires must seem to go into, then the selected part. */
   private paintAbove(world: World, sim: Simulation, ov: Overlay, now: number): void {
     const { stack, front } = this.stackOf(world, ov)
-    if (!this.hide.parts) for (const part of stack) if (drawsOverWires(part.type)) this.drawPart(part, sim, now, 1)
     // a piece of a part that wires must seem to go into (a screw terminal), drawn again over the wires
-    if (!this.hide.parts) for (const part of stack) if (!drawsOverWires(part.type) && !part.state.failed) this.drawPartOver(part, sim, now)
+    if (!this.hide.parts) for (const part of stack) if (!part.state.failed) this.drawPartOver(part, sim, now)
+    // the metal end of every wire, over the parts: but where a part born after the wire covers the end (not at one of its pins),
+    // the end is behind it with the rest of the wire, so no cap shows through the part
+    if (!this.hide.wires) {
+      const { taps } = this.wireInfo(world)
+      const ranks = wireRanks(world)
+      const covers = world.parts
+        .filter((p) => layerOf(p.type) > 0)
+        .map((part) => ({ part, seq: seqOf(part.id), box: defOf(part.type).bounds(part), pins: pinWorld(part) }))
+      const covered = (rank: number, p: Vec): boolean =>
+        covers.some((cv) => {
+          if (cv.seq < rank) return false
+          const l = unrotVec({ x: p.x - cv.part.x, y: p.y - cv.part.y }, cv.part.rot)
+          if (l.x < cv.box.x || l.x > cv.box.x + cv.box.w || l.y < cv.box.y || l.y > cv.box.y + cv.box.h) return false
+          return !cv.pins.some((q) => Math.abs(q.x - p.x) <= 1 && Math.abs(q.y - p.y) <= 1)
+        })
+      // a newer wire that only passes over an end (it does not end there) hides that end's cap: the two are not connected
+      const bodies = world.wires.map((wire) => {
+        const pts = wirePath(wire)
+        return {
+          wire,
+          rank: ranks.get(wire.id) ?? 0,
+          x0: Math.min(...pts.map((q) => q.x)) - 1,
+          x1: Math.max(...pts.map((q) => q.x)) + 1,
+          y0: Math.min(...pts.map((q) => q.y)) - 1,
+          y1: Math.max(...pts.map((q) => q.y)) + 1,
+          ends: [wire.a, wire.b, ...(wire.taps ?? [])],
+        }
+      })
+      const passedOver = (self: Wire, rank: number, p: Vec): boolean =>
+        bodies.some(
+          (b) =>
+            b.wire !== self &&
+            b.rank > rank &&
+            p.x >= b.x0 &&
+            p.x <= b.x1 &&
+            p.y >= b.y0 &&
+            p.y <= b.y1 &&
+            !b.ends.some((q) => Math.abs(q.x - p.x) <= 1 && Math.abs(q.y - p.y) <= 1) &&
+            onPath(p, b.wire),
+        )
+      for (const w of world.wires) {
+        const rank = ranks.get(w.id) ?? 0
+        const hidden = [w.a, w.b, ...(w.taps ?? [])].filter((p) => covered(rank, p) || passedOver(w, rank, p))
+        this.drawWireCaps(w, w.id === ov.selectedWire || ov.group.wires.has(w.id), [...(taps.get(w.id) ?? []), ...hidden])
+      }
+    }
     if (front && !this.hide.parts) this.drawPart(front, sim, now, 1)
   }
 
@@ -798,12 +898,26 @@ export class Renderer {
   }
 
   /** Dots drifting along each wire in the direction the current flows; faster for more current, none below 1 uA. */
-  private drawFlow(sim: Simulation, now: number): void {
+  private drawFlow(world: World, sim: Simulation, now: number): void {
     const c = this.ctx
     const SPACING = 22
+    // a part born after a wire lies over it: the wire's dots must not show through
+    const covers = world.parts
+      .filter((p) => layerOf(p.type) > 0)
+      .map((p) => ({ part: p, seq: seqOf(p.id), box: defOf(p.type).bounds(p) }))
+    const ranks = wireRanks(world)
+    const hidden = (wire: string, x: number, y: number): boolean => {
+      const born = ranks.get(wire) ?? seqOf(wire)
+      for (const cv of covers) {
+        if (cv.seq < born) continue
+        const l = unrotVec({ x: x - cv.part.x, y: y - cv.part.y }, cv.part.rot)
+        if (l.x >= cv.box.x && l.x <= cv.box.x + cv.box.w && l.y >= cv.box.y && l.y <= cv.box.y + cv.box.h) return true
+      }
+      return false
+    }
     c.save()
     c.fillStyle = COL.flow
-    for (const { path, i } of sim.flowParts) {
+    for (const { wire, path, i } of sim.flowParts) {
       if (Math.abs(i) < MIN_FLOW) continue
       let total = 0
       for (let k = 0; k + 1 < path.length; k++) total += Math.hypot(path[k + 1].x - path[k].x, path[k + 1].y - path[k].y)
@@ -822,7 +936,7 @@ export class Renderer {
             // snap to the art pixel grid so the dots look like the rest of the game
             const x = Math.round((a.x + (b.x - a.x) * t) / PX) * PX
             const y = Math.round((a.y + (b.y - a.y) * t) / PX) * PX
-            c.fillRect(x - PX, y - PX, PX * 2, PX * 2)
+            if (covers.length === 0 || !hidden(wire, x, y)) c.fillRect(x - PX, y - PX, PX * 2, PX * 2)
             break
           }
           left -= len
@@ -855,7 +969,7 @@ export class Renderer {
     c.restore()
   }
 
-  private drawWire(w: Wire, selected: boolean, color: string, shape: CableShape | undefined, bare: Vec[]): void {
+  private drawWire(w: Wire, color: string, shape: CableShape | undefined): void {
     const c = this.ctx
     const path = wirePath(w)
     c.lineCap = 'round'
@@ -863,16 +977,6 @@ export class Renderer {
     if (this.pixelMode) {
       c.shadowBlur = 0
       if (shape && !this.hide.bodies) drawCableBody(c, shape, color)
-      if (!this.hide.caps) drawCableCaps(c, path, w.taps ?? [], bare)
-      if (selected && !this.hide.selection) {
-        for (const e of [w.a, w.b]) {
-          c.strokeStyle = COL.cyan
-          c.lineWidth = 1.5
-          c.beginPath()
-          c.arc(e.x, e.y, 8, 0, Math.PI * 2)
-          c.stroke()
-        }
-      }
       c.lineCap = 'butt'
       c.lineJoin = 'miter'
       return
@@ -889,6 +993,26 @@ export class Renderer {
     c.lineWidth = 1
     this.tracePath(path, -1)
     c.stroke()
+    c.lineCap = 'butt'
+    c.lineJoin = 'miter'
+  }
+
+  /** The metal pins at a wire's ends (and the selection rings): painted over every part, so a part placed later never hides where a wire is plugged in. */
+  private drawWireCaps(w: Wire, selected: boolean, bare: Vec[]): void {
+    const c = this.ctx
+    if (this.pixelMode) {
+      if (!this.hide.caps) drawCableCaps(c, wirePath(w), w.taps ?? [], bare)
+      if (selected && !this.hide.selection) {
+        for (const e of [w.a, w.b]) {
+          c.strokeStyle = COL.cyan
+          c.lineWidth = 1.5
+          c.beginPath()
+          c.arc(e.x, e.y, 8, 0, Math.PI * 2)
+          c.stroke()
+        }
+      }
+      return
+    }
     for (const e of [w.a, w.b, ...(w.taps ?? [])]) {
       if (bare.some((q) => q.x === e.x && q.y === e.y)) continue // a branch end gets the round junction dot, not a metal pin
       c.fillStyle = COL.metal
@@ -907,8 +1031,6 @@ export class Renderer {
         c.stroke()
       }
     }
-    c.lineCap = 'butt'
-    c.lineJoin = 'miter'
   }
 
   private drawLeads(part: PartInstance, ov: Overlay): void {

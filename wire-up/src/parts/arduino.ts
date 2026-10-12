@@ -7,7 +7,7 @@ import { COL, drawLabelAbove, drawText, radialGlow, rrect } from '../render/draw
 import { drawSprite, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, LED_COLORS, LED_N, ledIs, MCU } from '../sim/models.ts'
-import { UNO_HEADERS, UNO_LAMPS, UNO_PAD, UNO_PLUG, UNO_RESET, UNO_USB, unoBoardSprite, unoHeaderSprite, unoLensSprite, unoPlugSprite, unoResetSprite } from './art.ts'
+import { UNO_H, UNO_HEADERS, UNO_LAMPS, UNO_PAD, UNO_PLUG, UNO_RESET, UNO_USB, UNO_W, unoBoardSprite, unoHeaderSprite, unoLensSprite, unoPlugSprite, unoResetSprite } from './art.ts'
 import { eid, flag, stress } from './common.ts'
 import type { PartInstance } from '../board/world.ts'
 import type { PartDef } from './types.ts'
@@ -113,6 +113,21 @@ function inSocket(p: PartInstance, x: number, y: number): boolean {
   return socket || plug
 }
 
+/**
+ * What a click on the board lands on: the PCB with its top-right corner cut back, the USB socket and the DC jack that stand out
+ * past the left edge, and the plug with its cable when it is in. The empty corners of the bounding box are not the board.
+ * (Board art pixels are 2 world px; the board's top-left is the part's origin.)
+ */
+function onBoard(p: PartInstance, local: { x: number; y: number }): boolean {
+  const ax = local.x / 2
+  const ay = local.y / 2
+  const pcb = ax >= 0 && ax <= UNO_W && ay >= 0 && ay <= UNO_H && !(ay < 61 && ax > 258 + (ay > 42 ? (12 * (ay - 42)) / 19 : 0))
+  const socket = ax >= UNO_USB.x && ax <= UNO_USB.x + UNO_USB.w && ay >= UNO_USB.y && ay <= UNO_USB.y + UNO_USB.h
+  const jack = ax >= -14 && ax <= 46 && ay >= 161 && ay <= 197
+  const plug = plugged(p) && local.x >= PLUG_AT.x && local.x <= PLUG_AT.x + UNO_PLUG.w * 2 && local.y >= PLUG_AT.y && local.y <= PLUG_AT.y + UNO_PLUG.h * 2
+  return pcb || socket || jack || plug
+}
+
 export const arduinoUno: PartDef = {
   type: 'arduino-uno',
   name: 'Arduino Uno R3',
@@ -132,6 +147,7 @@ export const arduinoUno: PartDef = {
     return out
   },
   bounds: (p) => (plugged(p) ? { x: PLUG_AT.x - 4, y: 0, w: 540 - PLUG_AT.x + 4, h: 420 } : { x: -54, y: 0, w: 594, h: 420 }),
+  hitAt: onBoard,
   sourceNegPin: (p) => (plugged(p) && !p.state.failed ? GND_TOP : null),
   build(p, ctx) {
     if (p.state.failed) return

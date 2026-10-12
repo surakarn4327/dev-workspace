@@ -84,6 +84,8 @@ export interface PartDef {
   /** Local px anchors the flexible leads are drawn from. */
   anchors?(p: PartInstance): Vec[]
   bounds(p: PartInstance): Rect
+  /** A finer test than `bounds` for a click (local px, already inside `bounds`): the shape of the part, for one that is not a plain box. */
+  hitAt?(p: PartInstance, local: Vec): boolean
   build(p: PartInstance, ctx: BuildCtx): void
   evaluate(p: PartInstance, env: Env): Eval
   draw(c: CanvasRenderingContext2D, p: PartInstance, live: PartLive, time: number): void

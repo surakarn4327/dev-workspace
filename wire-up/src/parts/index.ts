@@ -131,31 +131,41 @@ export function rotatePart(p: PartInstance): void {
 
 // ---------------------------------------------------------------- stacking order
 
-const LOW_PARTS = new Set(['resistor', 'diode'])
-const TALL_PARTS = new Set(['led', 'bc547', 'bc557', 'pot', 'ldr', 'ntc', 'cap-ceramic', 'cap-electro', 'supply'])
-
 /**
- * Order of parts among themselves: 0 breadboard, 1 flat parts, 2 tall parts, 4 everything else; ties keep placement order.
- * Wires are drawn over every part except switches (`drawsOverWires`); the selected part is over the wires. Hit testing uses the same order.
+ * Stacking is by birth: everything (parts and wires alike) is drawn in the order it was created, so what was placed, pasted or
+ * drawn later lies over what came before. The one exception is the breadboard (layer 0), which is always the ground under
+ * everything. The selected part is drawn on top. Hit testing uses the same order.
  */
 export function layerOf(type: string): number {
-  if (type.startsWith('breadboard')) return 0
-  if (LOW_PARTS.has(type)) return 1
-  if (TALL_PARTS.has(type)) return 2
-  return 4
+  return type.startsWith('breadboard') ? 0 : 1
+}
+
+/** When a part or wire was born: the number in its id (ids come from one counter, so this is the order across both kinds). */
+export function seqOf(id: string): number {
+  const n = /(\d+)$/.exec(id)
+  return n ? Number(n[1]) : 0
 }
 
 /**
- * Every part is drawn (and hit) under the wires except the 'switch' category (rocker, slide, push button): a wire must never
- * hide the thing you press. A new part follows its category, so nothing needs listing here.
+ * Where each wire sits in the birth order. Wires keep the order of the wire list among themselves (as before); against parts a
+ * wire counts as born no earlier than the wires before it in the list, so the order never goes backwards along the list.
  */
-export function drawsOverWires(type: string): boolean {
-  return byType.get(type)?.category === 'switch'
+export function wireSeqs(wires: { id: string }[]): Map<string, number> {
+  const out = new Map<string, number>()
+  let top = 0
+  for (const w of wires) {
+    top = Math.max(top, seqOf(w.id))
+    out.set(w.id, top)
+  }
+  return out
 }
 
-/** Parts from bottom to top: by layer, then by the order they were placed. */
+/** Parts from bottom to top: the breadboards, then by birth. */
 export function stackOrder(parts: PartInstance[]): PartInstance[] {
-  return parts.map((p, i) => ({ p, i })).sort((a, b) => layerOf(a.p.type) - layerOf(b.p.type) || a.i - b.i).map((e) => e.p)
+  return parts
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => layerOf(a.p.type) - layerOf(b.p.type) || seqOf(a.p.id) - seqOf(b.p.id) || a.i - b.i)
+    .map((e) => e.p)
 }
 
 /**

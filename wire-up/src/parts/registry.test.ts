@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { HANGING_LEG_PARTS, G } from '../board/world.ts'
 import type { Element } from '../sim/solver.ts'
-import { ALL_PARTS, drawsOverWires, layerOf, newPart, sanitizeParams } from './index.ts'
+import { ALL_PARTS, newPart, sanitizeParams, seqOf, stackOrder } from './index.ts'
 import type { BuildCtx, Env, PartDef } from './types.ts'
 import styleMd from '../../style.md?raw'
 import artSource from './art.ts?raw'
@@ -141,16 +141,20 @@ describe('every part is complete', () => {
       const b = def.pins(long)
       const hangs = a.some((v, i) => v.y !== b[i].y)
       expect(HANGING_LEG_PARTS.has(def.type), 'legs move the pins down: add the type to HANGING_LEG_PARTS (board/world.ts)').toBe(hangs)
-      if (hangs) expect(layerOf(def.type), 'tall part: add the type to TALL_PARTS (parts/index.ts)').toBe(2)
       expect(def.fields(p).some((f) => f.key === 'legs'), 'a part with legs needs LEG_FIELD').toBe(true)
     })()
   })
 })
 
-describe('wire stacking', () => {
-  it('switches and push buttons are over the wires, every other part is under them', () => {
-    const over = ALL_PARTS.filter((d) => drawsOverWires(d.type)).map((d) => d.type).sort()
-    expect(over).toEqual(['button', 'slide-switch', 'switch'])
+describe('stacking by birth', () => {
+  it('parts stack in the order they were born, with the breadboard always at the bottom', () => {
+    const mk = (id: string, type: string) => newPart(id, type, 0, 0)
+    const order = stackOrder([mk('p9', 'led'), mk('p3', 'resistor'), mk('p12', 'breadboard'), mk('p5', 'switch')]).map((p) => p.id)
+    expect(order).toEqual(['p12', 'p3', 'p5', 'p9'])
+  })
+  it('the birth number is the one in the id, the same counter for parts and wires', () => {
+    expect(seqOf('w27')).toBeLessThan(seqOf('p31'))
+    expect(seqOf('p31')).toBeLessThan(seqOf('w100'))
   })
 })
 

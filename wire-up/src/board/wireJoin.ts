@@ -4,7 +4,7 @@
 // the wire ends lie, so moving an end away simply undoes the join.
 
 import { boardHoles } from '../parts/breadboard.ts'
-import { defOf, pinWorld } from '../parts/index.ts'
+import { defOf, pinWorld, wireSeqs } from '../parts/index.ts'
 import { pointKey, wirePath } from './world.ts'
 import type { PartInstance, Vec, World, Wire } from './world.ts'
 
@@ -63,6 +63,17 @@ export function effectiveColors(world: World, sockets: Set<string> = socketKeys(
     out.set(w.id, cur.color)
   }
   return out
+}
+
+const rankCache = new WeakMap<World, { version: number; ranks: Map<string, number> }>()
+
+/** Where each wire sits in the stacking order against parts (see `wireSeqs`): every wire keeps its own place, joined or not. */
+export function wireRanks(world: World): Map<string, number> {
+  const hit = rankCache.get(world)
+  if (hit && hit.version === world.version) return hit.ranks
+  const ranks = wireSeqs(world.wires)
+  rankCache.set(world, { version: world.version, ranks })
+  return ranks
 }
 
 /** The wire whose own colour decides how `w` is drawn (itself unless it is a branch). */

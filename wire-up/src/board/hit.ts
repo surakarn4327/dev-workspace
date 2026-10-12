@@ -1,6 +1,7 @@
 // Pointer hit testing in world coordinates.
 
-import { defOf, drawsOverWires, layerOf, leadDir, pinWorld, stackOrder } from '../parts/index.ts'
+import { defOf, layerOf, leadDir, pinWorld, seqOf, stackOrder } from '../parts/index.ts'
+import { wireRanks } from './wireJoin.ts'
 import { probeHeadBox } from '../render/pixelwire.ts'
 import { holeNear } from '../parts/breadboard.ts'
 import { straightMid } from './wireEdit.ts'
@@ -35,7 +36,8 @@ function segDist(p: Vec, a: Vec, b: Vec): number {
 function partAt(part: PartInstance, p: Vec): boolean {
   const local = unrotVec({ x: p.x - part.x, y: p.y - part.y }, part.rot)
   const b = defOf(part.type).bounds(part)
-  return local.x >= b.x - 2 && local.x <= b.x + b.w + 2 && local.y >= b.y - 2 && local.y <= b.y + b.h + 2
+  if (!(local.x >= b.x - 2 && local.x <= b.x + b.w + 2 && local.y >= b.y - 2 && local.y <= b.y + b.h + 2)) return false
+  return defOf(part.type).hitAt?.(part, local) ?? true
 }
 
 export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string | null, skipWires = false, frontId: string | null = null): Hit {
@@ -86,23 +88,23 @@ export function hitTest(world: World, p: Vec, zoom: number, selectedWire: string
   const frontPart = frontId ? world.getPart(frontId) : undefined
   if (frontPart && layerOf(frontPart.type) > 0 && partAt(frontPart, p)) return { kind: 'part', part: frontPart, local: unrotVec({ x: p.x - frontPart.x, y: p.y - frontPart.y }, frontPart.rot) }
 
-  // switches are drawn over the wires too
-  for (const part of stackOrder(world.parts).reverse()) {
-    if (drawsOverWires(part.type) && partAt(part, p)) return { kind: 'part', part, local: unrotVec({ x: p.x - part.x, y: p.y - part.y }, part.rot) }
-  }
-
-  for (let k = skipWires ? -1 : world.wires.length - 1; k >= 0; k--) {
-    const w = world.wires[k]
-    const path = wirePath(w)
-    for (let i = 0; i + 1 < path.length; i++) {
-      if (segDist(p, path[i], path[i + 1]) <= Math.max(5, 6 / zoom)) return { kind: 'wire', wire: w }
+  // parts and wires from the newest down (the order they are drawn in: what was born later lies on top)
+  const stack: ({ part: PartInstance } | { wire: Wire })[] = stackOrder(world.parts)
+    .filter((part) => !part.type.startsWith('breadboard'))
+    .map((part) => ({ part }))
+  const ranks = skipWires ? new Map<string, number>() : wireRanks(world)
+  const born = (e: { part: PartInstance } | { wire: Wire }): number => ('part' in e ? seqOf(e.part.id) : ranks.get(e.wire.id) ?? 0)
+  const items = skipWires ? stack : [...stack, ...world.wires.map((wire) => ({ wire }))]
+  items.sort((a, b) => born(a) - born(b)) // bottom to top, wires keep the wire list order
+  for (const e of items.reverse()) {
+    if ('part' in e) {
+      if (partAt(e.part, p)) return { kind: 'part', part: e.part, local: unrotVec({ x: p.x - e.part.x, y: p.y - e.part.y }, e.part.rot) }
+      continue
     }
-  }
-
-  // parts: the selected one first, then from the top of the stacking order down (same order as drawing)
-  for (const part of stackOrder(world.parts).reverse()) {
-    if (part.type.startsWith('breadboard')) continue
-    if (partAt(part, p)) return { kind: 'part', part, local: unrotVec({ x: p.x - part.x, y: p.y - part.y }, part.rot) }
+    const path = wirePath(e.wire)
+    for (let i = 0; i + 1 < path.length; i++) {
+      if (segDist(p, path[i], path[i + 1]) <= Math.max(5, 6 / zoom)) return { kind: 'wire', wire: e.wire }
+    }
   }
 
   for (let k = world.parts.length - 1; k >= 0; k--) {
