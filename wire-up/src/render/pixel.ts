@@ -238,6 +238,25 @@ export function pxLegH(c: CanvasRenderingContext2D, y: number, left: number, rig
 /** A slanted leg from art pixel (x0, y0) to (x1, y1): the dark line, with the light line one pixel to its left (as `pxLine` pairs were drawn before). */
 export function pxLegDiag(c: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number): void {
   const cells: LegCells = new Map()
+  addDiagCells(cells, x0, y0, x1, y1)
+  paintLegCells(c, cells)
+}
+
+/**
+ * A vertical leg centred on world x from `top` to `bottom`, with a slanted piece from its top end to art pixel (x1, y1), made as ONE
+ * leg: the two pieces share their outline, so no dark line shows where they meet (drawn one after the other, each piece had its own).
+ */
+export function pxLegBent(c: CanvasRenderingContext2D, x: number, top: number, bottom: number, x1: number, y1: number): void {
+  const cells: LegCells = new Map()
+  for (let ay = top / PX; ay < bottom / PX; ay++) {
+    cells.set(`${(x - 2) / PX},${ay}`, 'L')
+    cells.set(`${(x - 2) / PX + 1},${ay}`, 'D')
+  }
+  addDiagCells(cells, x / PX, top / PX, x1, y1)
+  paintLegCells(c, cells)
+}
+
+function addDiagCells(cells: LegCells, x0: number, y0: number, x1: number, y1: number): void {
   for (const [dx, tone] of [[-1, 'L'], [0, 'D']] as const) {
     let x = Math.round(x0 + dx)
     let y = Math.round(y0)
@@ -262,7 +281,6 @@ export function pxLegDiag(c: CanvasRenderingContext2D, x0: number, y0: number, x
       }
     }
   }
-  paintLegCells(c, cells)
 }
 
 export function pxRect(c: CanvasRenderingContext2D, ox: number, oy: number, ax: number, ay: number, aw: number, ah: number, color: string): void {
