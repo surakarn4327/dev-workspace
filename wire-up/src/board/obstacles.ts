@@ -63,6 +63,7 @@ interface LeadDir extends Vec {
  *   batteries (types 'battery*')    -> up
  *   74HC chips (types 'ic-*')       -> out of the package: top row up, bottom row down
  *   relay module (type 'relay-module') -> screw terminals (NC/COM/NO) up, 3 grid straight; header pins down (the printed side), 2 grid straight
+ *   Arduino Uno (type 'arduino-uno')   -> the top header's pins up, the bottom header's pins down, 2 grid straight (out of the sockets)
  *   switches (category 'switch')    -> out to the side (left leg left, right leg right), except the push button (type 'button'), which keeps free routing
  */
 function leadDirs(p: PartInstance): LeadDir[] | null {
@@ -78,6 +79,7 @@ function leadDirs(p: PartInstance): LeadDir[] | null {
     const header = (total - 2) / 4 + 2
     return def.pins(p).map((_, i) => (i < header ? { ...down, len: 2 } : { ...up, len: 3 }))
   }
+  if (p.type === 'arduino-uno') return def.pins(p).map((v) => (v.y < 10 ? { ...up, len: 2 } : { ...down, len: 2 }))
   if (p.type.startsWith('battery')) return def.pins(p).map(() => up)
   if (p.type.startsWith('ic-') || p.type.startsWith('seg7')) return def.pins(p).map((v) => (v.y === 0 ? up : down))
   if (def.category === 'switch' && p.type !== 'button') {
@@ -104,9 +106,10 @@ export function leadPins(world: World): Lead[] {
 }
 
 /**
- * The relay module is covered edge to edge: no wire may lie over any of it, not even the strip with the screw terminals or the
- * strip with the header. The only openings are the straight columns a wire takes out of its own pin (up from a terminal, down
- * from a header pin), so the board is cut into pieces that touch those columns (touching an edge does not count as a hit).
+ * A module board (the relay module, the Arduino Uno) is covered edge to edge: no wire may lie over any of it, not even the strip
+ * with the screw terminals or the strip with the header. The only openings are the straight columns a wire takes out of its own
+ * pin (up from a terminal, down from a header pin), so the board is cut into pieces that touch those columns (touching an edge
+ * does not count as a hit).
  */
 function moduleRects(p: PartInstance): Rect[] {
   const b = defOf(p.type).bounds(p)
@@ -140,8 +143,11 @@ function moduleRects(p: PartInstance): Rect[] {
   })
 }
 
+/** Boards whose whole body is an obstacle (see `moduleRects`). */
+const MODULE_BOARDS = new Set(['relay-module', 'arduino-uno'])
+
 export function partObstacles(world: World): Rect[] {
-  return world.parts.filter((p) => !p.type.startsWith('breadboard')).flatMap((p) => (p.type === 'relay-module' ? moduleRects(p) : [bodyRect(p)]))
+  return world.parts.filter((p) => !p.type.startsWith('breadboard')).flatMap((p) => (MODULE_BOARDS.has(p.type) ? moduleRects(p) : [bodyRect(p)]))
 }
 
 /** Does the straight stretch a -> b pass through the inside of the rectangle? Touching the edge does not count. */

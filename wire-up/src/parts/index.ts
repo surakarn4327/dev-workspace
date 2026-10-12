@@ -1,3 +1,4 @@
+import { arduinoUno } from './arduino.ts'
 import { seg7, seg7x4 } from './display.ts'
 import { hc00, hc02, hc04, hc08, hc32, hc86, ne555 } from './ic.ts'
 import { rotVec, G, snap } from '../board/world.ts'
@@ -42,6 +43,7 @@ export const ALL_PARTS: PartDef[] = [
   hc86,
   ne555,
   relayModule,
+  arduinoUno,
   seg7,
   seg7x4,
   rockerSwitch,
@@ -57,9 +59,10 @@ const byType = new Map<string, PartDef>(ALL_PARTS.map((d) => [d.type, d]))
 
 export const KNOWN_TYPES = new Set(byType.keys())
 
-/** Switch position is a live action like pressing a button on a real board: it is saved, but never an undo / redo step. */
+/** Switch position (and a board's USB plug, `PartDef.runtimeKeys`) is a live action like pressing a button on a real board: it is saved, but never an undo / redo step. */
 export function isRuntimeState(p: PartInstance, key: string): boolean {
-  return defOf(p.type).category === 'switch' && key === 'on'
+  const def = defOf(p.type)
+  return (def.category === 'switch' && key === 'on') || (def.runtimeKeys?.includes(key) ?? false)
 }
 
 export function defOf(type: string): PartDef {

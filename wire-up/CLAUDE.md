@@ -25,7 +25,7 @@ Wire-Up = lab ทดลองอิเล็กทรอนิกส์เสม
     วาดด้วยโค้ด Canvas ทั้งหมด ไม่ใช้ไฟล์รูป/asset ภายนอก
 12. **v1 = วงจรไฟฟ้าก่อน**: แหล่งจ่าย/แบต, resistor, LED, switch, diode, transistor, breadboard,
     มัลติมิเตอร์, ระบบพังจริง **+ sensor แบบอนาล็อก** (LDR, thermistor, potentiometer — ผู้ใช้สั่งเพิ่ม 2026-10-07)
-    บอร์ด Arduino/ESP32, Serial Monitor, โหมดบล็อก, WiFi = v2
+    บอร์ด Arduino/ESP32, Serial Monitor, โหมดบล็อก, WiFi = v2 (Uno เริ่มแล้ว ดูท้ายไฟล์)
 13. **UI**: toolbox แบบแท็บด้านซ้าย (ลากชิ้นส่วนลงจอ), inspector + missions ด้านขวา
 
 ## สถานะ
@@ -107,4 +107,5 @@ src/
 - UI/ข้อความในเกม = อังกฤษ; โค้ด/คอมเมนต์ = อังกฤษ; เอกสารภายใน = ไทยได้
 - แก้บั๊กจริงต้องจด `bugs.md` (ธรรมนูญข้อ 3) โดยเฉพาะบั๊ก solver ไม่ converge / ค่าเพี้ยน
 - Claude ทำ UI/ภาพเองทั้งหมด (ผู้ใช้ไม่ได้ออกแบบ frontend ให้โปรเจกต์นี้)
-- **v2 (ยังไม่เริ่ม — ต้องให้ผู้ใช้สั่ง):** บอร์ด Arduino/ESP32 + Serial Monitor, โหมดบล็อก→C++, MicroPython, WiFi จำลอง
+- **Arduino Uno R3 `arduino-uno`** (ผู้ใช้สั่ง 2026-10-12, v2 เริ่มแล้ว — ชิ้นแรกของ v2): `parts/arduino.ts`, ภาพ `art.ts` `unoBoardSprite` (หัวพินตัวเมีย `unoHeaderSprite` วาดเหนือสายด้วย `drawOver`, ปลั๊ก `unoPlugSprite`) ดู style.md 5.24; 32 ขาตามแบบจริง (แถวบน SCL SDA AREF GND 13..8 / 7..0, แถวล่าง NC IOREF RESET 3V3 5V GND GND VIN / A0..A5) บนตาราง 0.1"; **ปลั๊ก USB เป็นไฟเลี้ยง:** กดซ็อกเก็ต/ตัวปลั๊กสลับ `usb` (เหมือนสวิตช์: เซฟแต่ไม่เป็นขั้น undo ผ่าน `PartDef.runtimeKeys`, ถอดแล้วปลั๊กกับสายหายไปเลย) USB = 5 V หลัง 0.5 Ω พิกัด 500 mA, 3V3 พิกัด 50 mA; ตัวบอร์ดเป็นแหล่งจ่ายของตัวเองจึงมี `PartDef.sourceNegPin` (ขา GND) ให้ `board/connectivity.ts` ใช้เป็นขั้ว − อ้างอิง; **ขา I/O = element `P` (`McuPinElement` ใน `sim/solver.ts`)** 25 Ω ไป VCC/GND ตามสถานะที่เก็บใน map เดียวกับประจุที่ `${id}:m` (0..1 = ขับ/duty, −2 = pull-up 30 kΩ, อื่นๆ = input) ตั้งผ่าน `Simulation.setPad(partId, pad, value)`; มีเฉพาะขาที่มีอะไรต่ออยู่ (กับ D13 ที่มี LED L ของบอร์ด) พร้อมไดโอดป้องกันสองทิศ; พิกัด: 40 mA ต่อขา, 200 mA รวม, ไฟเลี้ยงเกิน 6 V/กลับขั้ว, 5V เกิน 500 mA, 3V3 เกิน 50 mA; ไฟ ON/L อิงกระแสจริงของ LED (ผ่าน `behaviour.test.ts`); ปุ่ม RESET กดค้างได้ (`pressZone`, param `pressed`); สายออกจากขาตรงขึ้น/ลง 2 grid (`leadDirs`) และห้ามทับตัวบอร์ดทั้งใบ (`moduleRects`); **VIN กับแจ็ค DC ยังไม่ทำงาน**; ยังไม่มีตัวรันโค้ด — ที่ตกลงกับผู้ใช้แล้ว: แผงเขียนโค้ดหน้าตา CMD (C++ แบบ Arduino ชุดย่อย รัน `setup`/`loop` ในเบราว์เซอร์ ไม่มี server), Serial Monitor, `analogWrite` (PWM) รวมในรอบแรก (คิดว่าจะคำนวณ PWM เป็นรอบย่อยต่อเฟรม เพื่อให้ LED หรี่ถูกต้อง ไม่ใช้แรงดันเฉลี่ย), ค่อยทำจอ I2C LCD ทีหลัง
+- **v2 ที่เหลือ (ยังไม่เริ่ม — ต้องให้ผู้ใช้สั่ง):** ESP32 + Serial Monitor/ตัวรันโค้ดของ Uno, โหมดบล็อก→C++, MicroPython, WiFi จำลอง, จอ I2C LCD

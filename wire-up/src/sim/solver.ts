@@ -24,6 +24,7 @@ export type Element =
   | CmosGateElement
   | TimerElement
   | RelayElement
+  | McuPinElement
 
 export type GateFn = 'not' | 'and' | 'or' | 'nand' | 'nor' | 'xor' | 'xnor'
 
@@ -104,6 +105,35 @@ export interface RelayElement {
   /** Coil voltage that pulls in / lets go (default `RELAY.vPull` / `RELAY.vDrop`): a driver stage uses it as a switch with its own levels. */
   vPull?: number
   vDrop?: number
+}
+
+/**
+ * One I/O pad of a microcontroller (ATmega328P). What the sketch asks of the pad is kept in the same map as the capacitor
+ * voltages, under `${id}:m`: a number from 0 to 1 drives the pad (1 high, 0 low, between = a PWM duty, i.e. high that share
+ * of the time), -2 is an input with the pull-up on, anything else (or nothing) is a plain input. Driving joins the pad to VCC
+ * through `1 / (m * rOut)` and to GND through `1 / ((1 - m) * rOut)`; the pull-up is `rPullup` to VCC. The two currents come
+ * back as `i` (from VCC into the pad) and `ib` (from GND into the pad), so `i + ib` is what the pad delivers.
+ */
+export interface McuPinElement {
+  kind: 'P'
+  id: string
+  pin: number
+  vcc: number
+  gnd: number
+}
+
+/** ATmega328P (Arduino Uno) numbers: pad drive, pull-up, and the absolute maximum ratings (datasheet 29.1 and the board's USB / 3V3 parts). */
+export const MCU = {
+  rOut: 25,
+  rPullup: 30000,
+  vMax: 6,
+  iPinMax: 0.04,
+  iTotalMax: 0.2,
+  iUsbMax: 0.5,
+  rUsb: 0.5,
+  i33Max: 0.05,
+  r33: 1,
+  diodeIs: 1e-14,
 }
 
 /** 5 V relay (SRD-05VDC-SL-C datasheet figures): coil, switching levels and ratings. */
@@ -454,6 +484,16 @@ class Problem {
           this.stampG(A, e.com, on ? e.no : e.nc, 1 / RELAY.rContact)
           break
         }
+        case 'P': {
+          const m = this.tran?.vPrev.get(`${e.id}:m`) ?? -1
+          if (m >= 0) {
+            const share = Math.min(m, 1)
+            const g = 1 / MCU.rOut
+            if (share > 0) this.stampG(A, e.pin, e.vcc, g * share)
+            if (share < 1) this.stampG(A, e.pin, e.gnd, g * (1 - share))
+          } else if (m === -2) this.stampG(A, e.pin, e.vcc, 1 / MCU.rPullup)
+          break
+        }
         case 'T': {
           const st = this.tran?.vPrev
           if ((st?.get(`${e.id}:en`) ?? 1) < 0.5) break
@@ -559,6 +599,19 @@ class Problem {
           const on = (this.tran?.vPrev.get(`${e.id}:on`) ?? 0) > 0.5
           // current from COM into the closed side; `ib` says which side is closed (1 = NO)
           out.set(e.id, { i: (nv(e.com) - nv(on ? e.no : e.nc)) / RELAY.rContact, ib: on ? 1 : 0 })
+          break
+        }
+        case 'P': {
+          const m = this.tran?.vPrev.get(`${e.id}:m`) ?? -1
+          let iv = 0
+          let ig = 0
+          if (m >= 0) {
+            const share = Math.min(m, 1)
+            const g = 1 / MCU.rOut
+            iv = g * share * (nv(e.vcc) - nv(e.pin))
+            ig = g * (1 - share) * (nv(e.gnd) - nv(e.pin))
+          } else if (m === -2) iv = (nv(e.vcc) - nv(e.pin)) / MCU.rPullup
+          out.set(e.id, { i: iv, ib: ig })
           break
         }
         case 'T': {
@@ -683,7 +736,7 @@ const MAX_SUBSTEPS = 200
  */
 export function advance(circuit: Circuit, charge: Map<string, number>, seconds: number, warm?: Float64Array): SolveResult & { raw: Float64Array } {
   const caps = circuit.elements.filter((e) => e.kind === 'K')
-  const timers = circuit.elements.some((e) => e.kind === 'T' || e.kind === 'Y')
+  const timers = circuit.elements.some((e) => e.kind === 'T' || e.kind === 'Y' || e.kind === 'P')
   if (caps.length === 0 && !timers) return solve(circuit, warm)
   if (seconds <= 0) {
     let res = solve(circuit, warm, { dt: 1e-9, vPrev: charge })

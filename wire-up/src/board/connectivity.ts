@@ -7,7 +7,7 @@ import { boardHoles } from '../parts/breadboard.ts'
 import { defOf, pinWorld } from '../parts/index.ts'
 import { socketKeys, tapTarget } from './wireJoin.ts'
 import { pointKey } from './world.ts'
-import type { Vec, World } from './world.ts'
+import type { PartInstance, Vec, World } from './world.ts'
 
 class UnionFind {
   private parent = new Map<string, string>()
@@ -63,6 +63,13 @@ export interface Netlist {
  * to settle after a switch flip; 10 Mohm keeps it at 3-15 and leaks only 0.5 uA from a 4.5 V cell.
  */
 const FLOAT_TIE = 1e7
+
+/** The pin that is the negative terminal of a part while it is a voltage source of its own (a cell, a supply, a board powered over USB), else null. */
+function sourceNegPin(part: PartInstance): number | null {
+  if (part.state.failed) return null
+  if (part.type.startsWith('battery') || part.type === 'supply') return 1
+  return defOf(part.type).sourceNegPin?.(part) ?? null
+}
 
 export function buildNetlist(world: World, time = 0): Netlist {
   let animated = false
@@ -125,10 +132,11 @@ export function buildNetlist(world: World, time = 0): Netlist {
   let groundRoot: string | undefined
   const sourceNegRoots: string[] = []
   for (const part of world.parts) {
-    if ((part.type.startsWith('battery') || part.type === 'supply') && !part.state.failed) {
+    const neg = sourceNegPin(part)
+    if (neg !== null) {
       const keys = pinKeys.get(part.id)
       if (!keys) continue
-      const root = uf.find(keys[1])
+      const root = uf.find(keys[neg])
       sourceNegRoots.push(root)
       groundRoot ??= root
     }
@@ -171,10 +179,9 @@ export function buildNetlist(world: World, time = 0): Netlist {
     while (island.has(r) && island.get(r) !== r) r = island.get(r)!
     return r
   }
-  const isSource = (t: string) => t.startsWith('battery') || t === 'supply'
   for (const part of world.parts) {
     const pins = partPins.get(part.id)
-    if (!pins || pins.length < 2 || isSource(part.type) || part.type.startsWith('gate-')) continue
+    if (!pins || pins.length < 2 || sourceNegPin(part) !== null || part.type.startsWith('battery') || part.type === 'supply' || part.type.startsWith('gate-')) continue
     for (let i = 1; i < pins.length; i++) {
       const a = islandOf(pins[0])
       const b = islandOf(pins[i])
@@ -184,7 +191,8 @@ export function buildNetlist(world: World, time = 0): Netlist {
   }
   const sourceNegs = world.parts.flatMap((p) => {
     const pins = partPins.get(p.id)
-    return pins && isSource(p.type) && !p.state.failed ? [pins[1]] : []
+    const neg = sourceNegPin(p)
+    return pins && neg !== null ? [pins[neg]] : []
   })
   for (const part of world.parts) {
     if (!part.type.startsWith('gate-')) continue

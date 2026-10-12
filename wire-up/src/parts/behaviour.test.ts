@@ -93,6 +93,9 @@ function variantsOf(type: string): Variant[] {
     for (const channels of [1, 2, 4, 8]) for (const trigger of ['low', 'high']) out.push({ type, params: { channels, trigger }, label: `${type} ${channels}ch ${trigger}` })
     return out
   }
+  if (type === 'arduino-uno') {
+    return [true, false].map((usb) => ({ type, params: { usb }, label: `${type} usb ${usb ? 'plugged' : 'unplugged'}` }))
+  }
   return [{ type, params: {}, label: type }]
 }
 

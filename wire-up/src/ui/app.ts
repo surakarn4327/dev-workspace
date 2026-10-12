@@ -380,11 +380,12 @@ export class App {
   private restore(json: string | null): void {
     if (!json) return
     // switches keep the position they have now: undo and redo only walk through edits, not through flipped switches
-    const switches = new Map(this.world.parts.filter((p) => isRuntimeState(p, 'on')).map((p) => [p.id, p.params.on === true]))
+    const KEYS = ['on', 'usb']
+    const switches = new Map(this.world.parts.flatMap((p) => KEYS.filter((k) => isRuntimeState(p, k)).map((k) => [`${p.id}:${k}`, p.params[k] === true] as const)))
     const step = JSON.parse(json) as { world: WorldData; holds?: { parts: string[]; wires: string[] }[] }
     this.world.load(step.world)
     this.ws.importHolds(step.holds ?? [])
-    for (const p of this.world.parts) if (switches.has(p.id) && isRuntimeState(p, 'on')) p.params.on = switches.get(p.id) === true
+    for (const p of this.world.parts) for (const k of KEYS) if (switches.has(`${p.id}:${k}`) && isRuntimeState(p, k)) p.params[k] = switches.get(`${p.id}:${k}`) === true
     this.ws.select(null)
     this.lastRev = this.world.revision
     this.inspector.rebuild()

@@ -53,4 +53,4 @@ npm run build   # tsc (strict) + vite build
 
 ## สถานะ
 
-v1 ครบตามแผน (2026-10-07) — ยังไม่ทำ: บอร์ด Arduino/ESP32, Serial Monitor, โหมดบล็อก, WiFi จำลอง (v2)
+v1 ครบตามแผน (2026-10-07) — v2 เริ่มแล้ว (2026-10-12): บอร์ด Arduino Uno R3 (ตัวบอร์ด + USB + ขา I/O จริง; ตัวรันโค้ด/แผงโค้ด/Serial/PWM ยังไม่ทำ) — ยังไม่ทำ: ESP32, โหมดบล็อก, WiFi จำลอง, จอ I2C LCD

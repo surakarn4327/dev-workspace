@@ -5,7 +5,7 @@ export async function harness(opts = {}) {
   const parts = await import('/src/parts/index.ts')
   const { Renderer } = await import('/src/render/renderer.ts')
   const { scene } = await import('/src/render/scene.ts')
-  const K = 3, SIZE = 1000, OX = 500, OY = 500, BG = [35, 35, 43]
+  const K = opts.zoom ?? 3, SIZE = 1000, OX = 500, OY = 500, BG = [35, 35, 43] // opts.zoom 1 for boards bigger than the canvas at 3x (the Uno)
   const cv = document.createElement('canvas')
   cv.width = SIZE
   cv.height = SIZE

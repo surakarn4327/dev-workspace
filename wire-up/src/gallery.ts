@@ -30,6 +30,7 @@ function labelPainter(ctx: CanvasRenderingContext2D): { drawPinLabels(p: ReturnT
 /** Extra gallery entries for parts whose look follows a setting: the same part drawn with these params too. */
 const VARIANTS: Record<string, Record<string, number | string | boolean>[]> = {
   'relay-module': [{ channels: 2 }, { channels: 4 }, { channels: 8 }],
+  'arduino-uno': [{ usb: false }],
 }
 
 function drawCell(cv: HTMLCanvasElement, def: PartDef, rot: number, params: Record<string, number | string | boolean> = {}): void {

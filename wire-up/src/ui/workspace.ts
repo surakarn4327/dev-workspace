@@ -712,8 +712,8 @@ export class Workspace {
           this.world.commit()
           this.onEdit()
         } else if (def.click && def.click(m.part, m.local)) {
-          if (isRuntimeState(m.part, 'on')) {
-            this.world.touch() // a flipped switch is not an undo step
+          if (isRuntimeState(m.part, 'on') || isRuntimeState(m.part, 'usb')) {
+            this.world.touch() // a flipped switch (or a USB plug) is not an undo step
             this.onRuntime()
           } else {
             this.world.commit()
@@ -826,7 +826,7 @@ export class Workspace {
         this.hoverPart = hit.part.id
         const d = defOf(hit.part.type)
         // the pressable cap of a push button is a button (pointer); the rest of a part is a handle (grab)
-        cursor = d.press && (!d.pressZone || d.pressZone(hit.local)) ? 'pointer' : 'grab'
+        cursor = (d.press && (!d.pressZone || d.pressZone(hit.local))) || d.clickZone?.(hit.part, hit.local) ? 'pointer' : 'grab'
         text = `${d.name}: ${d.summary(hit.part)}`
         break
       }

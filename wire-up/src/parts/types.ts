@@ -93,6 +93,12 @@ export interface PartDef {
   summary(p: PartInstance): string
   /** Called on a plain click (no drag) with the click in local px. Return true if state changed. */
   click?(p: PartInstance, local: Vec): boolean
+  /** Where in the body (local px) a plain click does something: the pointer cursor shows there. */
+  clickZone?(p: PartInstance, local: Vec): boolean
+  /** Settings flipped by `click` that are live actions like a switch: saved, but never an undo / redo step. */
+  runtimeKeys?: string[]
+  /** For a part that is a voltage source of its own (a board powered over USB): the pin index of its negative terminal while it is one. */
+  sourceNegPin?(p: PartInstance): number | null
   /** Momentary parts: mouse down / up on the body. Return true if state changed. */
   press?(p: PartInstance, down: boolean): boolean
   /** Limits `press` to part of the body (local coords); a mouse down elsewhere on the part drags it. */

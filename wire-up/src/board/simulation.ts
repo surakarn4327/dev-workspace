@@ -66,9 +66,9 @@ export class Simulation {
     this.builtVersion = this.world.version
     this.builtClock = this.clock
     this.net = buildNetlist(this.world, this.clock)
-    this.hasCaps = this.net.circuit.elements.some((e) => e.kind === 'K' || e.kind === 'T' || e.kind === 'Y')
+    this.hasCaps = this.net.circuit.elements.some((e) => e.kind === 'K' || e.kind === 'T' || e.kind === 'Y' || e.kind === 'P')
     // a capacitor that is gone (deleted, burnt, replaced) lets go of its charge; a timer chip that is gone, of its latch
-    const caps = new Set(this.net.circuit.elements.flatMap((e) => (e.kind === 'K' ? [e.id] : e.kind === 'T' ? [`${e.id}:q`, `${e.id}:en`] : e.kind === 'Y' ? [`${e.id}:on`] : [])))
+    const caps = new Set(this.net.circuit.elements.flatMap((e) => (e.kind === 'K' ? [e.id] : e.kind === 'T' ? [`${e.id}:q`, `${e.id}:en`] : e.kind === 'Y' ? [`${e.id}:on`] : e.kind === 'P' ? [`${e.id}:m`] : [])))
     for (const id of [...this.charge.keys()]) if (!caps.has(id)) this.charge.delete(id)
     const sig = JSON.stringify([this.net.circuit, [...this.net.partPins], [...this.net.partRef]])
     if (sig === this.sig && this.solved?.converged) {
@@ -105,6 +105,18 @@ export class Simulation {
       this.live.set(part.id, ev.live)
       if (ev.stress) this.stress.set(part.id, ev.stress)
     }
+  }
+
+  /**
+   * A microcontroller pad's setting (`McuPinElement`): `value` 0..1 drives it (a PWM duty between), -2 turns the pull-up on, -1 makes
+   * it a plain input. `pad` is the pin number of the part; the pad exists only while something is wired to it, so a caller keeps its
+   * own table and sets it again after a rebuild.
+   */
+  setPad(partId: string, pad: number, value: number): void {
+    const key = `${partId}:p${pad}:m`
+    if ((this.charge.get(key) ?? -1) === value) return
+    this.charge.set(key, value)
+    this.settled = false
   }
 
   step(dt: number): void {

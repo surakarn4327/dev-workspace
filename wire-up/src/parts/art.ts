@@ -1126,32 +1126,37 @@ export function dip8Sprite(): Sprite {
   return dipBody('dip8', 4)
 }
 
+/** The package as a grid of palette letters (`DIP_COLORS`), so a bigger sprite can carry a chip: 10 art pixels per pin, 30 high. */
+function dipGrid(perRow: number): PixelGrid {
+  const W = 10 * perRow
+  const H = 30
+  const g = new PixelGrid(W, H)
+  g.rrect(0, 4, W, 22, 1, 'F')
+  g.disc(0, 15, 3, '.') // notch
+  const face = (y: number) => (y < 11 ? 'a' : y < 19 ? 'b' : 'c')
+  const cells: Array<[number, number]> = []
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g.get(x, y) !== '.') cells.push([x, y])
+  for (const [x, y] of cells) {
+    const litEdge = g.get(x - 1, y) === '.' || g.get(x, y - 1) === '.'
+    const darkEdge = g.get(x + 1, y) === '.' || g.get(x, y + 1) === '.'
+    const inner = g.get(x - 2, y) === '.' || g.get(x, y - 2) === '.'
+    g.set(x, y, litEdge && !darkEdge ? 'L' : darkEdge && !litEdge ? 'D' : inner ? 'M' : face(y))
+  }
+  g.disc(6, 21, 1, 'p') // pin-1 dimple
+  for (let i = 0; i < perRow; i++) {
+    const x = 4 + 10 * i
+    for (const y of [0, 26]) {
+      g.rect(x, y, 2, 4, 'S')
+      g.rect(x + 1, y, 1, 4, 'T')
+    }
+  }
+  return g
+}
+
 function dipBody(key: string, perRow: number): Sprite {
   return sprite(key, () => {
-    const W = 10 * perRow
-    const H = 30
-    const g = new PixelGrid(W, H)
-    g.rrect(0, 4, W, 22, 1, 'F')
-    g.disc(0, 15, 3, '.') // notch
-    const face = (y: number) => (y < 11 ? 'a' : y < 19 ? 'b' : 'c')
-    const cells: Array<[number, number]> = []
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (g.get(x, y) !== '.') cells.push([x, y])
-    for (const [x, y] of cells) {
-      const litEdge = g.get(x - 1, y) === '.' || g.get(x, y - 1) === '.'
-      const darkEdge = g.get(x + 1, y) === '.' || g.get(x, y + 1) === '.'
-      const inner = g.get(x - 2, y) === '.' || g.get(x, y - 2) === '.'
-      g.set(x, y, litEdge && !darkEdge ? 'L' : darkEdge && !litEdge ? 'D' : inner ? 'M' : face(y))
-    }
-    g.disc(6, 21, 1, 'p') // pin-1 dimple
-    for (let i = 0; i < perRow; i++) {
-      const x = 4 + 10 * i
-      for (const y of [0, 26]) {
-        g.rect(x, y, 2, 4, 'S')
-        g.rect(x + 1, y, 1, 4, 'T')
-      }
-    }
     const { edge, ...tones } = DIP_COLORS
-    return g.build(tones, edge)
+    return dipGrid(perRow).build(tones, edge)
   })
 }
 
@@ -1367,6 +1372,253 @@ export function relayJumperCapSprite(vertical: boolean): Sprite {
     // a specular spot at the upper left
     g.set(2, 1, 'W')
     return g.build({ L: '#fff6c4', a: '#ffe770', b: '#ffdd3c', c: '#f2d21b', d: '#dcbb10', e: '#bf9f0a', f: '#a08408', D: '#7a6405', W: '#ffffff' }, '#3d3202')
+  })
+}
+
+// ---------------------------------------------------------------- Arduino Uno R3
+
+/**
+ * The Uno R3 seen from above with the USB socket on the left (references: Wikimedia Commons "Arduino Uno R3 development board
+ * (1).jpg" for where everything sits, "Arduino Uno - R3.jpg" for the look, and the official 2.7" x 2.1" drawing for the holes).
+ * One grid step is 0.1" = 10 art pixels, so the board is 270 x 210; the sprites are 30 columns wider on the left because the
+ * USB socket and the DC jack stand out past the edge. Cell (UNO_PAD, 0) is the board's top-left corner = part origin, so the
+ * sprites are drawn at world (-2 * UNO_PAD, 0).
+ */
+export const UNO_W = 270
+export const UNO_H = 210
+export const UNO_PAD = 30
+
+/** The four female header strips: grid x of the first pin, number of pins, grid y of the row. Left to right along each edge. */
+export const UNO_HEADERS = [
+  { x: 7, n: 10, y: 1 }, // SCL SDA AREF GND 13 12 11 10 9 8
+  { x: 18, n: 8, y: 1 }, // 7 6 5 4 3 2 1 0
+  { x: 11, n: 8, y: 20 }, // NC IOREF RESET 3V3 5V GND GND VIN
+  { x: 20, n: 6, y: 20 }, // A0 .. A5
+]
+
+/** The USB-B socket in board art pixels (x past 0 = beyond the edge) and the plug's sprite size. */
+export const UNO_USB = { x: -25, y: 25, w: 70, h: 48 }
+export const UNO_PLUG = { w: 220, h: 60 }
+
+/** SMD resistors and capacitors scattered over the board, as [x, y, w, h] in board art pixels (they are what makes it look like a board). */
+const UNO_SMD: number[][] = [
+  [100, 56, 6, 3], [118, 92, 6, 3], [130, 60, 6, 3], [150, 90, 3, 6], [160, 100, 6, 3], [190, 112, 6, 3], [205, 100, 3, 6],
+  [215, 120, 6, 3], [120, 116, 6, 3], [140, 176, 6, 3], [160, 180, 3, 6], [190, 178, 6, 3], [205, 166, 6, 3], [228, 150, 3, 6],
+  [236, 118, 6, 3], [40, 60, 6, 3], [52, 90, 3, 6], [112, 186, 6, 3], [128, 184, 6, 3], [60, 128, 3, 6], [180, 44, 6, 3],
+]
+
+/** A short copper trace as [x0, y0, x1, y1] (horizontal or vertical), lighter than the solder mask. */
+const UNO_TRACES: number[][] = [
+  [96, 70, 106, 70], [106, 48, 106, 78], [112, 98, 150, 98], [150, 90, 150, 98], [120, 60, 120, 116], [64, 60, 64, 90],
+  [190, 112, 190, 126], [205, 100, 205, 126], [215, 122, 238, 122], [238, 100, 238, 124], [140, 160, 140, 176], [160, 160, 160, 180],
+  [100, 160, 112, 160], [100, 160, 100, 186], [28, 100, 56, 100], [40, 60, 40, 100],
+]
+
+const UNO_PALETTE: Record<string, string> = {
+  k: '#2b78d2', K: '#2569bd', l: '#74adf2', q: '#15417f', z: '#5d99e6', e: '#3a8ae8', w: '#eef4ff',
+  m: '#e6eaf0', h: '#c3c9d3', d: '#868c98', o: '#0a0a0f', y: '#3a3a44', j: '#1b1b21', J: '#33333c',
+  g: '#d9b44a', Y: '#f0cf48', Z: '#bd9a1f', V: '#fbe58a', A: '#e9ecf2', B: '#cfd4de', C: '#aeb4c0', u: '#2a2a33',
+}
+
+/** The board with everything on it that does not move: PCB, holes, chips, socket, jack, caps, parts. Text and the lamps are drawn by the part. */
+export function unoBoardSprite(): Sprite {
+  return sprite('uno-board', () => {
+    const X = UNO_PAD
+    const g = new PixelGrid(X + UNO_W, UNO_H)
+    put(g, shadedBlock(UNO_W, UNO_H, 5, () => 'k', 'l', 'q', 3), X, 0)
+    // the four mounting holes (official drawing, mm from the lower left: 13.97/2.54, 15.24/50.8, 66.04/7.62, 66.04/35.56)
+    for (const [hx, hy] of [[55, 200], [60, 10], [260, 180], [260, 70]]) {
+      g.disc(X + hx, hy, 5, 'z')
+      g.disc(X + hx, hy, 3, '.')
+    }
+    for (const [x0, y0, x1, y1] of UNO_TRACES) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) g.paint(X + x, y, 1, 1, 'e', 'kK')
+    // SMD resistors and capacitors
+    for (const [sx, sy, sw, sh] of UNO_SMD) {
+      g.rect(X + sx, sy, sw, sh, 'u')
+      if (sw > sh) {
+        g.rect(X + sx, sy, 1, sh, 'S')
+        g.rect(X + sx + sw - 1, sy, 1, sh, 'S')
+      } else {
+        g.rect(X + sx, sy, sw, 1, 'S')
+        g.rect(X + sx, sy + sh - 1, sw, 1, 'S')
+      }
+    }
+    // the USB-B socket: a steel box standing out past the left edge, its mouth a dark line at the left end
+    put(g, shadedBlock(UNO_USB.w, UNO_USB.h, 2, (y) => (y < 10 ? 'm' : 'h'), 'm', 'd', 2), X + UNO_USB.x, UNO_USB.y)
+    g.rect(X + UNO_USB.x, UNO_USB.y + 5, 2, UNO_USB.h - 10, 'o')
+    g.rect(X + UNO_USB.x + 12, UNO_USB.y + 12, 8, 3, 'd')
+    g.rect(X + UNO_USB.x + 12, UNO_USB.y + UNO_USB.h - 15, 8, 3, 'd')
+    g.rect(X + UNO_USB.x + 40, UNO_USB.y + 3, 1, UNO_USB.h - 6, 'd')
+    // the DC jack: a black block with a round barrel mouth at the left end
+    put(g, shadedBlock(72, 40, 3, (y) => (y < 12 ? 'J' : 'j'), 'J', 'o', 2), X - 20, 150)
+    g.rect(X - 20, 160, 3, 20, 'o')
+    g.rect(X + 20, 154, 2, 32, 'o')
+    // the reset button base (its red cap is a sprite of its own)
+    put(g, shadedBlock(22, 20, 2, () => 'h', 'm', 'd', 1), X + 22, 8)
+    // the little 2 x 3 programming headers (one for the USB chip, one for the main chip), and the pads next to the first
+    const header23 = (hx: number, hy: number): void => {
+      put(g, shadedBlock(20, 30, 1, () => 'p', 'y', 'o', 1), X + hx, hy)
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 2; c++) g.rect(X + hx + 3 + 10 * c, hy + 3 + 10 * r, 4, 4, 'g')
+    }
+    header23(71, 16)
+    header23(243, 82)
+    for (const [px, py] of [[78, 49], [88, 49], [78, 57], [88, 57]]) {
+      g.disc(X + px, py, 3, 'g')
+      g.disc(X + px, py, 1.2, 'k')
+    }
+    // the USB interface chip (a square TQFP) with a pin-1 dot and legs on four sides
+    put(g, shadedBlock(20, 20, 1, (y) => (y < 7 ? 'a' : y < 14 ? 'b' : 'c'), 'L', 'D', 1), X + 76, 66)
+    g.disc(X + 79, 69, 1, 'p')
+    for (let k = 0; k < 6; k++) {
+      g.rect(X + 74, 68 + k * 3, 2, 1, 'S')
+      g.rect(X + 96, 68 + k * 3, 2, 1, 'S')
+      g.rect(X + 78 + k * 3, 64, 1, 2, 'S')
+      g.rect(X + 78 + k * 3, 86, 1, 2, 'S')
+    }
+    // the status LEDs' bodies (the lens on each is a sprite of its own): L, TX, RX and ON
+    for (const [lx, ly] of [[104, 46], [104, 66], [104, 75], [225, 68]]) {
+      put(g, shadedBlock(8, 4, 1, (y) => 'ABC'[Math.min(2, y)], 'A', 'C', 1), X + lx, ly)
+      g.rect(X + lx, ly, 1, 4, 'S')
+      g.rect(X + lx + 7, ly, 1, 4, 'S')
+    }
+    // the 16 MHz crystal, a rounded steel can; its value is printed by the part
+    put(g, shadedBlock(46, 16, 6, (y) => (y < 7 ? 'm' : 'h'), 'm', 'd', 2), X + 56, 97)
+    // the resettable fuse (yellow), the voltage regulator and the comparator beside the jack
+    put(g, shadedBlock(14, 18, 1, (y) => (y < 6 ? 'Y' : 'Z'), 'V', 'Z', 1), X + 16, 100)
+    put(g, shadedBlock(16, 14, 1, (y) => (y < 5 ? 'a' : y < 10 ? 'b' : 'c'), 'L', 'D', 1), X + 30, 134)
+    put(g, shadedBlock(8, 10, 1, () => 'h', 'm', 'd', 1), X + 46, 136)
+    for (const y of [137, 142, 147]) g.rect(X + 26, y, 4, 2, 'S')
+    put(g, shadedBlock(14, 10, 1, (y) => (y < 4 ? 'a' : y < 7 ? 'b' : 'c'), 'L', 'D', 1), X + 70, 138)
+    for (let k = 0; k < 4; k++) {
+      g.rect(X + 71 + k * 3, 136, 1, 2, 'S')
+      g.rect(X + 71 + k * 3, 148, 1, 2, 'S')
+    }
+    // the two electrolytic capacitors seen from above: a steel disc with the black polarity stripe on one side
+    for (const cx of [67, 97]) {
+      g.disc(X + cx, 171, 12, 'T')
+      g.disc(X + cx - 1, 170, 11, 'S')
+      g.disc(X + cx - 1, 170, 7, 'h')
+      g.paint(X + cx + 7, 160, 6, 22, 'p', 'STh')
+    }
+    // the ATmega328P in its 28-pin package
+    put(g, dipGrid(14), X + 113, 127)
+    // the Arduino mark: two rings with a minus and a plus, and the UNO plate
+    for (const cx of [153, 169]) {
+      g.disc(X + cx, 62, 8, 'w')
+      g.disc(X + cx, 62, 5.5, 'k')
+    }
+    g.rect(X + 149, 62, 8, 1, 'w')
+    g.rect(X + 165, 62, 8, 1, 'w')
+    g.rect(X + 168, 58, 1, 9, 'w')
+    g.rrect(X + 182, 53, 40, 17, 5, 'w')
+    g.rrect(X + 184, 55, 36, 13, 4, 'k')
+    const { edge: _edge, ...dip } = DIP_COLORS
+    return g.build({ ...dip, ...UNO_PALETTE }, '#050509')
+  })
+}
+
+/** The four female header strips on a grid as big as the board's, so it lays exactly over it: the part draws it again above the wires so a wire seems to go into a socket. */
+export function unoHeaderSprite(): Sprite {
+  return sprite('uno-headers', () => {
+    const X = UNO_PAD
+    const g = new PixelGrid(X + UNO_W, UNO_H)
+    for (const h of UNO_HEADERS) {
+      put(g, shadedBlock(h.n * 10, 10, 2, () => 'N', 'y', 'p', 1), X + h.x * 10 - 5, h.y * 10 - 5)
+      for (let k = 0; k < h.n; k++) g.rect(X + (h.x + k) * 10 - 2, h.y * 10 - 2, 4, 4, 'x')
+    }
+    return g.build({ N: '#2b2b34', y: '#4a4a55', p: '#16161b', x: '#050509' }, '#050509')
+  })
+}
+
+/** The USB plug on its cable, from the cut end (left, fading out) to the steel collar (right), 220 x 60 art pixels: a blue cable, a moulded boot with grip ridges and the collar. */
+export function unoPlugSprite(): Sprite {
+  return sprite('uno-plug', () => {
+    const { w, h } = UNO_PLUG
+    const g = new PixelGrid(w, h)
+    const palette: Record<string, string> = {}
+    const blue: Record<string, [number, number, number]> = { L: [169, 208, 255], a: [106, 168, 255], b: [61, 130, 238], c: [42, 99, 196], d: [29, 74, 150], D: [18, 48, 107] }
+    const letters = 'LabcdD'
+    for (const [k, [r, gg, b]] of Object.entries(blue)) palette[k] = `rgb(${r},${gg},${b})`
+    // eight steps of the cut end fading into the board: letters beyond the plain tones, each with its own alpha
+    const fadeLetter = (tone: string, step: number): string => {
+      const ch = String.fromCharCode(0x100 + letters.indexOf(tone) * 8 + step)
+      const [r, gg, b] = blue[tone]
+      palette[ch] = `rgba(${r},${gg},${b},${(step + 0.5) / 8})`
+      return ch
+    }
+    const toneAt = (t: number): string => letters[Math.min(5, Math.floor(t * 6))]
+    // the cable: 20 high, fading out over its first 56 pixels
+    const FADE = 56
+    for (let x = 0; x < 100; x++) {
+      for (let y = 0; y < 20; y++) {
+        const tone = toneAt(y / 20)
+        g.set(x, 20 + y, x < FADE ? fadeLetter(tone, Math.min(7, Math.floor((x / FADE) * 8))) : tone)
+      }
+    }
+    // the boot: the strain relief tapers from the cable's width out to 56 over 30 pixels, then runs straight to the plug end
+    for (let x = 100; x < 210; x++) {
+      const half = x < 130 ? 10 + ((x - 100) / 30) * 18 : 28
+      const top = Math.round(30 - half)
+      const bottom = Math.round(30 + half)
+      for (let y = top; y < bottom; y++) {
+        const t = (y - top) / (bottom - top)
+        // the grip ridges across the last stretch of the boot: darker bands
+        const ridge = x >= 168 && x < 200 && Math.floor((x - 168) / 4) % 2 === 1 && y > top + 2 && y < bottom - 3
+        g.set(x, y, ridge ? 'd' : toneAt(t))
+      }
+    }
+    // round the two corners at the plug end of the boot
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [2, 0], [0, 2], [1, 1]]) {
+      g.set(209 - dx, 2 + dy, '.')
+      g.set(209 - dx, 57 - dy, '.')
+    }
+    // the steel collar: a B-shaped sleeve, flat at the boot and chamfered at the far end
+    for (let x = 210; x < 220; x++) {
+      for (let y = 8; y < 52; y++) {
+        const edge = 220 - x
+        const chamfer = edge <= 3 && (y < 8 + (4 - edge) || y >= 52 - (4 - edge))
+        if (chamfer) continue
+        g.set(x, y, y < 12 ? 'm' : y < 40 ? 'H' : 'E')
+      }
+    }
+    palette.m = '#e6eaf0'
+    palette.H = '#c3c9d3'
+    palette.E = '#868c98'
+    return g.build(palette, null, null)
+  })
+}
+
+/** A status LED's lens, 4 x 4 art pixels: a small rounded dome in four tones, dim while off, bright with a spot while on. */
+export function unoLensSprite(color: 'green' | 'orange' | 'yellow', on: boolean): Sprite {
+  return sprite(`uno-lens-${color}-${on ? 'on' : 'off'}`, () => {
+    const g = new PixelGrid(4, 4)
+    g.rrect(0, 0, 4, 4, 1, 'a')
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if (g.get(x, y) !== '.') g.set(x, y, 'abcd'[y])
+    if (on) g.set(1, 1, 'w')
+    const tones = {
+      green: { on: { a: '#c8ffd8', b: '#6dffa0', c: '#39ff88', d: '#1fb85c', w: '#ffffff' }, off: { a: '#2f5a3c', b: '#264a30', c: '#1d3a25', d: '#142a1a', w: '#2f5a3c' } },
+      orange: { on: { a: '#ffe0a8', b: '#ffb43a', c: '#ff9a1f', d: '#c46c0c', w: '#ffffff' }, off: { a: '#5a4630', b: '#4a3a28', c: '#3a2e20', d: '#2a2018', w: '#5a4630' } },
+      yellow: { on: { a: '#fff4b0', b: '#ffe566', c: '#ffd21f', d: '#b89410', w: '#ffffff' }, off: { a: '#5a542a', b: '#4a4624', c: '#3a381c', d: '#2a2814', w: '#5a542a' } },
+    }[color][on ? 'on' : 'off']
+    return g.build(tones, '#0a0a0e')
+  })
+}
+
+/** The red cap of the reset button, a 10 x 10 dome: six tones lit from the upper left; pressed, it sits darker with no highlight. */
+export function unoResetSprite(down: boolean): Sprite {
+  return sprite(`uno-reset-${down ? 'down' : 'up'}`, () => {
+    const g = new PixelGrid(10, 10)
+    g.disc(5, 5, 5, 'f')
+    for (let y = 0; y < 10; y++) {
+      for (let x = 0; x < 10; x++) {
+        if (g.get(x, y) === '.') continue
+        g.set(x, y, 'abcdef'[Math.min(5, Math.floor(((x + y) / 18) * 6))])
+      }
+    }
+    if (!down) g.set(3, 3, 'w')
+    const up = { a: '#ffb0a8', b: '#ff7a70', c: '#f04a44', d: '#d02e2e', e: '#a82020', f: '#801818', w: '#ffffff' }
+    const dn = { a: '#e0908a', b: '#c85a54', c: '#b03a36', d: '#962424', e: '#7a1818', f: '#5e1010', w: '#e0908a' }
+    return g.build(down ? dn : up, '#0a0a0e')
   })
 }
 
