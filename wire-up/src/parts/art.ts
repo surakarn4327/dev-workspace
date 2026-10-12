@@ -1979,26 +1979,32 @@ export function lcd1602Sprite(): Sprite {
     const g = new PixelGrid(LCD_W, LCD_H)
     const mask = new PixelGrid(LCD_W, LCD_H)
     mask.rrect(0, 0, LCD_W, LCD_H, 3, 'a')
-    put(g, shadedMask(mask, () => 'k', 'l', 'q', 2), 0, 0)
+    // the green solder mask: a little lighter along the top and darker along the bottom, with a lit top and left edge
+    put(g, shadedMask(mask, (y) => (y < 22 ? 'n' : y > 118 ? 'p' : 'k'), 'l', 'q', 2), 0, 0)
     // the four mounting holes: a gold ring round a clear hole
     for (const [hx, hy] of [[9, 9], [306, 9], [9, 132], [306, 132]]) {
       g.disc(hx, hy, 7, 'f')
       g.disc(hx, hy, 5, '.')
     }
-    // the display header: 16 gold pads with a silver solder dot and the hole of the pin
+    // the display header: 16 tinned pads, each a small steel-coloured block with a lit top left and a shaded bottom right and the hole of the pin
     for (let k = 0; k < 16; k++) {
-      const cx = LCD_PAD0.x + 10 * k
-      g.disc(cx, LCD_PAD0.y, 4, 'f')
-      g.disc(cx, LCD_PAD0.y, 2.6, 's')
-      g.disc(cx, LCD_PAD0.y, 1, 'o')
+      const x = LCD_PAD0.x + 10 * k - 3
+      const y = LCD_PAD0.y - 5
+      put(g, shadedBlock(7, 10, 1, () => 's', 'S', 'd', 1), x, y)
+      g.rect(x + 2, y + 4, 3, 2, 'o')
     }
     // the backlight's plastic tab at the right edge, partly under the frame
-    put(g, shadedBlock(10, 52, 1, () => 't', 'T', 'y', 1), 303, 33)
-    // the frame: black metal with a lit top and left edge, and the dark recess the glass sits in
-    put(g, shadedBlock(LCD_BEZEL.w, LCD_BEZEL.h, 2, () => 'j', 'J', 'o', 2), LCD_BEZEL.x, LCD_BEZEL.y)
+    put(g, shadedBlock(10, 52, 1, (y) => (y < 26 ? 't' : 'u'), 'T', 'y', 1), 303, 33)
+    // the frame: black metal with a lit top and left edge, and the dark recess the glass sits in (its lower and right rim catch the light)
+    put(g, shadedBlock(LCD_BEZEL.w, LCD_BEZEL.h, 2, (y) => (y < 4 ? 'm' : 'j'), 'J', 'o', 2), LCD_BEZEL.x, LCD_BEZEL.y)
     g.rect(LCD_SCREEN.x - 2, LCD_SCREEN.y - 2, LCD_SCREEN.w + 4, LCD_SCREEN.h + 4, 'r')
+    g.rect(LCD_SCREEN.x - 2, LCD_SCREEN.y + LCD_SCREEN.h + 2, LCD_SCREEN.w + 5, 1, 'R')
+    g.rect(LCD_SCREEN.x + LCD_SCREEN.w + 2, LCD_SCREEN.y - 2, 1, LCD_SCREEN.h + 4, 'R')
     return g.build(
-      { k: '#239b4b', l: '#4cc07a', q: '#16743a', f: '#d9b44a', s: '#cdd1d8', o: '#14161a', j: '#1b1b21', J: '#3c3c46', r: '#0a0a0f', t: '#d5d8de', T: '#f1f3f6', y: '#8d929c' },
+      {
+        k: '#239b4b', n: '#27a553', p: '#1f8c43', l: '#4cc07a', q: '#16743a', f: '#d9b44a', s: '#c4c9d1', S: '#eef1f5', d: '#7d838f', o: '#14161a',
+        j: '#1b1b21', m: '#2a2a32', J: '#3c3c46', r: '#0a0a0f', R: '#30303b', t: '#e6e8ec', u: '#c9ccd3', T: '#f8f9fb', y: '#8d929c',
+      },
       '#06130b',
     )
   })

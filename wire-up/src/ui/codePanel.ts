@@ -5,6 +5,7 @@
 
 import { CompileError, compile } from '../mcu/compile.ts'
 import { BLINK_SKETCH } from '../parts/arduino.ts'
+import { LCD_SKETCH } from '../parts/lcd.ts'
 import type { PartInstance } from '../board/world.ts'
 import type { Workspace } from './workspace.ts'
 
@@ -160,6 +161,11 @@ export class CodePanel {
     q('cp-example').onclick = () => {
       if (!this.id) return
       this.ta.value = BLINK_SKETCH
+      this.typed()
+    }
+    q('cp-example-lcd').onclick = () => {
+      if (!this.id) return
+      this.ta.value = LCD_SKETCH
       this.typed()
     }
     const form = q<HTMLFormElement>('cp-send')
