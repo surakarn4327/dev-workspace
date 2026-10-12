@@ -381,7 +381,10 @@ class Parser {
     while (this.cur.t !== 'eof') {
       if (this.accept(';')) continue
       const line = this.cur.line
-      if (!this.atType()) throw new CompileError(`expected a declaration before ${this.describe(this.cur)}`, line)
+      if (!this.atType()) {
+        if (this.cur.t === 'id' && this.peek().t === 'id') throw this.unknownType(this.cur)
+        throw new CompileError(`expected a declaration before ${this.describe(this.cur)}`, line)
+      }
       const { type, isStatic, isConst } = this.parseType()
       const name = this.ident()
       if (this.isOp('(')) {
@@ -480,9 +483,15 @@ class Parser {
     return [this.parseStmt()]
   }
 
+  /** `Servo myServo;` and the like: a name where a type was expected. */
+  private unknownType(t: Token): CompileError {
+    return new CompileError(`'${t.v}' does not name a type here (libraries such as Servo, Wire and LiquidCrystal are not available in this simulator yet)`, t.line)
+  }
+
   private parseStmt(): Stmt {
     const t = this.cur
     const line = t.line
+    if (t.t === 'id' && this.peek().t === 'id' && !MODIFIERS.has(t.v) && TYPE_WORDS[t.v] === undefined && !['else', 'case', 'default', 'return', 'do'].includes(t.v)) throw this.unknownType(t)
     if (t.t === 'op') {
       if (t.v === '{') {
         this.p++

@@ -198,6 +198,28 @@ describe('Arduino sketches', () => {
     expect(errorOf('int f(int a) { return a; } void setup() { f(1, 2); } void loop() {}').message).toContain('too many arguments')
   })
 
+  it('blinks without delay using millis, as the examples do', () => {
+    const { log } = run(
+      `const int led = 13; unsigned long previous = 0; const long interval = 250; int state = LOW;
+       void setup() { pinMode(led, OUTPUT); }
+       void loop() {
+         unsigned long now = millis();
+         if (now - previous >= interval) { previous = now; state = state == LOW ? HIGH : LOW; digitalWrite(led, state); }
+       }`,
+      1.05,
+    )
+    expect(log.writes.length).toBeGreaterThanOrEqual(4)
+    expect(log.writes.length).toBeLessThanOrEqual(5)
+    expect(log.writes.map(([, v]) => v).slice(0, 4)).toEqual([1, 0, 1, 0])
+  })
+
+  it('a library the simulator does not have is named, not a mystery', () => {
+    const e = errorOf(['#include <Servo.h>', 'Servo myServo;', 'void setup() {}', 'void loop() {}'].join('\n'))
+    expect(e.line).toBe(2)
+    expect(e.message).toContain("'Servo'")
+    expect(e.message).toContain('not available')
+  })
+
   it('no output before Serial.begin, like the real chip', () => {
     const { log } = run(`void setup() { Serial.println("hi"); } void loop() {}`, 0.1)
     expect(log.serial).toBe('')

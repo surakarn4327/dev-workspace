@@ -11,6 +11,7 @@ import { exportFile, loadLab, parseImport, saveLab } from '../save/storage.ts'
 import { History } from '../save/history.ts'
 import { defOf, isRuntimeState } from '../parts/index.ts'
 import { updateChipSheet } from './icSheet.ts'
+import { CodePanel } from './codePanel.ts'
 import { Inspector } from './inspector.ts'
 import { LessonPanel } from './lessonPanel.ts'
 import { buildToolbox } from './toolbox.ts'
@@ -30,6 +31,7 @@ export class App {
   private history = new History()
   private inspector: Inspector
   private lessons: LessonPanel
+  private code: CodePanel
   private lastRev = 0
   private saveTimer: number | undefined
   private inLesson = false
@@ -49,6 +51,7 @@ export class App {
     else window.setTimeout(() => this.ws.fitView(), 80)
 
     this.inspector = new Inspector(this.ws, $('panel-inspect'))
+    this.code = new CodePanel($('code-panel'), this.ws)
     this.lessons = new LessonPanel(this.ws, $('panel-lessons'), {
       enter: (setup) => this.enterLesson(setup),
       exit: () => this.exitLesson(),
@@ -59,7 +62,9 @@ export class App {
     this.ws.onSelect = () => {
       this.followSelection()
       this.inspector.rebuild()
-      updateChipSheet($<HTMLCanvasElement>('ic-sheet'), this.ws.selectedPart ? this.world.getPart(this.ws.selectedPart) : undefined)
+      const picked = this.ws.selectedPart ? this.world.getPart(this.ws.selectedPart) : undefined
+      updateChipSheet($<HTMLCanvasElement>('ic-sheet'), picked)
+      this.code.setPart(picked)
       this.menubar?.refresh()
     }
     this.ws.onEdit = () => this.afterEdit()
@@ -390,6 +395,7 @@ export class App {
     this.ws.select(null)
     this.lastRev = this.world.revision
     this.inspector.rebuild()
+    this.code.refresh()
     this.syncButtons()
     this.scheduleSave()
   }
@@ -493,6 +499,7 @@ export class App {
       this.toast(`${l.partName} burnt out`, first.length > 150 ? `${first.slice(0, 147).replace(/\s+\S*$/, '')}...` : first, false)
     }
     this.lessons.update(dt)
+    this.code.frame()
     this.uiAcc += dt
     if (this.uiAcc > 0.12) {
       this.uiAcc = 0

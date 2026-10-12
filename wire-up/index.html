@@ -46,6 +46,33 @@
         <section id="panel-inspect"></section>
         <section id="panel-lessons" hidden></section>
       </aside>
+      <section id="code-panel" class="float-panel bottom" hidden>
+        <div class="cp-head">
+          <span class="cp-title" id="cp-title">ARDUINO UNO</span>
+          <span class="cp-state" id="cp-state"></span>
+          <span class="cp-spacer"></span>
+          <button id="cp-verify" title="Check the sketch for mistakes (nothing is changed on the board)">Verify</button>
+          <button id="cp-upload" title="Verify, then flash the sketch into the board and restart it (Ctrl+Enter)">Upload</button>
+          <button id="cp-example" title="Put the factory Blink sketch in the editor">Blink</button>
+          <button id="cp-clear" title="Clear the Serial Monitor">Clear</button>
+          <button id="cp-fold" title="Fold or unfold the panel">&#9662;</button>
+        </div>
+        <div class="cp-body">
+          <div class="cp-editor">
+            <pre class="cp-gutter" id="cp-gutter"></pre>
+            <textarea id="cp-code" spellcheck="false" wrap="off" autocomplete="off" autocapitalize="off"></textarea>
+          </div>
+          <div class="cp-side">
+            <div class="cp-log" id="cp-log"></div>
+            <div class="cp-serial-head">Serial Monitor <span>9600 baud as the sketch sets it</span></div>
+            <pre class="cp-serial" id="cp-serial"></pre>
+            <form class="cp-send" id="cp-send">
+              <input id="cp-input" placeholder="text for Serial.read() ..." autocomplete="off" spellcheck="false" />
+              <button>Send</button>
+            </form>
+          </div>
+        </div>
+      </section>
       <footer id="status">
         <span id="status-text">Drag parts from the left onto the board. Drag from any hole or pin to pull a wire.</span>
         <span id="status-right"></span>
