@@ -16,7 +16,7 @@ import { branchEndsOf, carryBranches } from '../board/branches.ts'
 import type { BranchEnd } from '../board/branches.ts'
 import { dragEnd, moveBend, rememberBend, tidy, undoBend, usableMemo, wireOverlaps } from '../board/wireEdit.ts'
 import type { BendMemo, WireShape } from '../board/wireEdit.ts'
-import { G, snap, unrotVec, WIRE_COLORS } from '../board/world.ts'
+import { G, rotVec, snap, unrotVec, WIRE_COLORS } from '../board/world.ts'
 import type { PartInstance, Vec, World, Wire } from '../board/world.ts'
 import { holeNear } from '../parts/breadboard.ts'
 import { defOf, isRuntimeState, newPart, pinNamesOf, pinWorld, rotatePart } from '../parts/index.ts'
@@ -79,6 +79,8 @@ export class Workspace {
   private space = false
   private hoverPart: string | null = null
   private hoverPoint: Vec | null = null
+  /** The part whose clickable spot gets a ring while the pointer is over it (the ring follows the part, and goes while one is dragged). */
+  private hoverRingPart: string | null = null
   private ghost: { type: string; x: number; y: number } | null = null
   /** Fresh pastes / clicked-in parts sitting on something they were not drawn to: held apart (red) until moved clear. */
   private holdGroups = new Map<string, { parts: Set<string>; wires: Set<string> }>()
@@ -137,6 +139,16 @@ export class Workspace {
     this.renderer.draw(this.world, this.sim, this.view, this.overlay(), this.time)
   }
 
+  /** The ring round a clickable spot, from where its part is now (none while the mouse is held down on it). */
+  private currentRing(): { x: number; y: number; r: number } | null {
+    if (!this.hoverRingPart || this.mode) return null
+    const part = this.world.getPart(this.hoverRingPart)
+    const h = part ? defOf(part.type).clickHint?.(part) : undefined
+    if (!part || !h) return null
+    const o = rotVec({ x: h.x, y: h.y }, part.rot)
+    return { x: part.x + o.x, y: part.y + o.y, r: h.r }
+  }
+
   private overlay(): Overlay {
     const m = this.mode
     return {
@@ -147,6 +159,7 @@ export class Workspace {
       hoverPart: this.hoverPart,
       labelPart: this.hoverPart,
       hoverPoint: this.hoverPoint,
+      hoverRing: this.currentRing(),
       draft: m && m.t === 'newWire' ? [m.a, ...m.via, m.b] : null,
       draftBad: !!(m && m.t === 'newWire' && m.bad),
       ghost: this.ghost,
@@ -379,6 +392,7 @@ export class Workspace {
     cv.addEventListener('pointercancel', (e) => this.up(e))
     cv.addEventListener('pointerleave', () => {
       this.hoverPoint = null
+      this.hoverRingPart = null
       this.hoverPart = null
     })
     cv.addEventListener('contextmenu', (e) => e.preventDefault())
@@ -776,11 +790,13 @@ export class Workspace {
         break
     }
     this.hoverPoint = null
+    this.hoverRingPart = null
   }
 
   private hover(w: Vec): void {
     const hit = hitTest(this.world, w, this.view.zoom, this.selectedWire, false, this.selectedPart)
     this.hoverPoint = null
+    this.hoverRingPart = null
     this.hoverPart = null
     let cursor = this.wireMode ? 'crosshair' : 'default'
     let text = ''
@@ -826,7 +842,10 @@ export class Workspace {
         this.hoverPart = hit.part.id
         const d = defOf(hit.part.type)
         // the pressable cap of a push button is a button (pointer); the rest of a part is a handle (grab)
-        cursor = (d.press && (!d.pressZone || d.pressZone(hit.local))) || d.clickZone?.(hit.part, hit.local) ? 'pointer' : 'grab'
+        const clickable = d.clickZone?.(hit.part, hit.local) === true
+        cursor = (d.press && (!d.pressZone || d.pressZone(hit.local))) || clickable ? 'pointer' : 'grab'
+        // a ring round the spot that can be clicked, so it is known to be a button
+        if (clickable && d.clickHint) this.hoverRingPart = hit.part.id
         text = `${d.name}: ${d.summary(hit.part)}`
         break
       }

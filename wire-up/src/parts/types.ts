@@ -95,6 +95,8 @@ export interface PartDef {
   click?(p: PartInstance, local: Vec): boolean
   /** Where in the body (local px) a plain click does something: the pointer cursor shows there. */
   clickZone?(p: PartInstance, local: Vec): boolean
+  /** The ring drawn round the clickable spot while the pointer is over `clickZone` (local px centre and radius): says "this can be clicked". */
+  clickHint?(p: PartInstance): { x: number; y: number; r: number }
   /** Settings flipped by `click` that are live actions like a switch: saved, but never an undo / redo step. */
   runtimeKeys?: string[]
   /** For a part that is a voltage source of its own (a board powered over USB): the pin index of its negative terminal while it is one. */

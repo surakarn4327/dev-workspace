@@ -287,9 +287,12 @@ export const arduinoUno: PartDef = {
     }
     if (scene.labeled.has(p.id)) drawLabelAbove(c, 'Arduino Uno R3', 270, 0)
   },
-  fields: () => [{ kind: 'toggle', key: 'usb', label: 'USB cable plugged in' }],
+  // the plug is pulled out and pushed in by clicking the socket on the board, nothing to set in the Inspector (user rule 2026-10-12)
+  fields: () => [],
   summary: (p) => `${plugged(p) ? 'USB plugged in' : 'USB unplugged'}${p.state.failed ? ', burnt' : ''}`,
   clickZone: (p, local) => inSocket(p, local.x, local.y),
+  // the ring sits on the socket's mouth, a little bigger than the socket
+  clickHint: () => ({ x: (UNO_USB.x + UNO_USB.w / 2) * 2, y: (UNO_USB.y + UNO_USB.h / 2) * 2, r: 44 }),
   click(p, local) {
     if (!inSocket(p, local.x, local.y)) return false
     p.params.usb = !plugged(p)

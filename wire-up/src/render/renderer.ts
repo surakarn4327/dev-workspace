@@ -45,6 +45,8 @@ export interface Overlay {
   /** Part the pointer has rested on long enough to show its labels. */
   labelPart: string | null
   hoverPoint: Vec | null
+  /** A ring round a clickable spot of the part under the pointer (world px), or null. */
+  hoverRing: { x: number; y: number; r: number } | null
   draft: Vec[] | null
   /** The wire being drawn cannot be made (it would end inside a part or cut through one). */
   draftBad: boolean
@@ -645,6 +647,18 @@ export class Renderer {
       this.tracePath(ov.draft)
       c.stroke()
       c.setLineDash([])
+    }
+    if (ov.hoverRing) {
+      c.fillStyle = 'rgba(56,249,255,0.10)'
+      c.strokeStyle = COL.cyan
+      c.lineWidth = 2
+      c.shadowColor = COL.cyan
+      c.shadowBlur = 8
+      c.beginPath()
+      c.arc(ov.hoverRing.x, ov.hoverRing.y, ov.hoverRing.r, 0, Math.PI * 2)
+      c.fill()
+      c.stroke()
+      c.shadowBlur = 0
     }
     if (ov.hoverPoint) {
       c.strokeStyle = COL.cyan
