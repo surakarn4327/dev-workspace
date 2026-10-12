@@ -48,6 +48,8 @@ export class Simulation {
   /** Voltage across each capacitor (by element id): where its charge is now. A new circuit starts discharged. */
   private charge = new Map<string, number>()
   private hasCaps = false
+  /** The circuit has a capacitor or a timer chip: its state moves with time, so a PWM frame has to be stepped through. */
+  private dynamic = false
   /** The circuit as it was last solved: a rebuild that comes out electrically identical (a part or wire dragged about) keeps the answer. */
   private sig = ''
   private solved: (SolveResult & { raw: Float64Array }) | null = null
@@ -57,6 +59,8 @@ export class Simulation {
   /** The sketches running on the Arduino boards (one machine per powered board). */
   readonly boards = new McuBoards()
   private pwmPhase = 0
+  /** The frequency of the PWM wave on each pad that has duty between 0 and 1 (by pad key); 0 or missing = a stand-in rate. */
+  private padHz = new Map<string, number>()
 
   constructor(world: World) {
     this.world = world
@@ -71,6 +75,7 @@ export class Simulation {
     this.builtVersion = this.world.version
     this.builtClock = this.clock
     this.net = buildNetlist(this.world, this.clock)
+    this.dynamic = this.net.circuit.elements.some((e) => e.kind === 'K' || e.kind === 'T')
     this.hasCaps = this.net.circuit.elements.some((e) => e.kind === 'K' || e.kind === 'T' || e.kind === 'Y' || e.kind === 'P')
     // a capacitor that is gone (deleted, burnt, replaced) lets go of its charge; a timer chip that is gone, of its latch
     const caps = new Set(this.net.circuit.elements.flatMap((e) => (e.kind === 'K' ? [e.id] : e.kind === 'T' ? [`${e.id}:q`, `${e.id}:en`] : e.kind === 'Y' ? [`${e.id}:on`] : e.kind === 'P' ? [`${e.id}:m`] : [])))
@@ -118,8 +123,10 @@ export class Simulation {
    * it a plain input. `pad` is the pin number of the part; the pad exists only while something is wired to it, so a caller keeps its
    * own table and sets it again after a rebuild.
    */
-  setPad(partId: string, pad: number, value: number): void {
+  setPad(partId: string, pad: number, value: number, hz = 0): void {
     const key = `${partId}:p${pad}:m`
+    if (hz > 0) this.padHz.set(key, hz)
+    else this.padHz.delete(key)
     if ((this.charge.get(key) ?? -1) === value) return
     this.charge.set(key, value)
     this.settled = false
@@ -149,34 +156,70 @@ export class Simulation {
   }
 
   /**
-   * One frame with PWM pads: the circuit is solved at 16 instants of the PWM period (a pad is high at those where the period's phase
-   * is under its duty), and the answers averaged. A load that is not linear (an LED) then gets the average of its current, not the
-   * current at the average voltage. The phases shift a little every frame so the average is exact over time.
+   * One frame with PWM pads. Each pad is a square wave of its own frequency (`padHz`) and duty, continuing from frame to frame; the
+   * frame is cut at every edge of every wave and the circuit solved over each piece with the pads at their level in it. Capacitors
+   * therefore follow the real waveform, and a load that is not linear (an LED) gets the average of its current, not the current at
+   * the average voltage. When the waves have more edges than a frame can afford (a tone of several kHz) the frame is cut into 16
+   * equal pieces whose phases shift a little each time, which gives the same average.
    */
   private stepPwm(dt: number, keys: string[]): void {
-    const K = 16
     const duty = keys.map((k) => this.charge.get(k) as number)
-    this.pwmPhase = (this.pwmPhase + 0.381966) % 1
+    const period = keys.map((k) => 1 / (this.padHz.get(k) ?? 490.196))
+    const t0 = this.clock - dt
+    const cuts = [0, dt]
+    keys.forEach((_, n) => {
+      const T = period[n]
+      for (let p = Math.floor(t0 / T); p * T < t0 + dt; p++) {
+        for (const e of [p * T, p * T + duty[n] * T]) {
+          const x = e - t0
+          if (x > 1e-9 && x < dt - 1e-9) cuts.push(x)
+        }
+      }
+    })
+    const segs: { len: number; high: boolean[] }[] = []
+    if (cuts.length <= 72) {
+      cuts.sort((x, y) => x - y)
+      for (let j = 1; j < cuts.length; j++) {
+        const len = cuts[j] - cuts[j - 1]
+        if (len < 1e-8) continue
+        const mid = t0 + (cuts[j] + cuts[j - 1]) / 2
+        segs.push({ len, high: keys.map((_, n) => (mid / period[n]) % 1 < duty[n]) })
+      }
+    } else {
+      const K = 16
+      this.pwmPhase = (this.pwmPhase + 0.381966) % 1
+      for (let j = 0; j < K; j++) {
+        const phase = (j + this.pwmPhase) / K
+        segs.push({ len: dt / K, high: duty.map((d) => phase < d) })
+      }
+    }
     let vSum: Float64Array | null = null
     const iSum = new Map<string, { i: number; ib: number; has: boolean }>()
     const cc = new Set<string>()
     let ok = true
     let iters = 0
     let last: (SolveResult & { raw: Float64Array }) | null = null
-    for (let j = 0; j < K; j++) {
-      const phase = (j + this.pwmPhase) / K
-      keys.forEach((k, n) => this.charge.set(k, phase < duty[n] ? 1 : 0))
-      const r = advance(this.net.circuit, this.charge, dt / K, this.warm)
+    // with nothing that stores state, a piece of the frame is solved once per pattern of high and low pads, however often it comes
+    const seen = new Map<string, SolveResult & { raw: Float64Array }>()
+    for (const seg of segs) {
+      const w = seg.len / dt
+      keys.forEach((k, n) => this.charge.set(k, seg.high[n] ? 1 : 0))
+      const pattern = seg.high.map((h) => (h ? '1' : '0')).join('')
+      let r = this.dynamic ? undefined : seen.get(pattern)
+      if (!r) {
+        r = advance(this.net.circuit, this.charge, this.dynamic ? seg.len : 0, this.warm, 1)
+        if (!this.dynamic) seen.set(pattern, r)
+      }
       last = r
       this.warm = r.raw
       if (vSum === null) vSum = new Float64Array(r.v.length)
-      for (let n = 0; n < r.v.length; n++) vSum[n] += r.v[n]
+      for (let n = 0; n < r.v.length; n++) vSum[n] += r.v[n] * w
       for (const [id, c] of r.cur) {
         const e = iSum.get(id)
         if (e) {
-          e.i += c.i
-          e.ib += c.ib ?? 0
-        } else iSum.set(id, { i: c.i, ib: c.ib ?? 0, has: c.ib !== undefined })
+          e.i += c.i * w
+          e.ib += (c.ib ?? 0) * w
+        } else iSum.set(id, { i: c.i * w, ib: (c.ib ?? 0) * w, has: c.ib !== undefined })
       }
       for (const id of r.ccIds) cc.add(id)
       if (!r.converged) ok = false
@@ -184,11 +227,9 @@ export class Simulation {
     }
     keys.forEach((k, n) => this.charge.set(k, duty[n]))
     if (!last || !vSum) return
-    const v = new Float64Array(vSum.length)
-    for (let n = 0; n < v.length; n++) v[n] = vSum[n] / K
     const cur = new Map<string, { i: number; ib?: number }>()
-    for (const [id, e] of iSum) cur.set(id, e.has ? { i: e.i / K, ib: e.ib / K } : { i: e.i / K })
-    this.show({ v, cur, ccIds: cc, converged: ok, iterations: iters, raw: last.raw })
+    for (const [id, e] of iSum) cur.set(id, e.has ? { i: e.i, ib: e.ib } : { i: e.i })
+    this.show({ v: vSum, cur, ccIds: cc, converged: ok, iterations: iters, raw: last.raw })
     this.settled = false
   }
 

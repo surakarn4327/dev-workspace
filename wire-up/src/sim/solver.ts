@@ -732,9 +732,9 @@ const MAX_SUBSTEPS = 200
 /**
  * Let `seconds` of real time pass in a circuit with capacitors: `charge` holds each capacitor's voltage (by element id) and is
  * updated in place. Returns the solve at the end of the time. A circuit without capacitors needs no stepping and gets one
- * plain solve.
+ * plain solve. `maxSteps` caps the sub-steps (a caller that already cuts time into small pieces asks for few).
  */
-export function advance(circuit: Circuit, charge: Map<string, number>, seconds: number, warm?: Float64Array): SolveResult & { raw: Float64Array } {
+export function advance(circuit: Circuit, charge: Map<string, number>, seconds: number, warm?: Float64Array, maxSteps = MAX_SUBSTEPS): SolveResult & { raw: Float64Array } {
   const caps = circuit.elements.filter((e) => e.kind === 'K')
   const timers = circuit.elements.some((e) => e.kind === 'T' || e.kind === 'Y' || e.kind === 'P')
   if (caps.length === 0 && !timers) return solve(circuit, warm)
@@ -744,7 +744,7 @@ export function advance(circuit: Circuit, charge: Map<string, number>, seconds: 
     for (let k = 0; k < 3 && settleTimers(circuit, charge, res.v); k++) res = solve(circuit, res.raw, { dt: 1e-9, vPrev: charge })
     return res
   }
-  const n = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(seconds / transientStep(circuit))))
+  const n = Math.min(maxSteps, Math.max(1, Math.ceil(seconds / transientStep(circuit))))
   const dt = seconds / n
   let res = solve(circuit, warm, { dt, vPrev: charge })
   for (let k = 0; ; k++) {

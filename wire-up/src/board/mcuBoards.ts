@@ -14,6 +14,11 @@ export type BoardState = 'off' | 'blank' | 'running' | 'reset' | 'error' | 'stal
 
 /** Pins that have hardware PWM on the Uno. */
 const PWM_PINS = new Set([3, 5, 6, 9, 10, 11])
+/** PWM frequency of a pin: timer 0 (pins 5, 6) runs fast PWM at 976 Hz, timers 1 and 2 phase-correct at 490 Hz. */
+function pwmHz(pin: number): number {
+  return pin === 5 || pin === 6 ? 976.5625 : 490.196
+}
+
 /** Supply below this and the chip does not run (brown-out); the Uno needs 4.5 V for 16 MHz, the Arduino cores are happy from here. */
 const RUN_VOLTS = 3.5
 /** RESET held under this voltage keeps the chip in reset. */
@@ -30,6 +35,8 @@ interface Pad {
   acc: number
   seg: number
   sent: number
+  /** The PWM frequency last sent to the simulation with `sent`. */
+  sentHz: number
   /** Frequency of the `tone()` running on the pin, 0 when none. */
   tone: number
 }
@@ -47,7 +54,7 @@ class Board {
   rxAt = -1
   frameStart = 0
   slow = false
-  pads: Pad[] = Array.from({ length: 20 }, () => ({ eff: -1, mode: 'in', level: 0, pwm: null, acc: 0, seg: 0, sent: -1, tone: 0 }))
+  pads: Pad[] = Array.from({ length: 20 }, () => ({ eff: -1, mode: 'in', level: 0, pwm: null, acc: 0, seg: 0, sent: -1, sentHz: 0, tone: 0 }))
 }
 
 /** The EEPROM saved in a board's `eeprom` parameter (hex text); cells never written read 0xFF. */
@@ -148,6 +155,7 @@ export class McuBoards {
       p.acc = 0
       if (p.sent !== -1) sim.setPad(partId, padOf(n), -1)
       p.sent = -1
+      p.sentHz = 0
     }
   }
 
@@ -228,9 +236,13 @@ export class McuBoards {
         if (v < 0.002) v = 0
         else if (v > 0.998) v = 1
       }
-      if (v !== p.sent) {
-        sim.setPad(part.id, padOf(n), v)
+      // a pad that is neither fully on nor off is a PWM wave: a tone() at its own pitch, analogWrite() at the timer's 490 or 976 Hz,
+      // and anything else (a sketch toggling fast by hand) at 490 as a stand-in
+      const hz = v > 0 && v < 1 ? (p.tone > 0 ? p.tone : pwmHz(n)) : 0
+      if (v !== p.sent || hz !== p.sentHz) {
+        sim.setPad(part.id, padOf(n), v, hz)
         p.sent = v
+        p.sentHz = hz
       }
       p.eff = v
     }
@@ -286,6 +298,7 @@ export class McuBoards {
         const n = index(pin)
         if (n < 0) return
         change(n, t, (p) => {
+          p.mode = 'out' // the core makes the pin an output itself
           if (PWM_PINS.has(pin)) {
             p.pwm = value <= 0 ? 0 : value >= 255 ? 1 : value / 255
           } else {

@@ -20,7 +20,7 @@
 
 เสร็จเมื่อ: sketch ตัวอย่างมาตรฐาน (Blink, Fade, AnalogReadSerial, Button, DigitalReadSerial, Debounce, toneMelody, ShiftOut, EEPROM Read/Write) คอมไพล์ผ่านและทำงานถูก — เพิ่มเป็นชุดเทสต์ `examples.test.ts`
 
-## ชุด 2 — ฮาร์ดแวร์ให้ตรงของจริง
+## ชุด 2 — ฮาร์ดแวร์ให้ตรงของจริง — ข้อ 1, 2, 3, 5 เสร็จ 2026-10-12; ข้อ 4 (VIN + แจ็ค DC) รอผู้ใช้เลือกภาพอ้างอิงตาม PARTS.md
 1. `analogWrite` ทำงานเฉพาะขา PWM (3 5 6 9 10 11) — ขาอื่นเป็น HIGH/LOW ตาม >=128 เหมือนของจริง
 2. `attachInterrupt` / `detachInterrupt` ขา 2, 3 (RISING/FALLING/CHANGE/LOW) — VM ต้องขัดจังหวะได้
 3. เวลาตามรอบ AVR จริง (ตารางรอบต่อคำสั่ง, `digitalWrite` ~ 5 µs ตามของจริง) แทนค่าประมาณ
