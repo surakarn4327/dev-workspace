@@ -1,6 +1,6 @@
 import { COL, drawLabelAbove, drawText, leg, mix, radialGlow, rrect } from '../render/draw.ts'
 import { BJT, DIODE, eng, LED_COLORS, LED_I_MAX, LED_I_RATED, LED_N, LED_RS, LED_VR_MAX, ledIs } from '../sim/models.ts'
-import { drawSprite, pxLeg, pxLegDiag, pxLegH, spriteInk } from '../render/pixel.ts'
+import { drawSprite, pxLeg, pxLegBent, pxLegH, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { diodeSprite, ledSprite, to92Sprite } from './art.ts'
 import { eid, legDrop, legGrid, LEG_FIELD, spreadOf, str, stress, U } from './common.ts'
@@ -36,7 +36,8 @@ export const led: PartDef = {
     const v = env.v(env.pins[0]) - env.v(env.pins[1])
     const rev = Math.max(-v, 0)
     // below a microamp (solver leakage) it is dark, not a faint glow
-    const b = i < 1e-6 ? 0 : Math.min(Math.max(i, 0) / LED_I_RATED, 1.6) ** 0.6
+    // the eye is sensitive at low current: 2-3 mA (a scanned matrix) already shows at about 75% brightness, 20 mA at full
+    const b = i < 1e-6 ? 0 : Math.min(Math.max(i, 0) / LED_I_RATED, 1.6) ** 0.12
     return {
       live: { i, v, b },
       stress: stress(Math.max(i / LED_I_MAX, rev / LED_VR_MAX), () =>
@@ -57,7 +58,7 @@ export const led: PartDef = {
         drawSprite(c, ledSprite(col.body, true), -14, -62)
         c.globalAlpha = 1
       }
-      radialGlow(c, 10, -42, 36 + 90 * b, col.glow, 0.85 * b)
+      radialGlow(c, 10, -42, 32 + 46 * b, col.glow, 0.95 * b)
       return
     }
     leg(c, 0, 0, 0, -6)
@@ -84,7 +85,7 @@ export const led: PartDef = {
     c.beginPath()
     c.arc(3, -14, 5, 0, Math.PI * 2)
     c.fill()
-    radialGlow(c, 10, -4, 36 + 90 * b, col.glow, 0.85 * b)
+    radialGlow(c, 10, -4, 32 + 46 * b, col.glow, 0.95 * b)
     if (legDrop(p) > 0) for (const x of [0, 20]) leg(c, x, 4, x, legDrop(p))
   },
   fields: () => [
@@ -219,12 +220,13 @@ function bjt(type: string, name: string, pol: 1 | -1, label: string): PartDef {
     draw(c, p, live) {
       if (scene.pixel) {
         // middle leg straight; outer legs go up from the pins, then slant in under the body (art-pixel diagonals)
-        for (let k = 0; k < 3; k++) pxLeg(c, k * U, k === 1 ? -10 : 0, 4 + legDrop(p))
+        pxLeg(c, U, -10, 4 + legDrop(p))
+        // each outer leg is one piece (straight part and slant together), so no dark line shows where they join
         for (const [x, tx] of [
           [0, 5],
           [40, 15],
         ]) {
-          pxLegDiag(c, x / 2, 0, tx, -7)
+          pxLegBent(c, x, 0, 4 + legDrop(p), tx, -7)
         }
         drawSprite(c, to92Sprite(), 0, -44)
         drawText(c, label, 20, -24, { color: '#8e8aa8', align: 'center' })

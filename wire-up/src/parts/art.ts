@@ -185,7 +185,8 @@ export function ledSprite(body: string, lit: boolean): Sprite {
     g.rect(4, 11, 1, 6, 'h')
     // mix() returns rgb(), which it cannot mix again, so the unlit base is turned back into hex first
     const hex = (rgb: string) => rgb.startsWith('#') ? rgb : '#' + (rgb.match(/\d+/g) ?? []).map((n) => Number(n).toString(16).padStart(2, '0')).join('')
-    const base = lit ? body : hex(mix(body, '#8a8a96', 0.28))
+    // an unlit LED is the same colour, dark and dull: lit against unlit then reads by brightness, even for white
+    const base = lit ? body : hex(mix(body, '#15151c', 0.6))
     const pal: Record<string, string> = {
       h: mix(base, '#ffffff', 0.7),
       L: mix(base, '#ffffff', 0.35),
