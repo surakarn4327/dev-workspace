@@ -1132,18 +1132,23 @@ dialog li {
   margin-left: 6px;
 }
 
-.cp-clear {
+/* the plain word Clear at the right end of the Serial Monitor bar: reset to nothing first, so no other button style can reach it */
+#code-panel .cp-head2 button.cp-clear {
+  all: unset;
+  box-sizing: border-box;
   margin-left: auto;
-  background: transparent;
-  color: #00797e;
+  padding: 0 9px;
+  height: 18px;
+  line-height: 16px;
   border: 1px solid #b9c4c7;
   border-radius: 3px;
-  padding: 0 9px;
+  background: transparent;
+  color: #00797e;
   font: 11px 'Segoe UI', Arial, sans-serif;
   cursor: pointer;
 }
 
-.cp-clear:hover {
+#code-panel .cp-head2 button.cp-clear:hover {
   background: #d6f3f4;
 }
 
