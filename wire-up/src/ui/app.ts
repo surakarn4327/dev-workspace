@@ -52,6 +52,7 @@ export class App {
 
     this.inspector = new Inspector(this.ws, $('panel-inspect'))
     this.code = new CodePanel($('code-panel'), this.ws)
+    this.ws.onToggleCode = () => this.code.toggle()
     this.code.onToggle = () => this.menubar?.refresh()
     this.lessons = new LessonPanel(this.ws, $('panel-lessons'), {
       enter: (setup) => this.enterLesson(setup),
@@ -211,7 +212,7 @@ export class App {
       act({
         icon: nodeIcon('code'),
         label: () => 'Code',
-        tip: 'Show or hide the code window of the Arduino boards (click a board to edit its sketch)',
+        tip: 'Show or hide the code window of the Arduino boards (click a board to edit its sketch). Key: C',
         run: () => this.code.toggle(),
         active: () => this.code.isOpen,
       }),

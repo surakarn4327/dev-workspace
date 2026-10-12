@@ -89,11 +89,41 @@ export class Inspector {
       h.innerHTML = `<h3>${what} selected</h3><div class="sub">Drag any of them to move the lot. Arrow keys nudge one grid step. Ctrl+click adds or removes one. Ctrl+C / Ctrl+V copy and paste, Ctrl+D duplicates, Delete removes.</div>`
       this.root.appendChild(h)
       this.groupSettings()
+      this.groupWireColors()
     } else {
       this.root.innerHTML = '<h3>Nothing selected</h3><div class="sub">Click a part to see its live voltage, current and settings. Drag parts in from the toolbox on the left.</div>'
     }
     this.lastLogLen = -1
     this.renderLog()
+  }
+
+  /** Wires among the selection: one row of colours that paints all of them (a branch wears its main wire's colour, so that is the one changed). */
+  private groupWireColors(): void {
+    const ws = this.ws
+    const wires = [...ws.group.wires].map((id) => ws.world.getWire(id)).filter((w): w is NonNullable<typeof w> => w !== undefined)
+    if (wires.length === 0) return
+    const note = document.createElement('div')
+    note.className = 'sub'
+    note.textContent = wires.length === 1 ? 'Wire colour:' : `Wire colour for all ${wires.length} selected wires:`
+    this.root.appendChild(note)
+    const colors = effectiveColors(ws.world)
+    const shown = colors.get(wires[0].id) ?? wires[0].color
+    const same = wires.every((w) => (colors.get(w.id) ?? w.color) === shown)
+    const sw = document.createElement('div')
+    sw.className = 'swatches'
+    for (const col of WIRE_COLORS) {
+      const b = document.createElement('button')
+      b.className = `swatch${same && col === shown ? ' sel' : ''}`
+      b.style.background = col
+      b.onclick = () => {
+        for (const w of wires) rootWire(ws.world, w).color = col
+        ws.world.commit()
+        ws.onEdit()
+        this.rebuild()
+      }
+      sw.appendChild(b)
+    }
+    this.root.appendChild(sw)
   }
 
   /** Several parts selected and all of one kind: their settings are shown once and a change goes to every one of them. */

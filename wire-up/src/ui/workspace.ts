@@ -71,6 +71,8 @@ export class Workspace {
   onEdit: () => void = () => {}
   /** Something changed that is saved but is not an undo step (a switch flipped). */
   onRuntime: () => void = () => {}
+  /** The C key: show or hide the code window (the app owns it). */
+  onToggleCode: () => void = () => {}
   onHover: (info: HoverInfo) => void = () => {}
   onFrame: (dt: number) => void = () => {}
   draggingType: string | null = null
@@ -932,6 +934,8 @@ export class Workspace {
       this.select(null)
     } else if (k === 'f' && !e.ctrlKey && !e.metaKey) {
       this.fitView()
+    } else if (k === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      this.onToggleCode()
     }
   }
 
