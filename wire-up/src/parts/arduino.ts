@@ -91,8 +91,8 @@ function plugged(p: PartInstance): boolean {
   return flag(p, 'usb')
 }
 
-/** Where the plug sits in world px (its sprite's top-left): the collar's end 15 art pixels inside the socket's mouth, centred on it. */
-const PLUG_AT = { x: (-15 - UNO_PLUG.w) * 2, y: (UNO_USB.y + UNO_USB.h / 2 - UNO_PLUG.h / 2) * 2 }
+/** Where the plug sits in world px (its sprite's top-left): the steel neck's end 5 art pixels inside the socket's mouth, centred on it. */
+const PLUG_AT = { x: (-27 - UNO_PLUG.w) * 2, y: (UNO_USB.y + UNO_USB.h / 2 - UNO_PLUG.h / 2) * 2 }
 
 function inSocket(p: PartInstance, x: number, y: number): boolean {
   const socket = x >= (UNO_USB.x - 2) * 2 && x <= (UNO_USB.x + UNO_USB.w) * 2 && y >= UNO_USB.y * 2 && y <= (UNO_USB.y + UNO_USB.h) * 2
@@ -219,7 +219,7 @@ export const arduinoUno: PartDef = {
           const text = printedName(idx)
           if (!text) continue
           const analog = UNO_PINS[idx].startsWith('A')
-          printed(c, text, (h.x + k) * 20 + 1, h.y < 10 ? 38 : 387, h.y < 10 ? 'top' : 'bottom', analog ? 15 : h.y < 10 ? 14 : 12)
+          printed(c, text, (h.x + k) * 20 + 1, h.y < 10 ? 38 : 387, h.y < 10 ? 'top' : 'bottom', analog ? 15 : h.y < 10 ? 14 : 10)
         }
       }
       const upright = (text: string, x: number, y: number, align: 'left' | 'center' | 'right', size: number, color = INK, heavy = true): void =>
@@ -229,9 +229,9 @@ export const arduinoUno: PartDef = {
       upright('ANALOG IN', 508, 354, 'right', 14)
       pixelBold(c, 'ARDUINO', 302, 147 - 12, 'center', INK, 24)
       upright('UNO', 404, 110, 'center', 34, INK, false)
-      upright('L', 194, 87, 'right', 14)
-      upright('TX', 194, 133, 'right', 14)
-      upright('RX', 194, 150, 'right', 14)
+      upright('L', 201, 87, 'right', 12)
+      upright('TX', 201, 133, 'right', 12)
+      upright('RX', 201, 150, 'right', 12)
       upright('ON', 479, 132, 'left', 14)
       upright('ICSP', 514, 160, 'center', 11)
       upright('T16.000', 146, 217, 'center', 9, '#6a6558', false)

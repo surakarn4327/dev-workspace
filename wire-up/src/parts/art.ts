@@ -1406,7 +1406,7 @@ export const UNO_HEADERS = [
 
 /** The USB-B socket in board art pixels (x past 0 = beyond the edge) and the plug's sprite size. */
 export const UNO_USB = { x: -32, y: 33, w: 67, h: 50 }
-export const UNO_PLUG = { w: 220, h: 60 }
+export const UNO_PLUG = { w: 210, h: 60 }
 
 /** Where the status lamps' lenses sit (board art pixels, 4 x 4): L on pin 13, TX, RX and ON. */
 export const UNO_LAMPS = { l: { x: 108, y: 42 }, tx: { x: 108, y: 64 }, rx: { x: 108, y: 73 }, on: { x: 229, y: 64 } }
@@ -1736,13 +1736,19 @@ export function unoHeaderSprite(): Sprite {
   })
 }
 
-/** The USB plug on its cable, from the cut end (left, fading out) to the steel collar (right), 220 x 60 art pixels: a blue cable, a moulded boot with grip ridges and the collar. */
+/**
+ * The USB plug on its cable, from the cut end (left, fading out) to the steel neck (right), 210 x 60 art pixels, as on the clear
+ * blue cable the user sent: a translucent blue cable, three dark ribs of strain relief, a clear blue boot a little smaller than
+ * the socket (44 against its 50) and a short silver neck that goes into the socket.
+ */
 export function unoPlugSprite(): Sprite {
   return sprite('uno-plug', () => {
     const { w, h } = UNO_PLUG
     const g = new PixelGrid(w, h)
     const palette: Record<string, string> = {}
-    const blue: Record<string, [number, number, number]> = { L: [169, 208, 255], a: [106, 168, 255], b: [61, 130, 238], c: [42, 99, 196], d: [29, 74, 150], D: [18, 48, 107] }
+    const blue: Record<string, [number, number, number]> = {
+      L: [200, 232, 255], a: [140, 205, 255], b: [88, 170, 245], c: [58, 135, 228], d: [38, 100, 195], D: [24, 66, 140],
+    }
     const letters = 'LabcdD'
     for (const [k, [r, gg, b]] of Object.entries(blue)) palette[k] = `rgb(${r},${gg},${b})`
     // eight steps of the cut end fading into the board: letters beyond the plain tones, each with its own alpha
@@ -1753,43 +1759,49 @@ export function unoPlugSprite(): Sprite {
       return ch
     }
     const toneAt = (t: number): string => letters[Math.min(5, Math.floor(t * 6))]
-    // the cable: 20 high, fading out over its first 56 pixels
+    // the cable: 18 high, a clear blue tube with a lit top, fading out over its first 56 pixels
     const FADE = 56
-    for (let x = 0; x < 100; x++) {
-      for (let y = 0; y < 20; y++) {
-        const tone = toneAt(y / 20)
-        g.set(x, 20 + y, x < FADE ? fadeLetter(tone, Math.min(7, Math.floor((x / FADE) * 8))) : tone)
+    for (let x = 0; x < 104; x++) {
+      for (let y = 0; y < 18; y++) {
+        const tone = toneAt(y / 18)
+        g.set(x, 21 + y, x < FADE ? fadeLetter(tone, Math.min(7, Math.floor((x / FADE) * 8))) : tone)
       }
     }
-    // the boot: the strain relief tapers from the cable's width out to 56 over 30 pixels, then runs straight to the plug end
-    for (let x = 100; x < 210; x++) {
-      const half = x < 130 ? 10 + ((x - 100) / 30) * 18 : 28
-      const top = Math.round(30 - half)
-      const bottom = Math.round(30 + half)
-      for (let y = top; y < bottom; y++) {
-        const t = (y - top) / (bottom - top)
-        // the grip ridges across the last stretch of the boot: darker bands
-        const ridge = x >= 168 && x < 200 && Math.floor((x - 168) / 4) % 2 === 1 && y > top + 2 && y < bottom - 3
-        g.set(x, y, ridge ? 'd' : toneAt(t))
+    // the strain relief: three dark ribs one after another, a little taller than the cable
+    for (const x0 of [104, 109, 114]) {
+      for (let y = 16; y < 44; y++) for (let x = x0; x < x0 + 3; x++) g.set(x, y, y < 20 ? 'c' : y < 38 ? 'D' : 'd')
+      for (let y = 16; y < 44; y++) g.set(x0 + 3, y, y < 20 ? 'a' : 'c')
+    }
+    // the boot: 78 x 44, a clear blue block with rounded corners, a lit top edge and a darker lower half
+    const bx = 119
+    const by = 8
+    const bw = 78
+    const bh = 44
+    const mask = new PixelGrid(bw, bh)
+    mask.rrect(0, 0, bw, bh, 4, 'a')
+    for (let y = 0; y < bh; y++) {
+      for (let x = 0; x < bw; x++) {
+        if (mask.get(x, y) === '.') continue
+        const edgeTop = mask.get(x, y - 1) === '.' || mask.get(x, y - 2) === '.'
+        const edgeLeft = mask.get(x - 1, y) === '.'
+        const edgeBottom = mask.get(x, y + 1) === '.'
+        const edgeRight = mask.get(x + 1, y) === '.'
+        g.set(bx + x, by + y, edgeTop || edgeLeft ? 'L' : edgeBottom || edgeRight ? 'D' : toneAt(0.18 + (y / bh) * 0.7))
       }
     }
-    // round the two corners at the plug end of the boot
-    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [2, 0], [0, 2], [1, 1]]) {
-      g.set(209 - dx, 2 + dy, '.')
-      g.set(209 - dx, 57 - dy, '.')
-    }
-    // the steel collar: a B-shaped sleeve, flat at the boot and chamfered at the far end
-    for (let x = 210; x < 220; x++) {
-      for (let y = 8; y < 52; y++) {
-        const edge = 220 - x
-        const chamfer = edge <= 3 && (y < 8 + (4 - edge) || y >= 52 - (4 - edge))
+    // a pale reflection along the top of the clear boot
+    for (let x = 0; x < 62; x++) g.set(bx + 8 + x, by + 3, 'a')
+    // the steel neck going into the socket: a short silver sleeve, narrower than the boot, with a lit top and a dark underside
+    for (let x = 197; x < 210; x++) {
+      for (let y = 18; y < 42; y++) {
+        const chamfer = x >= 207 && (y < 18 + (x - 206) || y >= 42 - (x - 206))
         if (chamfer) continue
-        g.set(x, y, y < 12 ? 'm' : y < 40 ? 'H' : 'E')
+        g.set(x, y, y < 21 ? 'm' : y < 36 ? 'H' : 'E')
       }
     }
-    palette.m = '#e9e2d2'
-    palette.H = '#cdc5b3'
-    palette.E = '#8f8878'
+    palette.m = '#eef0f4'
+    palette.H = '#cfd3da'
+    palette.E = '#8d93a0'
     return g.build(palette, null, null)
   })
 }
