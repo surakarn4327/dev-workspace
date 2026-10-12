@@ -4,6 +4,8 @@ import { advance } from '../sim/solver.ts'
 import type { SolveResult } from '../sim/solver.ts'
 import { defOf, pinWorld } from '../parts/index.ts'
 import type { PartLive, Stress } from '../parts/types.ts'
+import { McuBoards } from './mcuBoards.ts'
+import { padOf } from '../parts/arduino.ts'
 import { buildNetlist } from './connectivity.ts'
 import type { Netlist } from './connectivity.ts'
 import { computeFlow } from './flow.ts'
@@ -52,6 +54,9 @@ export class Simulation {
   /** Every capacitor has stopped moving: no need to step time until the circuit changes. */
   private settled = false
   private world: World
+  /** The sketches running on the Arduino boards (one machine per powered board). */
+  readonly boards = new McuBoards()
+  private pwmPhase = 0
 
   constructor(world: World) {
     this.world = world
@@ -102,6 +107,7 @@ export class Simulation {
         cur: (id) => res.cur.get(id),
         ccIds: res.ccIds,
       })
+      if (part.type === 'arduino-uno') this.boards.decorate(part.id, ev.live, this.clock)
       this.live.set(part.id, ev.live)
       if (ev.stress) this.stress.set(part.id, ev.stress)
     }
@@ -119,11 +125,83 @@ export class Simulation {
     this.settled = false
   }
 
+  /** Voltage of one I/O pad of an Arduino board (pad 0..19 = D0..D13, A0..A5) against the board's GND, from the last solve. */
+  padVolts(partId: string, pad: number): number {
+    const nodes = this.net.partPins.get(partId)
+    const v = this.result?.v
+    if (!nodes || !v) return 0
+    return (v[nodes[padOf(pad)]] ?? 0) - (v[nodes[3]] ?? 0)
+  }
+
+  /** The 5 V rail of an Arduino board against its GND (analogRead's reference). */
+  railVolts(partId: string): number {
+    const nodes = this.net.partPins.get(partId)
+    const v = this.result?.v
+    if (!nodes || !v) return 5
+    return (v[nodes[22]] ?? 0) - (v[nodes[3]] ?? 0)
+  }
+
+  /** Keys of the pads that a PWM is driving right now (duty strictly between 0 and 1). */
+  private pwmKeys(): string[] {
+    const out: string[] = []
+    for (const [k, v] of this.charge) if (k.endsWith(':m') && v > 0 && v < 1) out.push(k)
+    return out
+  }
+
+  /**
+   * One frame with PWM pads: the circuit is solved at 16 instants of the PWM period (a pad is high at those where the period's phase
+   * is under its duty), and the answers averaged. A load that is not linear (an LED) then gets the average of its current, not the
+   * current at the average voltage. The phases shift a little every frame so the average is exact over time.
+   */
+  private stepPwm(dt: number, keys: string[]): void {
+    const K = 16
+    const duty = keys.map((k) => this.charge.get(k) as number)
+    this.pwmPhase = (this.pwmPhase + 0.381966) % 1
+    let vSum: Float64Array | null = null
+    const iSum = new Map<string, { i: number; ib: number; has: boolean }>()
+    const cc = new Set<string>()
+    let ok = true
+    let iters = 0
+    let last: (SolveResult & { raw: Float64Array }) | null = null
+    for (let j = 0; j < K; j++) {
+      const phase = (j + this.pwmPhase) / K
+      keys.forEach((k, n) => this.charge.set(k, phase < duty[n] ? 1 : 0))
+      const r = advance(this.net.circuit, this.charge, dt / K, this.warm)
+      last = r
+      this.warm = r.raw
+      if (vSum === null) vSum = new Float64Array(r.v.length)
+      for (let n = 0; n < r.v.length; n++) vSum[n] += r.v[n]
+      for (const [id, c] of r.cur) {
+        const e = iSum.get(id)
+        if (e) {
+          e.i += c.i
+          e.ib += c.ib ?? 0
+        } else iSum.set(id, { i: c.i, ib: c.ib ?? 0, has: c.ib !== undefined })
+      }
+      for (const id of r.ccIds) cc.add(id)
+      if (!r.converged) ok = false
+      iters += r.iterations
+    }
+    keys.forEach((k, n) => this.charge.set(k, duty[n]))
+    if (!last || !vSum) return
+    const v = new Float64Array(vSum.length)
+    for (let n = 0; n < v.length; n++) v[n] = vSum[n] / K
+    const cur = new Map<string, { i: number; ib?: number }>()
+    for (const [id, e] of iSum) cur.set(id, e.has ? { i: e.i / K, ib: e.ib / K } : { i: e.i / K })
+    this.show({ v, cur, ccIds: cc, converged: ok, iterations: iters, raw: last.raw })
+    this.settled = false
+  }
+
   step(dt: number): void {
     this.clock += dt
     this.refresh()
+    // the sketches run first, so what they do to their pads is in the solve below
+    this.boards.update(this, this.world, dt)
+    const pwm = this.pwmKeys()
     // capacitors charge and discharge in real time
-    if (this.hasCaps && dt > 0 && !this.settled) {
+    if (this.hasCaps && dt > 0 && pwm.length > 0) {
+      this.stepPwm(Math.min(dt, 0.25), pwm)
+    } else if (this.hasCaps && dt > 0 && !this.settled) {
       const before = new Map(this.charge)
       this.show(advance(this.net.circuit, this.charge, Math.min(dt, 0.25), this.warm))
       let moved = 0

@@ -25,6 +25,19 @@ export function padOf(n: number): number {
   return n <= 13 ? 17 - n : 26 + (n - 14)
 }
 
+/** The sketch every Uno is made with (and the factory program on a new board): blinks the L lamp on pin 13. */
+export const BLINK_SKETCH = `void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(1000);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(1000);
+}
+`
+
 const GND_TOP = 3
 const GND_B1 = 23
 const GND_B2 = 24
@@ -108,8 +121,10 @@ export const arduinoUno: PartDef = {
     'Arduino Uno R3 with an ATmega328P. The USB plug powers it: click the socket to pull the plug out or push it in. Pins D0-D13 and A0-A5 each give 5 V or 0 V behind 25 ohm and take at most 40 mA (200 mA all together); the 5V pin gives at most 500 mA, 3V3 at most 50 mA. VIN and the DC jack do nothing yet.',
   pinLabels: UNO_PINS,
   hidePinLabels: true, // the names are printed on the board
-  runtimeKeys: ['usb'],
-  defaults: () => ({ usb: true, pressed: false }),
+  // the plug, and the program text: live actions of the board, saved but never undo steps
+  runtimeKeys: ['usb', 'code', 'program'],
+  // `code` is what is typed in the code panel, `program` what was last uploaded (what the chip runs)
+  defaults: () => ({ usb: true, pressed: false, code: BLINK_SKETCH, program: BLINK_SKETCH }),
   pins() {
     const out: { x: number; y: number }[] = []
     for (const h of UNO_HEADERS) for (let k = 0; k < h.n; k++) out.push({ x: h.x + k, y: h.y })
@@ -184,7 +199,7 @@ export const arduinoUno: PartDef = {
     const rV = Math.max(vs, 0) / MCU.vMax
     const rSub = sub / MCU.iTotalMax
     return {
-      live: { v: vs, i: usb, i33: v33, pw: lamp('pwd'), l: lamp('ld'), usb: plugged(p) ? 1 : 0 },
+      live: { v: vs, i: usb, i33: v33, pw: lamp('pwd'), l: lamp('ld'), usb: plugged(p) ? 1 : 0, rst: env.v(env.pins[RESET]) - env.v(env.pins[GND_TOP]), tx: 0, rx: 0 },
       stress: stress(Math.max(rPad, rTotal, rUsb, r33, rV, rSub), () => {
         const top = Math.max(rPad, rTotal, rUsb, r33, rV, rSub)
         if (rSub === top) return `The Uno has 5V and GND the wrong way round: ${eng(sub, 'A')} ran straight through the chip (at most ${eng(MCU.iTotalMax, 'A')}). 5V goes to +, GND to -.`

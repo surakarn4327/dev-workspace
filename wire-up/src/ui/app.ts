@@ -1,5 +1,5 @@
 import { World } from '../board/world.ts'
-import type { WorldData } from '../board/world.ts'
+import type { PartInstance, WorldData } from '../board/world.ts'
 import { SceneBuilder } from '../lessons/lessons.ts'
 import { icon } from './icons.ts'
 import { buildBench } from './bench.ts'
@@ -380,12 +380,13 @@ export class App {
   private restore(json: string | null): void {
     if (!json) return
     // switches keep the position they have now: undo and redo only walk through edits, not through flipped switches
-    const KEYS = ['on', 'usb']
-    const switches = new Map(this.world.parts.flatMap((p) => KEYS.filter((k) => isRuntimeState(p, k)).map((k) => [`${p.id}:${k}`, p.params[k] === true] as const)))
+    const live = new Map<string, string | number | boolean>()
+    const keysOf = (p: PartInstance): string[] => (defOf(p.type).category === 'switch' ? ['on'] : defOf(p.type).runtimeKeys ?? [])
+    for (const p of this.world.parts) for (const k of keysOf(p)) if (isRuntimeState(p, k) && p.params[k] !== undefined) live.set(`${p.id}:${k}`, p.params[k])
     const step = JSON.parse(json) as { world: WorldData; holds?: { parts: string[]; wires: string[] }[] }
     this.world.load(step.world)
     this.ws.importHolds(step.holds ?? [])
-    for (const p of this.world.parts) for (const k of KEYS) if (switches.has(`${p.id}:${k}`) && isRuntimeState(p, k)) p.params[k] = switches.get(`${p.id}:${k}`) === true
+    for (const p of this.world.parts) for (const k of keysOf(p)) if (live.has(`${p.id}:${k}`) && isRuntimeState(p, k)) p.params[k] = live.get(`${p.id}:${k}`)!
     this.ws.select(null)
     this.lastRev = this.world.revision
     this.inspector.rebuild()

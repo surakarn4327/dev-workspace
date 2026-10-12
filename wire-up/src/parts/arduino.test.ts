@@ -15,7 +15,8 @@ const RESET = 20
 function scene(usb = true) {
   const w = new World()
   const b = new SceneBuilder(w)
-  const uno = b.place('arduino-uno', 400, 100, { usb })
+  // no program: these tests drive the pads themselves (a new board carries the Blink sketch)
+  const uno = b.place('arduino-uno', 400, 100, { usb, program: '' })
   return { w, b, uno, pins: pinWorld(uno) }
 }
 

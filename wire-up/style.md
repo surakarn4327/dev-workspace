@@ -41,7 +41,7 @@
 | ชิป 74HC DIP-14 (00, 02, 04, 08, 32, 86) | **pixel — ร่าง** | `parts/art.ts` `dipSprite` — ดูหัวข้อ 5.17 |
 | NE555 timer DIP-8 (`ic-ne555`) | **pixel — ผู้ใช้อนุมัติ 2026-10-10** | `parts/art.ts` `dip8Sprite` — ดูหัวข้อ 5.22 |
 | โมดูลรีเลย์ 5 V (`relay-module`, 1/2/4/8 ช่อง) | **pixel — ร่าง เพิ่ม 2026-10-10 รอผู้ใช้ชม** | `parts/art.ts` `relayModuleSprite` — ดูหัวข้อ 5.23 |
-| Arduino Uno R3 (`arduino-uno`) | **pixel — ร่าง เพิ่ม 2026-10-12 รอผู้ใช้ชม** | `parts/art.ts` `unoBoardSprite` — ดูหัวข้อ 5.24 |
+| Arduino Uno R3 (`arduino-uno`) | **pixel — ผู้ใช้อนุมัติ 2026-10-12** | `parts/art.ts` `unoBoardSprite` — ดูหัวข้อ 5.24 |
 | logic gate 7 ตัว (NOT, AND, OR, NAND, NOR, XOR, XNOR) | **pixel — ร่าง ยังรอผู้ใช้ชมหน้าตา** | `parts/art.ts` `gateSprite` — ดูหัวข้อ 5.16 |
 | สวิตช์ rocker (ชิ้น `switch` ชื่อ "Rocker switch") | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `rockerSwitchSprite` — ดูหัวข้อ 5.9 |
 | สวิตช์เลื่อน (ชิ้น `slide-switch`) | **pixel — ผู้ใช้อนุมัติ** | `parts/art.ts` `slideSwitchSprite` — ดูหัวข้อ 5.9b (นำกลับมาตามคำขอ เป็นอีกตัวเลือกคู่กับ rocker) |
@@ -95,7 +95,7 @@
 | `ic-74hc86` | draft | `dipSprite` |  |
 | `ic-ne555` | approved | `dip8Sprite` | ดูหัวข้อ 5.22 |
 | `relay-module` | draft | `relayModuleSprite` | ดูหัวข้อ 5.23 |
-| `arduino-uno` | draft | `unoBoardSprite` | ดูหัวข้อ 5.24 |
+| `arduino-uno` | approved | `unoBoardSprite` | ดูหัวข้อ 5.24 — ผู้ใช้อนุมัติ 2026-10-12 |
 | `cap-ceramic` | approved | `ceramicCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
 | `cap-electro` | approved | `electroCapSprite` | ร่างแรก ยังไม่ได้ทำตาม PARTS.md |
 
@@ -479,7 +479,7 @@
 - พิกัดไหม้: แรงดันไฟเลี้ยงเกิน 10 V, กระแสหน้าสัมผัสเกิน 10 A, กระแสเข้า IN เกิน 50 mA
 - gallery มีรายการ 2/4/8 ช่องเพิ่ม (`VARIANTS` ใน `src/gallery.ts`)
 
-### 5.24 Arduino Uno R3 — `src/parts/art.ts` `unoBoardSprite` / `unoHeaderSprite` / `unoPlugSprite`, ชิ้นส่วนใน `src/parts/arduino.ts` — ร่าง (เพิ่ม 2026-10-12 รอผู้ใช้ชม; วาดใหม่ตามรูป Pololu 0J6022 ที่ผู้ใช้ส่งมา)
+### 5.24 Arduino Uno R3 — `src/parts/art.ts` `unoBoardSprite` / `unoHeaderSprite` / `unoPlugSprite`, ชิ้นส่วนใน `src/parts/arduino.ts` — ผู้ใช้อนุมัติ 2026-10-12 (วาดตามรูป Pololu 0J6022 ที่ผู้ใช้ส่งมา)
 - **อ้างอิง:** `0J6022.1200.jpg` (Pololu, รูปมุมบนตรงๆ 1200 px ที่ผู้ใช้ส่งมา 2026-10-12 วัดตำแหน่งทั้งหมดจากรูปนี้ ที่ 374 px ต่อนิ้ว), Wikimedia Commons `Arduino Uno R3 development board (1).jpg` / `Arduino Uno - R3.jpg` (ลักษณะ), แบบมิติทางการ 2.7" × 2.1" (รูยึด) และภาพหัว USB-B สีน้ำเงินที่ผู้ใช้ส่งมา (ปลายสายตัดเบลอ)
 - **ขนาด:** 0.1" = 1 grid = 10 พิกเซลอาร์ต → บอร์ด 270 × 210 พิกเซลอาร์ต (27 × 21 grid, 540 × 420 หน่วยโลก); สไปรต์กว้างกว่า 40 คอลัมน์ทางซ้าย (`UNO_PAD`: ซ็อกเก็ต USB กับแจ็ค DC ยื่นพ้นขอบ) วาดที่ (−80, 0); มุมซ้ายบนของบอร์ด = origin ของชิ้น
 - **ขอบบอร์ด:** สี่เหลี่ยมมุมมน แต่มุมขวาบนถูกตัดเข้า 12 พิกเซลอาร์ตเหนือเส้นเฉียงจาก (258, 42) ถึง (270, 61) ตามรูปจริง (กรอบชน `bounds()`/สิ่งกีดขวางยังเป็นสี่เหลี่ยมเต็ม)
