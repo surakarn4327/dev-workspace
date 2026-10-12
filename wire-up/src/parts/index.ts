@@ -1,5 +1,6 @@
 import { arduinoUno } from './arduino.ts'
 import { seg7, seg7x4 } from './display.ts'
+import { lcd1602i2c } from './lcd.ts'
 import { hc00, hc02, hc04, hc08, hc32, hc86, ne555 } from './ic.ts'
 import { rotVec, G, snap } from '../board/world.ts'
 import type { PartInstance, Rot, Vec } from '../board/world.ts'
@@ -46,6 +47,7 @@ export const ALL_PARTS: PartDef[] = [
   arduinoUno,
   seg7,
   seg7x4,
+  lcd1602i2c,
   rockerSwitch,
   slideSwitch,
   pushButton,

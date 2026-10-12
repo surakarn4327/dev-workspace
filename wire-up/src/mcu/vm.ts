@@ -213,6 +213,8 @@ export class Machine {
   private wireClock = 100000
   private wireTx: { addr: number; bytes: number[] } | null = null
   private wireRx: number[] = []
+  /** Bytes a library has sent that arrive on the bus later (its own delays come first): delivered when the machine's time reaches them. */
+  private i2cQueue: { at: number; addr: number; byte: number }[] = []
   /** While a handler runs over a sleeping `delay`, the time that sleep ends. */
   private resumeWake: number | null = null
   /** The EEPROM contents; the caller keeps them between runs. `eepromDirty` is set by a write that changed a byte. */
@@ -269,8 +271,21 @@ export class Machine {
     return at
   }
 
+  /** Deliver to the bus the bytes of library calls whose time has come. */
+  private flushI2c(upTo: number): void {
+    while (this.i2cQueue.length > 0 && this.i2cQueue[0].at <= upTo) {
+      const q = this.i2cQueue.shift()!
+      this.host.i2cWrite(q.addr, [q.byte], q.at)
+    }
+  }
+
   /** Run until virtual time `until` (seconds since reset), the sketch's own sleeps respected. */
   advance(until: number): void {
+    this.advanceTo(until)
+    this.flushI2c(this.time)
+  }
+
+  private advanceTo(until: number): void {
     this.slow = false
     if (this.error !== null) {
       this.time = until
@@ -279,6 +294,7 @@ export class Machine {
     let budget = MAX_OPS
     this.sampleIrq()
     while (this.time < until && this.error === null) {
+      this.flushI2c(this.time)
       // a tone with a duration ends on time even while the sketch sleeps
       const lim = Math.min(until, this.nextToneEnd())
       if (this.wake > this.time) {
@@ -748,8 +764,14 @@ export class Machine {
     return (bytes * 9 + 2) / this.wireClock + 100 * CYCLE
   }
 
-  /** What the LiquidCrystal_I2C library needs of the machine: the Wire path and the delays. */
-  private lcdIo(t: number): LcdIo {
+  /**
+   * What the LiquidCrystal_I2C library needs of the machine: the Wire path and the delays. The library's calls are laid out on a
+   * timeline (each byte takes the time of a bus transaction, each delay its time) and the bytes reach the bus when the machine's
+   * clock gets to them, so a display shows what the real library would have drawn by then; `elapsed()` is the length of the call.
+   */
+  private lcdIo(t: number): LcdIo & { elapsed(): number } {
+    const start = Math.max(this.wake, this.time)
+    let cursor = start
     return {
       wireBegin: () => {
         this.wireOn = true
@@ -758,11 +780,16 @@ export class Machine {
       },
       expander: (addr, byte) => {
         if (!this.wireOn) return
-        this.host.i2cWrite(addr, [byte], t)
-        this.spend(this.wireTime(2))
+        cursor += this.wireTime(2)
+        this.i2cQueue.push({ at: cursor, addr, byte })
       },
-      delayMs: (ms) => this.spend(ms / 1000),
-      delayUs: (us) => this.spend(us / 1e6),
+      delayMs: (ms) => {
+        cursor += ms / 1000
+      },
+      delayUs: (us) => {
+        cursor += us / 1e6
+      },
+      elapsed: () => cursor - start,
     }
   }
 
@@ -992,6 +1019,7 @@ export class Machine {
         this.wireTx = null
         // without Wire.begin() the bus is not set up: nothing is sent
         if (!tx || !this.wireOn) return 4
+        this.flushI2c(this.time)
         const status = this.host.i2cWrite(tx.addr, tx.bytes, t)
         this.spend(this.wireTime(tx.bytes.length + 1))
         return status
@@ -1159,7 +1187,12 @@ export class Machine {
       case 'Serial.setTimeout':
         return 0
       default:
-        if (name.startsWith('LiquidCrystal_I2C.')) return lcdCall(this.lcdIo(t), a[0] as LcdObj, name.slice('LiquidCrystal_I2C.'.length), a, ts)
+        if (name.startsWith('LiquidCrystal_I2C.')) {
+          const io = this.lcdIo(t)
+          const r = lcdCall(io, a[0] as LcdObj, name.slice('LiquidCrystal_I2C.'.length), a, ts)
+          this.spend(io.elapsed())
+          return r
+        }
         this.fail(`'${name}' is not available`, line)
         return 0
     }

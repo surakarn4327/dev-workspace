@@ -664,7 +664,7 @@ class Parser {
 
   /** `Servo myServo;` and the like: a name where a type was expected. */
   private unknownType(t: Token): CompileError {
-    return new CompileError(`'${t.v}' does not name a type here (libraries such as Servo, Wire and LiquidCrystal are not available in this simulator yet)`, t.line)
+    return new CompileError(`'${t.v}' does not name a type here (this simulator has Wire, EEPROM and LiquidCrystal_I2C; other libraries such as Servo are not available yet)`, t.line)
   }
 
   private parseStmt(): Stmt {

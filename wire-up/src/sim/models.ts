@@ -3,6 +3,17 @@
 import { VT } from './solver.ts'
 export { TIMER as NE555, RELAY, MCU } from './solver.ts'
 
+/** The 1602 character LCD with its I2C backpack: logic about 2 mA, the backlight through its own 100 ohm resistor, 4.7 k pull-ups on SDA and SCL. */
+export const LCD1602 = {
+  rLogic: 2500,
+  rBacklight: 100,
+  rPull: 4700,
+  /** Supply under this and the controller does not run (the module is made for 5 V). */
+  vOn: 4,
+  vMax: 6,
+  iSubMax: 0.05,
+}
+
 export const E12 = [1.0, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 3.9, 4.7, 5.6, 6.8, 8.2]
 
 /** All standard E12 values from 1 ohm to 10 Mohm. */

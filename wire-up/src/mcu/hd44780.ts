@@ -3,17 +3,9 @@
 // 4..7 = D4..D7, the controller takes a nibble on every falling edge of E, starts in its power-up state (display blank, 8-bit
 // interface) and gets into 4-bit mode by the datasheet's sequence. No DOM, nothing from the rest of the app.
 
-/** A device on the I2C bus. */
-export interface I2cDevice {
-  /** The 7-bit address it answers to. */
-  address: number
-  /** A transmission addressed to it (the data bytes). Returns 0 when it answered every byte, 3 when it did not. */
-  write(data: number[]): number
-  /** `count` bytes for a master that reads. */
-  read(count: number): number[]
-  /** Lost its power: back to the state of a chip just switched on. */
-  reset(): void
-}
+import type { I2cDevice } from './i2c.ts'
+
+export type { I2cDevice }
 
 /** Everything a picture of the display needs. */
 export interface LcdSnapshot {
@@ -52,7 +44,7 @@ export class Hd44780Backpack implements I2cDevice {
   private shift = 0
   private bits4 = false
   private initialized = false
-  private lcdBacklight = false
+  private lcdBacklight = true
   private pending: number | null = null
   private lastEnable = 0
   private port = 0xff
@@ -76,7 +68,8 @@ export class Hd44780Backpack implements I2cDevice {
     this.shift = 0
     this.bits4 = false
     this.initialized = false
-    this.lcdBacklight = false
+    // the expander's pins all start high, so the backlight transistor is on until the first byte says otherwise
+    this.lcdBacklight = true
     this.pending = null
     this.lastEnable = 0
     this.port = 0xff
@@ -203,11 +196,69 @@ export class Hd44780Backpack implements I2cDevice {
     }
   }
 
+  live(): Record<string, number> {
+    return lcdToLive(this.snapshot())
+  }
+
   /** The visible text, one string per row (custom characters as their codes 0..7 left as control characters). */
   text(): string[] {
     const s = this.snapshot()
     const out: string[] = []
     for (let r = 0; r < s.rows; r++) out.push(String.fromCharCode(...s.chars.slice(r * s.cols, (r + 1) * s.cols)))
     return out
+  }
+}
+
+/** Rows of a custom character packed into one number (5 bits a row, first row highest). */
+function packRows(rows: number[]): number {
+  return rows.reduce((a, r) => a * 32 + (r & 31), 0)
+}
+
+function unpackRows(v: number): number[] {
+  const out: number[] = []
+  let rest = v
+  for (let i = 0; i < 8; i++) {
+    out.unshift(rest % 32)
+    rest = Math.floor(rest / 32)
+  }
+  return out
+}
+
+/** The display as numbers for a part's live values: `c0..` the cell codes, `g0..g7` the custom characters, and the flags. */
+export function lcdToLive(s: LcdSnapshot): Record<string, number> {
+  const live: Record<string, number> = {
+    cols: s.cols,
+    rows: s.rows,
+    on: s.on ? 1 : 0,
+    bx: s.boxes ? 1 : 0,
+    bl: s.backlight ? 1 : 0,
+    cu: s.cursorOn ? 1 : 0,
+    bk: s.blinkOn ? 1 : 0,
+    // the cursor cell as 1 + row * cols + col, 0 when it is not in the window
+    cc: s.cursor ? 1 + s.cursor.row * s.cols + s.cursor.col : 0,
+  }
+  s.chars.forEach((c, i) => (live[`c${i}`] = c))
+  s.cgram.forEach((rows, i) => (live[`g${i}`] = packRows(rows)))
+  return live
+}
+
+/** The inverse of `lcdToLive`; a part with no values yet (never solved) gives a powered-off display. */
+export function lcdFromLive(live: Record<string, number>): LcdSnapshot {
+  const cols = live.cols ?? 16
+  const rows = live.rows ?? 2
+  const chars: number[] = []
+  for (let i = 0; i < cols * rows; i++) chars.push(live[`c${i}`] ?? 0x20)
+  const cc = live.cc ?? 0
+  return {
+    cols,
+    rows,
+    chars,
+    on: (live.on ?? 0) > 0.5,
+    boxes: (live.bx ?? 1) > 0.5,
+    backlight: (live.bl ?? 0) > 0.5,
+    cursorOn: (live.cu ?? 0) > 0.5,
+    blinkOn: (live.bk ?? 0) > 0.5,
+    cursor: cc > 0 ? { col: (cc - 1) % cols, row: Math.floor((cc - 1) / cols) } : null,
+    cgram: Array.from({ length: 8 }, (_, i) => unpackRows(live[`g${i}`] ?? 0)),
   }
 }

@@ -4,6 +4,7 @@ import { advance } from '../sim/solver.ts'
 import type { SolveResult } from '../sim/solver.ts'
 import { defOf, pinWorld } from '../parts/index.ts'
 import type { PartLive, Stress } from '../parts/types.ts'
+import { I2cBuses } from './i2c.ts'
 import { McuBoards } from './mcuBoards.ts'
 import { padOf } from '../parts/arduino.ts'
 import { buildNetlist } from './connectivity.ts'
@@ -58,6 +59,8 @@ export class Simulation {
   private world: World
   /** The sketches running on the Arduino boards (one machine per powered board). */
   readonly boards = new McuBoards()
+  /** The I2C devices on the boards' buses (a display, ...). */
+  readonly i2c = new I2cBuses()
   private pwmPhase = 0
   /** The frequency of the PWM wave on each pad that has duty between 0 and 1 (by pad key); 0 or missing = a stand-in rate. */
   private padHz = new Map<string, number>()
@@ -113,6 +116,7 @@ export class Simulation {
         ccIds: res.ccIds,
       })
       if (part.type === 'arduino-uno') this.boards.decorate(part.id, ev.live, this.clock)
+      this.i2c.decorate(part.id, ev.live)
       this.live.set(part.id, ev.live)
       if (ev.stress) this.stress.set(part.id, ev.stress)
     }
@@ -138,6 +142,14 @@ export class Simulation {
     const v = this.result?.v
     if (!nodes || !v) return 0
     return (v[nodes[padOf(pad)]] ?? 0) - (v[nodes[3]] ?? 0)
+  }
+
+  /** Voltage between two pins of a part (a, b are pin indexes), from the last solve. */
+  volts(partId: string, a: number, b: number): number {
+    const nodes = this.net.partPins.get(partId)
+    const v = this.result?.v
+    if (!nodes || !v) return 0
+    return (v[nodes[a]] ?? 0) - (v[nodes[b]] ?? 0)
   }
 
   /** The 5 V rail of an Arduino board against its GND (analogRead's reference). */
@@ -237,7 +249,10 @@ export class Simulation {
     this.clock += dt
     this.refresh()
     // the sketches run first, so what they do to their pads is in the solve below
+    this.i2c.update(this, this.world)
     this.boards.update(this, this.world, dt)
+    // a display that was written to shows it now, even when the circuit itself did not change and nothing else would redo the readings
+    if (this.i2c.takeDirty() && this.solved) this.show(this.solved)
     const pwm = this.pwmKeys()
     // capacitors charge and discharge in real time
     if (this.hasCaps && dt > 0 && pwm.length > 0) {

@@ -1956,3 +1956,50 @@ export function segDisplaySprite(): Sprite {
 export function seg4DisplaySprite(): Sprite {
   return segBodySprite('seg7x4', 200)
 }
+
+// ---------------------------------------------------------------- 1602 character LCD with I2C backpack
+
+/** Board size in art pixels: 0.1" = 10, so the module is about 80 x 36 mm like the real one. */
+export const LCD_W = 316
+export const LCD_H = 142
+/** The metal frame round the glass, the glass itself (the part draws the dots there) and the first pad of the 16 pin header. */
+export const LCD_BEZEL = { x: 12, y: 27, w: 289, h: 96 }
+export const LCD_SCREEN = { x: 23, y: 46, w: 266, h: 58 }
+export const LCD_PAD0 = { x: 26, y: 8 }
+
+/**
+ * A 1602 LCD module seen from the front, upright (references: the QAPASS 1602 I2C module photo the user sent 2026-10-14, the front and
+ * the back of one board; the photo of the front is turned upside down). A green PCB with four mounting holes, the 16 gold pads of
+ * the display header along the top edge (pin 1 at the left), the black metal frame with the blue glass, and the light plastic tab of
+ * the backlight at the right edge. The backpack with the PCF8574 is behind the board: only its four pins show, as legs the part draws
+ * on the left. The part draws the glass (dots), the printed pin names and the legs. Cell (0, 0) is at world (0, 0).
+ */
+export function lcd1602Sprite(): Sprite {
+  return sprite('lcd1602', () => {
+    const g = new PixelGrid(LCD_W, LCD_H)
+    const mask = new PixelGrid(LCD_W, LCD_H)
+    mask.rrect(0, 0, LCD_W, LCD_H, 3, 'a')
+    put(g, shadedMask(mask, () => 'k', 'l', 'q', 2), 0, 0)
+    // the four mounting holes: a gold ring round a clear hole
+    for (const [hx, hy] of [[9, 9], [306, 9], [9, 132], [306, 132]]) {
+      g.disc(hx, hy, 7, 'f')
+      g.disc(hx, hy, 5, '.')
+    }
+    // the display header: 16 gold pads with a silver solder dot and the hole of the pin
+    for (let k = 0; k < 16; k++) {
+      const cx = LCD_PAD0.x + 10 * k
+      g.disc(cx, LCD_PAD0.y, 4, 'f')
+      g.disc(cx, LCD_PAD0.y, 2.6, 's')
+      g.disc(cx, LCD_PAD0.y, 1, 'o')
+    }
+    // the backlight's plastic tab at the right edge, partly under the frame
+    put(g, shadedBlock(10, 52, 1, () => 't', 'T', 'y', 1), 303, 33)
+    // the frame: black metal with a lit top and left edge, and the dark recess the glass sits in
+    put(g, shadedBlock(LCD_BEZEL.w, LCD_BEZEL.h, 2, () => 'j', 'J', 'o', 2), LCD_BEZEL.x, LCD_BEZEL.y)
+    g.rect(LCD_SCREEN.x - 2, LCD_SCREEN.y - 2, LCD_SCREEN.w + 4, LCD_SCREEN.h + 4, 'r')
+    return g.build(
+      { k: '#239b4b', l: '#4cc07a', q: '#16743a', f: '#d9b44a', s: '#cdd1d8', o: '#14161a', j: '#1b1b21', J: '#3c3c46', r: '#0a0a0f', t: '#d5d8de', T: '#f1f3f6', y: '#8d929c' },
+      '#06130b',
+    )
+  })
+}

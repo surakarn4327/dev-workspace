@@ -53,4 +53,4 @@ npm run build   # tsc (strict) + vite build
 
 ## สถานะ
 
-v1 ครบตามแผน (2026-10-07) — v2 เริ่มแล้ว (2026-10-12): บอร์ด Arduino Uno R3 ใช้งานได้ครบ (ตัวบอร์ด + USB + ขา I/O จริง + ตัวรันโค้ด C++ แบบ Arduino (ชุด 1 ครบ: bit/shiftOut/tone/pulseIn/EEPROM/อาร์เรย์ 2 มิติ/struct/macro แบบฟังก์ชัน/Serial.print ตรงของจริง — ดู `PLAN-v2-realism.md`) + แผงโค้ดแบบเทอร์มินัล + Serial Monitor + PWM แบบเฉลี่ยกระแสจริง) — ยังไม่ทำ: ESP32, โหมดบล็อก, WiFi จำลอง, จอ I2C LCD
+v1 ครบตามแผน (2026-10-07) — v2 เริ่มแล้ว (2026-10-12): บอร์ด Arduino Uno R3 ใช้งานได้ครบ (ตัวบอร์ด + USB + ขา I/O จริง + ตัวรันโค้ด C++ แบบ Arduino (ชุด 1, 2 และ Wire + LiquidCrystal_I2C + จอ LCD 1602 I2C — ชิ้นส่วนจอ draft รอชม; ชุด 1 ครบ: bit/shiftOut/tone/pulseIn/EEPROM/อาร์เรย์ 2 มิติ/struct/macro แบบฟังก์ชัน/Serial.print ตรงของจริง — ดู `PLAN-v2-realism.md`) + แผงโค้ดแบบเทอร์มินัล + Serial Monitor + PWM แบบเฉลี่ยกระแสจริง) — ยังไม่ทำ: ESP32, โหมดบล็อก, WiFi จำลอง, จอ I2C LCD

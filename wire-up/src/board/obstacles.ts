@@ -79,6 +79,8 @@ function leadDirs(p: PartInstance): LeadDir[] | null {
     const header = (total - 2) / 4 + 2
     return def.pins(p).map((_, i) => (i < header ? { ...down, len: 2 } : { ...up, len: 3 }))
   }
+  // the LCD module's four pins come out of its left edge
+  if (p.type === 'lcd1602-i2c') return def.pins(p).map(() => ({ ...left, len: 2 }))
   if (p.type === 'arduino-uno') return def.pins(p).map((v) => (v.y < 10 ? { ...up, len: 2 } : { ...down, len: 2 }))
   if (p.type.startsWith('battery')) return def.pins(p).map(() => up)
   if (p.type.startsWith('ic-') || p.type.startsWith('seg7')) return def.pins(p).map((v) => (v.y === 0 ? up : down))

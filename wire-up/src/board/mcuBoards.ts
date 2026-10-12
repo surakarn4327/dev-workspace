@@ -327,8 +327,8 @@ export class McuBoards {
           p.tone = 0
         })
       },
-      i2cWrite: () => 2,
-      i2cRead: () => null,
+      i2cWrite: (addr, data) => sim.i2c.write(sim, partId, addr, data),
+      i2cRead: (addr, count) => sim.i2c.read(sim, partId, addr, count),
       serialWrite(text, t) {
         b.text += text
         b.total += text.length

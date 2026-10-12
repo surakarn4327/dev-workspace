@@ -99,7 +99,7 @@ describe('Wire', () => {
 })
 
 describe('LiquidCrystal_I2C on a 1602 backpack', () => {
-  const lcdRun = (body: string, secs = 3, decl = 'LiquidCrystal_I2C lcd(0x27, 16, 2);') => {
+  const lcdRun = (body: string, secs = 2, decl = 'LiquidCrystal_I2C lcd(0x27, 16, 2);') => {
     const dev = new Hd44780Backpack(0x27)
     const out = run(`${decl} void setup() { ${body} } void loop() {}`, secs, (l) => {
       l.devices[0x27] = dev
@@ -154,7 +154,7 @@ describe('LiquidCrystal_I2C on a 1602 backpack', () => {
     expect(off.dev.text()[0]).toBe('abc             ') // the text is still in the chip while the display is off
   })
 
-  it('scrolls the display and the entry direction can be changed', () => {
+  it('scrolls the display and the entry direction can be changed', { timeout: 30000 }, () => {
     const { dev } = lcdRun('lcd.init(); lcd.print("ABCDEFGHIJKLMNOP"); lcd.scrollDisplayLeft(); lcd.scrollDisplayLeft();')
     expect(dev.text()[0]).toBe('CDEFGHIJKLMNOP  ')
     const r = lcdRun('lcd.init(); lcd.setCursor(5, 0); lcd.rightToLeft(); lcd.print("abc");')

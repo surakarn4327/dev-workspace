@@ -1,5 +1,6 @@
 import type { Element, ElementCurrent } from '../sim/solver.ts'
 import type { Params, PartInstance, Vec } from '../board/world.ts'
+import type { I2cDevice } from '../mcu/i2c.ts'
 
 export type Category = 'power' | 'passive' | 'semiconductor' | 'logic' | 'switch' | 'sensor' | 'instrument' | 'board'
 
@@ -105,6 +106,11 @@ export interface PartDef {
   press?(p: PartInstance, down: boolean): boolean
   /** Limits `press` to part of the body (local coords); a mouse down elsewhere on the part drags it. */
   pressZone?(local: Vec): boolean
+  /**
+   * A part that sits on the I2C bus: which of its pins are the bus and the supply, and how to make the device that answers on it.
+   * The simulation keeps one device per such part and connects it to every board whose SDA and SCL are on the same nets.
+   */
+  i2c?: { sda: number; scl: number; vcc: number; gnd: number; create(p: PartInstance): I2cDevice }
   /** Parameter changed by the mouse wheel while hovering the part. */
   wheelKey?: string
   /** Colors of flexible leads. */
