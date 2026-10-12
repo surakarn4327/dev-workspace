@@ -155,4 +155,38 @@ describe('sketches on the board', () => {
     expect(s.uno.state.failed).toBe(true)
     expect(s.uno.state.failMsg).toContain('D7')
   })
+
+  it('tone() swings the pin: a LED on it shines at about half the current, and the pin reports its frequency', () => {
+    const steady = lab(LED_ON)
+    run(steady.sim, 0.3)
+    const full = steady.sim.live.get(steady.led.id)!.i
+    const s = lab('void setup() { tone(8, 440); } void loop() {}')
+    run(s.sim, 0.3)
+    const half = s.sim.live.get(s.led.id)!.i
+    expect(half).toBeGreaterThan(full * 0.3)
+    expect(half).toBeLessThan(full * 0.7)
+    expect(s.sim.boards.toneOf(s.uno.id, 8)).toBe(440)
+    s.uno.params.program = 'void setup() { tone(8, 440, 100); delay(300); } void loop() {}'
+    s.w.touch()
+    run(s.sim, 0.5)
+    expect(s.sim.boards.toneOf(s.uno.id, 8)).toBe(0)
+    expect(s.sim.live.get(s.led.id)!.i).toBeLessThan(0.0005)
+  })
+
+  it('EEPROM writes are kept in the board, survive a reset and a fresh simulation, and ask for a save', () => {
+    const s = lab('void setup() { Serial.begin(9600); EEPROM.write(5, 77); EEPROM.write(6, 1); Serial.println(EEPROM.read(5)); } void loop() {}')
+    let saves = 0
+    s.sim.boards.onPersist = () => saves++
+    run(s.sim, 0.3)
+    expect(s.sim.boards.info(s.uno.id).text).toBe('77\r\n')
+    expect(typeof s.uno.params.eeprom).toBe('string')
+    expect(s.uno.params.eeprom).toBe('ffffffffff4d01')
+    expect(saves).toBe(1)
+    // a new simulation of the same world (reload of the page / file): the sketch finds the cells as they were
+    s.uno.params.program = 'void setup() { Serial.begin(9600); Serial.println(EEPROM.read(5)); Serial.println(EEPROM.read(6)); Serial.println(EEPROM.read(7)); } void loop() {}'
+    const again = new Simulation(s.w)
+    run(again, 0.3)
+    expect(again.boards.info(s.uno.id).text).toBe('77\r\n1\r\n255\r\n')
+    expect(saves).toBe(1)
+  })
 })

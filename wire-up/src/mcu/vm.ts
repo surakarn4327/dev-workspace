@@ -78,15 +78,49 @@ export function wrapType(t: string, v: number): number {
   }
 }
 
-/** The text Serial.print and String() make of a value of the given static type. */
+/**
+ * Arduino's `Print::printFloat`: on the AVR a double is a 32-bit float, the number is rounded by adding half of the last digit, and
+ * the digits come out one at a time. Not `toFixed`, which rounds differently in the last place.
+ */
+function printFloat(value: number, digits: number): string {
+  if (Number.isNaN(value)) return 'nan'
+  if (!Number.isFinite(value)) return 'inf'
+  let n = Math.fround(value)
+  if (n > 4294967040 || n < -4294967040) return 'ovf'
+  let out = ''
+  if (n < 0) {
+    out = '-'
+    n = -n
+  }
+  let rounding = 0.5
+  for (let i = 0; i < digits; i++) rounding = Math.fround(rounding / 10)
+  n = Math.fround(n + rounding)
+  const whole = Math.floor(n)
+  let rest = Math.fround(n - whole)
+  out += String(whole)
+  if (digits > 0) out += '.'
+  for (let i = 0; i < digits; i++) {
+    rest = Math.fround(rest * 10)
+    const d = Math.floor(rest)
+    out += String(d)
+    rest = Math.fround(rest - d)
+  }
+  return out
+}
+
+/**
+ * The text Serial.print and String() make of a value of the given static type. `arg` is the second argument of print: the number
+ * of decimals for a float, the base (2, 8, 10, 16) for an integer. With a base the number is printed as a number even for a char,
+ * and a negative int comes out as the 32-bit pattern, as the Arduino core does (print(-1, HEX) is FFFFFFFF).
+ */
 export function formatValue(v: unknown, t: string, arg?: number): string {
   if (typeof v === 'string') return v
   if (Array.isArray(v)) return v.map((c) => String.fromCharCode(c as number)).join('').replace(/\0.*$/, '')
   const n = v as number
-  if (t === 'char') return String.fromCharCode(n & 0xff)
-  if (t === 'float') return Number.isFinite(n) ? n.toFixed(arg === undefined ? 2 : Math.min(Math.max(arg, 0), 10)) : Number.isNaN(n) ? 'nan' : n > 0 ? 'inf' : '-inf'
+  if (t === 'float') return printFloat(n, arg === undefined ? 2 : Math.min(Math.max(Math.trunc(arg), 0), 10))
+  if (arg === undefined && t === 'char') return String.fromCharCode(n & 0xff)
   if (arg !== undefined && arg !== 10 && (arg === 2 || arg === 8 || arg === 16)) {
-    const u = t === 'int' ? n & 0xffff : t === 'long' ? n >>> 0 : t === 'char' || t === 'byte' ? n & 0xff : n >>> 0
+    const u = t === 'byte' ? n & 0xff : t === 'uint' ? n & 0xffff : n >>> 0
     return u.toString(arg).toUpperCase()
   }
   return String(Math.trunc(n))
@@ -414,9 +448,17 @@ export class Machine {
         case OP.BOOL:
           st.push(st.pop() ? 1 : 0)
           break
-        case OP.NEWARR:
-          st.push(new Array<number | string>(op.a as number).fill(op.b === 'String' ? '' : 0))
+        case OP.NEWARR: {
+          const fill = op.b === 'String' ? '' : 0
+          // a third operand makes an array of arrays (the rows of a 2-D array, the structs of an array of structs)
+          const cols = op.c ?? 0
+          st.push(cols > 0 ? Array.from({ length: op.a as number }, () => new Array<number | string>(cols).fill(fill)) : new Array<number | string>(op.a as number).fill(fill))
           cycles = 20
+          break
+        }
+        case OP.COPY:
+          st.push((st.pop() as unknown[]).slice())
+          cycles = 30
           break
         case OP.CONCAT: {
           const y = st.pop()
@@ -690,6 +732,18 @@ export class Machine {
         return (num(0) * 180) / Math.PI
       case 'bitRead':
         return (num(0) >>> num(1)) & 1
+      case 'pgm_read_byte':
+      case 'pgm_read_word':
+      case 'pgm_read_dword':
+      case 'pgm_read_float':
+        // flash tables are ordinary arrays here, and `&table[i]` was already read as the element
+        return num(0)
+      case '__sizeof': {
+        // [array, element size, rank]
+        const arr = a[0] as unknown[]
+        const inner = num(2) === 2 && arr.length > 0 ? (arr[0] as unknown[]).length : 1
+        return arr.length * inner * num(1)
+      }
       case 'bit':
         return num(0) >= 0 && num(0) < 32 ? (1 << num(0)) >>> 0 : 0
       case 'shiftOut': {
@@ -783,9 +837,31 @@ export class Machine {
       case 'Serial.println':
         this.serialOut((a.length > 0 ? formatValue(a[0], ts[0] ?? 'int', a.length > 1 ? num(1) : undefined) : '') + '\r\n', t)
         return 0
-      case 'Serial.write':
-        this.serialOut(typeof a[0] === 'string' ? (a[0] as string) : String.fromCharCode(num(0) & 0xff), t)
+      case 'Serial.write': {
+        if (Array.isArray(a[0])) {
+          // write(buffer, length)
+          const codes = (a[0] as number[]).slice(0, a.length > 1 ? num(1) : undefined)
+          this.serialOut(codes.map((c) => String.fromCharCode(c & 0xff)).join(''), t)
+        } else this.serialOut(typeof a[0] === 'string' ? (a[0] as string) : String.fromCharCode(num(0) & 0xff), t)
         return 0
+      }
+      case 'Serial.availableForWrite':
+        return Math.max(0, 63 - Math.round(Math.max(0, this.serialBusyUntil - t) * (this.baud / 10)))
+      case 'Serial.readString': {
+        // the buffer is all there is: the real call would also wait out its timeout for more
+        const s = this.input.map((c) => String.fromCharCode(c)).join('')
+        this.input.length = 0
+        return s
+      }
+      case 'Serial.readStringUntil': {
+        let s = ''
+        while (this.input.length > 0) {
+          const c = this.input.shift()!
+          if (c === (num(0) & 0xff)) break
+          s += String.fromCharCode(c)
+        }
+        return s
+      }
       case 'Serial.available':
         return this.input.length
       case 'Serial.read':

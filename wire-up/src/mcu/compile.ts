@@ -2,7 +2,7 @@
 // of the 16-bit AVR, integer division, String concatenation) so the machine only has to wrap and do the arithmetic. No DOM.
 
 import { CompileError, parse } from './lang.ts'
-import type { Ast, Expr, FuncDef, Stmt, Type } from './lang.ts'
+import type { Ast, Expr, FuncDef, Stmt, StructDef, Type } from './lang.ts'
 
 export { CompileError } from './lang.ts'
 export type { Type } from './lang.ts'
@@ -36,6 +36,7 @@ export const OP = {
   BOOL: 24,
   CONCAT: 25,
   CALLM: 26,
+  COPY: 27,
 }
 
 export interface Op {
@@ -46,6 +47,8 @@ export interface Op {
   k?: boolean
   /** Static types of call arguments, for the lettering of Serial.print and String(). */
   ts?: string[]
+  /** A third operand: the columns of a 2-D array or the members of an array of structs (NEWARR). */
+  c?: number
   l: number
 }
 
@@ -71,6 +74,8 @@ interface VarInfo {
   type: Type
   array: boolean
   global: boolean
+  /** 1 for a plain array, 2 for a 2-D one (only meaningful when `array`). */
+  rank: 1 | 2
   /** A global `const` integer with a value known at compile time (usable as an array size or a case label). */
   constVal?: number
 }
@@ -78,6 +83,12 @@ interface VarInfo {
 interface Ty {
   t: Type
   arr: boolean
+  /** For arrays: 1 (default) or 2. */
+  rank?: 1 | 2
+}
+
+function isStruct(t: Type): boolean {
+  return t.startsWith('struct:')
 }
 
 const BOOL: Ty = { t: 'bool', arr: false }
@@ -141,6 +152,10 @@ const BUILTINS: Record<string, { ret: RetRule; min: number; max: number }> = {
   round: { ret: 'long', min: 1, max: 1 },
   bitRead: { ret: 'int', min: 2, max: 2 },
   bit: { ret: 'ulong', min: 1, max: 1 },
+  pgm_read_byte: { ret: 'byte', min: 1, max: 1 },
+  pgm_read_word: { ret: 'uint', min: 1, max: 1 },
+  pgm_read_dword: { ret: 'ulong', min: 1, max: 1 },
+  pgm_read_float: { ret: 'float', min: 1, max: 1 },
   tone: { ret: 'void', min: 2, max: 3 },
   noTone: { ret: 'void', min: 1, max: 1 },
   pulseIn: { ret: 'ulong', min: 2, max: 3 },
@@ -162,8 +177,11 @@ const SERIAL: Record<string, { ret: Type; min: number; max: number }> = {
   end: { ret: 'void', min: 0, max: 0 },
   print: { ret: 'void', min: 1, max: 2 },
   println: { ret: 'void', min: 0, max: 2 },
-  write: { ret: 'void', min: 1, max: 1 },
+  write: { ret: 'void', min: 1, max: 2 },
   available: { ret: 'int', min: 0, max: 0 },
+  availableForWrite: { ret: 'int', min: 0, max: 0 },
+  readString: { ret: 'String', min: 0, max: 0 },
+  readStringUntil: { ret: 'String', min: 1, max: 1 },
   read: { ret: 'int', min: 0, max: 0 },
   peek: { ret: 'int', min: 0, max: 0 },
   parseInt: { ret: 'long', min: 0, max: 0 },
@@ -241,10 +259,10 @@ class FnCompiler {
     if (this.nextSlot > this.maxSlot) this.maxSlot = this.nextSlot
     return s
   }
-  declareLocal(name: string, type: Type, array: boolean, line: number): VarInfo {
+  declareLocal(name: string, type: Type, array: boolean, line: number, rank: 1 | 2 = 1): VarInfo {
     const scope = this.scopes[this.scopes.length - 1]
     if (scope.has(name)) throw new CompileError(`redeclaration of '${name}'`, line)
-    const v: VarInfo = { slot: this.slotFor(), type, array, global: false }
+    const v: VarInfo = { slot: this.slotFor(), type, array, global: false, rank }
     scope.set(name, v)
     return v
   }
@@ -272,7 +290,7 @@ class FnCompiler {
   compileBody(): void {
     const fn = this.fn
     if (fn) {
-      for (const p of fn.params) this.declareLocal(p.name || `_${this.nextSlot}`, p.type, p.array, fn.line)
+      for (const p of fn.params) this.declareLocal(p.name || `_${this.nextSlot}`, p.type, p.array, fn.line, p.rank)
       this.push()
       for (const s of fn.body ?? []) this.stmt(s)
       this.pop()
@@ -425,6 +443,7 @@ class FnCompiler {
   private condition(e: Expr): void {
     const t = this.expr(e, true)
     if (t.arr) throw new CompileError('an array cannot be used as a condition', e.line)
+    if (isStruct(t.t)) throw new CompileError('a struct cannot be used as a condition', e.line)
   }
 
   private decl(s: Extract<Stmt, { k: 'decl' }>): void {
@@ -432,42 +451,96 @@ class FnCompiler {
     if (s.isStatic) {
       // a static local keeps its value between calls: a global with a private name
       const gname = `${this.fnName}.${s.name}`
-      const v = this.unit.addGlobal(gname, s.type, s.array, s.line)
+      const v = this.unit.addGlobal(gname, s.type, s.array, s.line, s.rank)
       this.unit.initDecl(v, s, this.fnName)
       this.alias(s.name, v)
       return
     }
-    const v = this.declareLocal(s.name, s.type, s.array, s.line)
+    const v = this.declareLocal(s.name, s.type, s.array, s.line, s.rank)
     this.initVar(v, s)
   }
 
   initVar(v: VarInfo, s: Extract<Stmt, { k: 'decl' }>): void {
     const set = (): void => {
-      // an array reference is stored as it is (no integer wrap)
-      this.emit(v.global ? OP.GSET : OP.LSET, s.line, v.slot, s.array ? 'float' : v.type)
+      // an array or struct reference is stored as it is (no integer wrap)
+      this.emit(v.global ? OP.GSET : OP.LSET, s.line, v.slot, s.array || isStruct(v.type) ? 'float' : v.type)
     }
+    const load = (): void => {
+      this.emit(v.global ? OP.GGET : OP.LGET, s.line, v.slot)
+    }
+    const fields = isStruct(v.type) ? this.unit.structOf(v.type, s.line).fields : null
     if (s.array) {
+      const rows = s.rows
+      const items = Array.isArray(s.init) ? s.init : null
       let len = -1
       if (s.len) len = this.unit.constEval(s.len, this)
-      const items = Array.isArray(s.init) ? s.init : null
-      if (len < 0) {
-        if (items === null) throw new CompileError(`array size missing in '${s.name}'`, s.line)
-        len = items.length
-      }
+      else if (rows) len = rows.length
+      else if (items && v.rank === 1) len = items.length
+      if (len < 0) throw new CompileError(`array size missing in '${s.name}'`, s.line)
       if (len <= 0) throw new CompileError(`size of array '${s.name}' is not positive`, s.line)
-      if (len > 2048) throw new CompileError(`array '${s.name}' is too big for the Uno's 2 kB of memory`, s.line)
-      this.emit(OP.NEWARR, s.line, len, v.type)
+      const cols = v.rank === 2 ? this.unit.constEval(s.len2!, this) : fields ? fields.length : 0
+      if (v.rank === 2 && cols <= 0) throw new CompileError(`size of array '${s.name}' is not positive`, s.line)
+      if (len * Math.max(cols, 1) > 2048) throw new CompileError(`array '${s.name}' is too big for the Uno's 2 kB of memory`, s.line)
+      if (fields && fields.some((f) => f.type === 'String')) throw new CompileError('arrays of structs with String members are not supported by this simulator', s.line)
+      if (v.rank === 2 && items && items.length > 0) throw new CompileError(`'${s.name}' is a 2-D array: write the initialiser as {{...}, {...}}`, s.line)
+      const op = this.emit(OP.NEWARR, s.line, len, v.type)
+      if (cols > 0) this.code[op].c = cols
       set()
-      if (items) {
+      if (rows) {
+        if (!fields && v.rank !== 2) throw new CompileError(`'${s.name}' is a 1-D array: write the initialiser as {...}`, s.line)
+        if (rows.length > len) throw new CompileError(`too many initializers for '${s.name}'`, s.line)
+        rows.forEach((row, i) => {
+          if (row.length > cols) throw new CompileError(`too many initializers for a row of '${s.name}'`, s.line)
+          row.forEach((it, j) => {
+            const type = fields ? fields[j].type : v.type
+            load()
+            this.emit(OP.PUSH, s.line, i)
+            this.emit(OP.AGET, s.line)
+            this.emit(OP.PUSH, s.line, j)
+            const t = this.expr(it, true)
+            this.convert(t, { t: type, arr: false }, s.line)
+            this.emit(OP.ASET, s.line, type)
+          })
+        })
+      } else if (items) {
+        if (fields) throw new CompileError(`'${s.name}' is an array of structs: write the initialiser as {{...}, {...}}`, s.line)
         if (items.length > len) throw new CompileError(`too many initializers for '${s.name}'`, s.line)
         items.forEach((it, i) => {
-          this.emit(v.global ? OP.GGET : OP.LGET, s.line, v.slot)
+          load()
           this.emit(OP.PUSH, s.line, i)
           const t = this.expr(it, true)
           this.convert(t, { t: v.type, arr: false }, s.line)
           this.emit(OP.ASET, s.line, v.type)
         })
       }
+      return
+    }
+    if (fields) {
+      if (s.init !== null && !Array.isArray(s.init)) {
+        // Point b = a; makes a copy
+        const t = this.expr(s.init, true)
+        this.convert(t, { t: v.type, arr: false }, s.line)
+        set()
+        return
+      }
+      this.emit(OP.NEWARR, s.line, fields.length, 'int')
+      set()
+      fields.forEach((f, j) => {
+        if (f.type !== 'String') return
+        load()
+        this.emit(OP.PUSH, s.line, j)
+        this.emit(OP.PUSH, s.line, '')
+        this.emit(OP.ASET, s.line, 'String')
+      })
+      const items = Array.isArray(s.init) ? s.init : []
+      if (items.length > fields.length) throw new CompileError(`too many initializers for '${s.name}'`, s.line)
+      items.forEach((it, j) => {
+        load()
+        this.emit(OP.PUSH, s.line, j)
+        const t = this.expr(it, true)
+        this.convert(t, { t: fields[j].type, arr: false }, s.line)
+        this.emit(OP.ASET, s.line, fields[j].type)
+      })
       return
     }
     if (s.init !== null && !Array.isArray(s.init)) {
@@ -483,6 +556,11 @@ class FnCompiler {
   /** Convert the value on top of the stack from type `from` to type `to`. */
   private convert(from: Ty, to: Ty, line: number): void {
     if (from.arr !== to.arr) throw new CompileError('invalid conversion between an array and a value', line)
+    if (isStruct(from.t) || isStruct(to.t)) {
+      if (from.t !== to.t) throw new CompileError(`cannot convert '${from.t.replace('struct:', '')}' to '${to.t.replace('struct:', '')}'`, line)
+      if (!to.arr) this.emit(OP.COPY, line) // a struct is passed and assigned by value
+      return
+    }
     if (from.t === 'String' && to.t !== 'String') throw new CompileError(`cannot convert 'String' to '${to.t}'`, line)
     if (to.t === 'String' && from.t !== 'String') {
       // String s = 5; makes the number's text
@@ -511,7 +589,7 @@ class FnCompiler {
         const v = this.lookup(e.name)
         if (v) {
           if (need) this.emit(v.global ? OP.GGET : OP.LGET, e.line, v.slot)
-          return { t: v.type, arr: v.array }
+          return { t: v.type, arr: v.array, rank: v.rank }
         }
         const c = CONSTANTS[e.name]
         if (c) {
@@ -531,11 +609,43 @@ class FnCompiler {
         if (!isInt(i.t) || i.arr) throw new CompileError('array subscript is not an integer', e.line)
         this.emit(OP.AGET, e.line)
         if (!need) this.emit(OP.POP, e.line)
+        // the first index of a 2-D array gives a row, which is an array again
+        if (a.rank === 2) return { t: a.t, arr: true, rank: 1 }
         return { t: a.t, arr: false }
+      }
+      case 'sizeof': {
+        // bytes as the AVR counts them; an array is its length times the size of an element
+        let type: Type
+        let arr = false
+        let rank: 1 | 2 = 1
+        if (e.type) type = e.type
+        else {
+          const t = this.typeOf(e.e!)
+          type = t.t
+          arr = t.arr
+          rank = t.rank ?? 1
+        }
+        const size = this.unit.sizeOf(type, e.line)
+        if (arr) {
+          this.expr(e.e!, true)
+          this.emit(OP.PUSH, e.line, size)
+          this.emit(OP.PUSH, e.line, rank)
+          this.emit(OP.CALLB, e.line, '__sizeof', 3)
+        } else this.emit(OP.PUSH, e.line, size)
+        if (!need) this.emit(OP.POP, e.line)
+        return { t: 'uint', arr: false }
+      }
+      case 'member': {
+        const f = this.fieldOf(e)
+        this.expr(e.obj, true)
+        this.emit(OP.PUSH, e.line, f.index)
+        this.emit(OP.AGET, e.line)
+        if (!need) this.emit(OP.POP, e.line)
+        return { t: f.type, arr: false }
       }
       case 'un': {
         const t = this.expr(e.e, true)
-        if (t.arr) throw new CompileError('invalid operand to unary operator', e.line)
+        if (t.arr || isStruct(t.t)) throw new CompileError('invalid operand to unary operator', e.line)
         let r: Ty
         if (e.op === '-') {
           if (t.t === 'String') throw new CompileError("invalid operand 'String' to unary minus", e.line)
@@ -569,7 +679,7 @@ class FnCompiler {
       }
       case 'cast': {
         const t = this.expr(e.e, true)
-        if (t.arr) throw new CompileError('invalid cast of an array', e.line)
+        if (t.arr || isStruct(t.t)) throw new CompileError('invalid cast of an array or struct', e.line)
         if (t.t === 'String') throw new CompileError("invalid cast from type 'String'", e.line)
         if (e.type === 'String') throw new CompileError("use String(x) to make text of a number", e.line)
         this.emit(OP.CAST, e.line, e.type)
@@ -605,6 +715,7 @@ class FnCompiler {
     const a = this.expr(e.a, true)
     const b = this.expr(e.b, true)
     if (a.arr || b.arr) throw new CompileError(`invalid operands to binary ${op}: arrays cannot be used here`, e.line)
+    if (isStruct(a.t) || isStruct(b.t)) throw new CompileError(`invalid operands to binary ${op}: a struct cannot be used here (use its members)`, e.line)
     let r: Ty
     if (op === '==' || op === '!=' || op === '<' || op === '<=' || op === '>' || op === '>=') {
       if ((a.t === 'String') !== (b.t === 'String')) throw new CompileError(`invalid operands of types '${a.t}' and '${b.t}' to binary '${op}'`, e.line)
@@ -626,6 +737,24 @@ class FnCompiler {
     return r
   }
 
+  /** The static type of an expression, found without keeping the code that was made for it. */
+  private typeOf(e: Expr): Ty {
+    const mark = this.code.length
+    const t = this.expr(e, true)
+    this.code.length = mark
+    return t
+  }
+
+  /** Which slot of its struct a `.name` reaches, and the type of that member. */
+  private fieldOf(e: Extract<Expr, { k: 'member' }>): { index: number; type: Type } {
+    const o = this.typeOf(e.obj)
+    if (o.arr || !isStruct(o.t)) throw new CompileError(`request for member '${e.name}' in something that is not a struct`, e.line)
+    const def = this.unit.structOf(o.t, e.line)
+    const index = def.fields.findIndex((f) => f.name === e.name)
+    if (index < 0) throw new CompileError(`'${def.name}' has no member named '${e.name}'`, e.line)
+    return { index, type: def.fields[index].type }
+  }
+
   /** Load the current value of an lvalue; for array elements the array and index are first saved in temps. */
   private lvalue(target: Expr): { type: Type; load: () => void; store: (keep: boolean, line: number) => void; prepare: () => void } {
     if (target.k === 'id') {
@@ -645,6 +774,31 @@ class FnCompiler {
         },
       }
     }
+    if (target.k === 'member') {
+      const f = this.fieldOf(target)
+      const objTemp = this.temp()
+      return {
+        type: f.type,
+        prepare: () => {
+          this.expr(target.obj, true)
+          this.emit(OP.LSET, target.line, objTemp, 'float') // the struct reference: no integer wrap
+        },
+        load: () => {
+          this.emit(OP.LGET, target.line, objTemp)
+          this.emit(OP.PUSH, target.line, f.index)
+          this.emit(OP.AGET, target.line)
+        },
+        store: (keep, line) => {
+          const val = this.temp()
+          this.emit(OP.LSET, line, val, 'float')
+          this.emit(OP.LGET, line, objTemp)
+          this.emit(OP.PUSH, line, f.index)
+          this.emit(OP.LGET, line, val)
+          const at = this.emit(OP.ASET, line, f.type)
+          this.code[at].k = keep
+        },
+      }
+    }
     if (target.k === 'idx') {
       const arrTemp = this.temp()
       const idxTemp = this.temp()
@@ -656,6 +810,7 @@ class FnCompiler {
         prepare: () => {
           const a = this.expr(target.arr, true)
           if (!a.arr) throw new CompileError('invalid types for array subscript', target.line)
+          if (a.rank === 2) throw new CompileError('a 2-D array needs both indexes: a[row][column]', target.line)
           elem = a.t
           this.emit(OP.LSET, target.line, arrTemp, 'float') // the array reference: no integer wrap
           const i = this.expr(target.i, true)
@@ -732,6 +887,7 @@ class FnCompiler {
         const t = this.expr(a, true)
         if (p.array) {
           if (!t.arr) throw new CompileError(`argument ${i + 1} of '${e.name}' must be an array`, e.line)
+          if ((t.rank ?? 1) !== p.rank) throw new CompileError(`argument ${i + 1} of '${e.name}' must be a ${p.rank === 2 ? '2-D' : '1-D'} array`, e.line)
         } else this.convert(t, { t: p.type, arr: false }, e.line)
       })
       if (fn.ret === 'void' && need) throw new CompileError(`void value not ignored as it ought to be`, e.line)
@@ -760,6 +916,7 @@ class FnCompiler {
     for (const a of e.args) {
       const t = this.expr(a, true)
       if (t.arr) throw new CompileError(`an array cannot be passed to ${e.name}()`, e.line)
+      if (isStruct(t.t)) throw new CompileError(`a struct cannot be passed to ${e.name}()`, e.line)
       types.push(t.t)
     }
     const at = this.emit(OP.CALLB, e.line, e.name, e.args.length)
@@ -823,6 +980,7 @@ class FnCompiler {
       const types: Type[] = []
       for (const a of e.args) {
         const t = this.expr(a, true)
+        if (isStruct(t.t)) throw new CompileError(`Serial.${e.name}() cannot print a struct: print its members`, e.line)
         if (t.arr) {
           // a char array prints as text; handled by the machine
           types.push(t.t === 'char' || t.t === 'byte' ? 'String' : t.t)
@@ -854,20 +1012,50 @@ class FnCompiler {
 interface FnEntry {
   index: number
   ret: Type
-  params: { type: Type; array: boolean }[]
+  params: { type: Type; array: boolean; rank: 1 | 2 }[]
 }
 
 class Unit {
   globals = new Map<string, VarInfo>()
   fnTable = new Map<string, FnEntry>()
+  structs = new Map<string, StructDef>()
   nGlobals = 0
   /** Initialisers of globals (and statics) in order, compiled into `__init`. */
   private inits: { v: VarInfo; d: Extract<Stmt, { k: 'decl' }>; fnName: string }[] = []
   /** Names of the globals that are plain `const` integers with a constant initialiser. */
 
-  addGlobal(name: string, type: Type, array: boolean, line: number): VarInfo {
+  /** `sizeof` of a type on the AVR: int 2, long and float 4, a struct the sum of its members. */
+  sizeOf(type: Type, line: number): number {
+    switch (type) {
+      case 'bool':
+      case 'char':
+      case 'byte':
+        return 1
+      case 'int':
+      case 'uint':
+        return 2
+      case 'long':
+      case 'ulong':
+      case 'float':
+        return 4
+      case 'String':
+        return 6
+      case 'void':
+        return 1
+      default:
+        return this.structOf(type, line).fields.reduce((n, f) => n + this.sizeOf(f.type, line), 0)
+    }
+  }
+
+  structOf(type: Type, line: number): StructDef {
+    const def = this.structs.get(type.slice('struct:'.length))
+    if (!def) throw new CompileError(`'${type}' is not a known struct`, line)
+    return def
+  }
+
+  addGlobal(name: string, type: Type, array: boolean, line: number, rank: 1 | 2 = 1): VarInfo {
     if (this.globals.has(name)) throw new CompileError(`redeclaration of '${name}'`, line)
-    const v: VarInfo = { slot: this.nGlobals++, type, array, global: true }
+    const v: VarInfo = { slot: this.nGlobals++, type, array, global: true, rank }
     this.globals.set(name, v)
     return v
   }
@@ -937,12 +1125,13 @@ class Unit {
 export function compile(source: string): Program {
   const ast: Ast = parse(source)
   const unit = new Unit()
+  for (const d of ast.structs) unit.structs.set(d.name, d)
   // functions first, so calls can come before definitions and prototypes work
   const defs = new Map<string, FuncDef>()
   const order: FuncDef[] = []
   for (const f of ast.funcs) {
     const prev = unit.fnTable.get(f.name)
-    const sig = { ret: f.ret, params: f.params.map((p) => ({ type: p.type, array: p.array })) }
+    const sig = { ret: f.ret, params: f.params.map((p) => ({ type: p.type, array: p.array, rank: p.rank })) }
     if (prev) {
       if (f.body !== null && defs.has(f.name)) throw new CompileError(`redefinition of '${f.name}'`, f.line)
       if (f.body !== null) {
@@ -967,7 +1156,7 @@ export function compile(source: string): Program {
   }
   // globals
   for (const g of ast.globals) {
-    const v = unit.addGlobal(g.name, g.type, g.array, g.line)
+    const v = unit.addGlobal(g.name, g.type, g.array, g.line, g.rank)
     if (g.isConst && !g.array && g.init !== null && !Array.isArray(g.init) && g.type !== 'float' && g.type !== 'String') {
       try {
         v.constVal = unit.constEval(g.init, null)

@@ -5,7 +5,7 @@
 // parameters and return values (recursion included); if / else, for, while, do-while, switch, break, continue, return; the C
 // operators with C precedence, casts, ++ / --, compound assignment, ?: ; object-like #define; Serial and the Arduino core calls.
 
-export type Type = 'void' | 'bool' | 'char' | 'byte' | 'int' | 'uint' | 'long' | 'ulong' | 'float' | 'String'
+export type Type = 'void' | 'bool' | 'char' | 'byte' | 'int' | 'uint' | 'long' | 'ulong' | 'float' | 'String' | `struct:${string}`
 
 export class CompileError extends Error {
   readonly line: number
@@ -35,7 +35,7 @@ const ESCAPES: Record<string, string> = { n: '\n', r: '\r', t: '\t', '0': '\0', 
 export function lex(source: string): { tokens: Token[]; includes: string[] } {
   const raw: Token[] = []
   const includes: string[] = []
-  const macros = new Map<string, Token[]>()
+  const macros = new Map<string, { params: string[] | null; body: Token[] }>()
   let i = 0
   let line = 1
   const n = source.length
@@ -79,13 +79,21 @@ export function lex(source: string): { tokens: Token[]; includes: string[] } {
       if (m[1] === 'include') {
         includes.push(m[2].replace(/[<>"]/g, '').trim())
       } else if (m[1] === 'define') {
-        const d = /^(\w+)(\(?)\s*(.*)$/.exec(m[2])
+        // `#define NAME(a, b) body` is function-like only when the ( touches the name
+        const fn = /^(\w+)\(([^)]*)\)\s*(.*)$/.exec(m[2])
+        const d = fn ?? /^(\w+)\s*(.*)$/.exec(m[2])
         if (!d) throw new CompileError("macro names must be identifiers: '#define' needs a name", at)
-        if (d[2] === '(') throw new CompileError('function-like #define macros are not supported: use a function instead', at)
-        const body = lex(d[3]).tokens
+        const params = fn
+          ? fn[2]
+              .split(',')
+              .map((x) => x.trim())
+              .filter((x) => x !== '')
+          : null
+        if (params?.some((x) => !/^[A-Za-z_]\w*$/.test(x))) throw new CompileError(`bad parameter list in the macro '${d[1]}'`, at)
+        const body = lex(fn ? fn[3] : d[2]).tokens
         body.pop() // eof
         for (const t of body) t.line = at
-        macros.set(d[1], body)
+        macros.set(d[1], { params, body })
       }
       continue
     }
@@ -176,16 +184,58 @@ export function lex(source: string): { tokens: Token[]; includes: string[] } {
     }
   }
   raw.push({ t: 'eof', v: '', n: 0, float: false, line })
-  // macro expansion (object-like, nested a few levels)
+  // macro expansion (nested a few levels); a function-like macro takes the arguments in the parentheses after its name
   if (macros.size === 0) return { tokens: raw, includes }
-  const out: Token[] = []
-  const expand = (t: Token, depth: number): void => {
-    const body = t.t === 'id' ? macros.get(t.v) : undefined
-    if (body && depth < 8) for (const b of body) expand({ ...b, line: t.line }, depth + 1)
-    else out.push(t)
+  const expand = (list: Token[], depth: number): Token[] => {
+    const out: Token[] = []
+    for (let k = 0; k < list.length; k++) {
+      const t = list[k]
+      const macro = t.t === 'id' && depth < 8 ? macros.get(t.v) : undefined
+      if (!macro) {
+        out.push(t)
+        continue
+      }
+      if (macro.params === null) {
+        out.push(...expand(macro.body.map((b) => ({ ...b, line: t.line })), depth + 1))
+        continue
+      }
+      const open = list[k + 1]
+      if (!(open && open.t === 'op' && open.v === '(')) {
+        out.push(t) // the bare name of a function-like macro is just a name
+        continue
+      }
+      const args: Token[][] = [[]]
+      let nest = 0
+      let j = k + 2
+      for (; j < list.length; j++) {
+        const x = list[j]
+        if (x.t === 'eof') break
+        if (x.t === 'op' && x.v === '(') nest++
+        if (x.t === 'op' && x.v === ')') {
+          if (nest === 0) break
+          nest--
+        }
+        if (x.t === 'op' && x.v === ',' && nest === 0) args.push([])
+        else args[args.length - 1].push(x)
+      }
+      if (j >= list.length || list[j].t === 'eof') throw new CompileError(`unterminated argument list invoking macro '${t.v}'`, t.line)
+      const none = macro.params.length === 0 && args.length === 1 && args[0].length === 0
+      if (!none && args.length !== macro.params.length) {
+        throw new CompileError(`macro '${t.v}' requires ${macro.params.length} argument${macro.params.length === 1 ? '' : 's'}, but ${args.length} given`, t.line)
+      }
+      const filled = args.map((a) => expand(a, depth + 1))
+      const body: Token[] = []
+      for (const b of macro.body) {
+        const at = b.t === 'id' ? macro.params.indexOf(b.v) : -1
+        if (at >= 0) body.push(...filled[at].map((x) => ({ ...x, line: t.line })))
+        else body.push({ ...b, line: t.line })
+      }
+      out.push(...expand(body, depth + 1))
+      k = j
+    }
+    return out
   }
-  for (const t of raw) expand(t, 0)
-  return { tokens: out, includes }
+  return { tokens: expand(raw, 0), includes }
 }
 
 // ---------------------------------------------------------------- syntax tree
@@ -196,6 +246,8 @@ export type Expr =
   | { k: 'chr'; v: number; line: number }
   | { k: 'id'; name: string; line: number }
   | { k: 'idx'; arr: Expr; i: Expr; line: number }
+  | { k: 'member'; obj: Expr; name: string; line: number }
+  | { k: 'sizeof'; type: Type | null; e: Expr | null; line: number }
   | { k: 'call'; name: string; args: Expr[]; line: number }
   | { k: 'method'; obj: Expr; name: string; args: Expr[]; line: number }
   | { k: 'un'; op: '-' | '!' | '~' | '+'; e: Expr; line: number }
@@ -206,7 +258,23 @@ export type Expr =
   | { k: 'cast'; type: Type; e: Expr; line: number }
 
 export type Stmt =
-  | { k: 'decl'; type: Type; name: string; array: boolean; len: Expr | null; init: Expr | Expr[] | null; isStatic: boolean; isConst: boolean; line: number }
+  | {
+      k: 'decl'
+      type: Type
+      name: string
+      array: boolean
+      /** 1 for a plain array, 2 for `a[rows][cols]` (len is the rows, len2 the columns). */
+      rank: 1 | 2
+      len: Expr | null
+      len2: Expr | null
+      /** A value, a `{...}` list, or null. */
+      init: Expr | Expr[] | null
+      /** A `{{...}, {...}}` list of rows (2-D arrays and arrays of structs). */
+      rows: Expr[][] | null
+      isStatic: boolean
+      isConst: boolean
+      line: number
+    }
   | { k: 'expr'; e: Expr; line: number }
   | { k: 'if'; c: Expr; t: Stmt; f: Stmt | null; line: number }
   | { k: 'for'; init: Stmt | null; c: Expr | null; step: Expr | null; body: Stmt; line: number }
@@ -223,6 +291,12 @@ export interface Param {
   type: Type
   name: string
   array: boolean
+  rank: 1 | 2
+}
+
+export interface StructDef {
+  name: string
+  fields: { name: string; type: Type }[]
 }
 
 export interface FuncDef {
@@ -234,6 +308,7 @@ export interface FuncDef {
 }
 
 export interface Ast {
+  structs: StructDef[]
   globals: Extract<Stmt, { k: 'decl' }>[]
   funcs: FuncDef[]
   includes: string[]
@@ -262,7 +337,7 @@ const TYPE_WORDS: Record<string, Type> = {
   word: 'uint',
   size_t: 'uint',
 }
-const MODIFIERS = new Set(['const', 'static', 'volatile', 'unsigned', 'signed', 'register', 'inline'])
+const MODIFIERS = new Set(['const', 'static', 'volatile', 'unsigned', 'signed', 'register', 'inline', 'PROGMEM'])
 
 const BIN_PREC: Record<string, number> = {
   '||': 1,
@@ -290,6 +365,7 @@ const ASSIGN_OPS = new Set(['=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=',
 class Parser {
   private p = 0
   private toks: Token[]
+  private structs = new Map<string, StructDef>()
   constructor(toks: Token[]) {
     this.toks = toks
   }
@@ -325,6 +401,11 @@ class Parser {
     return this.next().v
   }
 
+  /** The type a word names: a built-in type word or a struct declared earlier. */
+  private typeWord(v: string): Type | undefined {
+    return TYPE_WORDS[v] ?? (this.structs.has(v) ? (`struct:${v}` as Type) : undefined)
+  }
+
   /** Is the next thing the start of a declaration (a type, perhaps with modifiers)? */
   private atType(): boolean {
     let k = 0
@@ -332,7 +413,8 @@ class Parser {
     const t = this.peek(k)
     if (t.t !== 'id') return false
     if (k > 0 && (t.v === 'unsigned' || t.v === 'signed')) return true
-    if (TYPE_WORDS[t.v] !== undefined) {
+    if (t.v === 'struct') return true
+    if (this.typeWord(t.v) !== undefined) {
       // `int(x)` is a call-style cast, not a declaration
       return !(this.peek(k + 1).t === 'op' && this.peek(k + 1).v === '(')
     }
@@ -352,14 +434,17 @@ class Parser {
       if (t.v === 'unsigned') unsigned = true
       else if (t.v === 'static') isStatic = true
       else if (t.v === 'const') isConst = true
-      else if (t.v === 'volatile' || t.v === 'signed' || t.v === 'register' || t.v === 'inline') {
+      else if (t.v === 'volatile' || t.v === 'signed' || t.v === 'register' || t.v === 'inline' || t.v === 'PROGMEM') {
         // no effect here
       } else if (t.v === 'long') {
         longs++
         base = 'long'
-      } else if (TYPE_WORDS[t.v] !== undefined) {
+      } else if (t.v === 'struct' && base === null && this.peek().t === 'id' && this.structs.has(this.peek().v)) {
+        this.p++ // `struct Point p;` names the type the same way `Point p;` does
+        base = `struct:${this.cur.v}` as Type
+      } else if (this.typeWord(t.v) !== undefined) {
         if (base !== null && !(base === 'long' && (t.v === 'int'))) break
-        base = TYPE_WORDS[t.v]
+        base = this.typeWord(t.v)!
       } else break
       this.p++
     }
@@ -377,10 +462,14 @@ class Parser {
   }
 
   parseProgram(includes: string[]): Ast {
-    const ast: Ast = { globals: [], funcs: [], includes }
+    const ast: Ast = { structs: [], globals: [], funcs: [], includes }
     while (this.cur.t !== 'eof') {
       if (this.accept(';')) continue
       const line = this.cur.line
+      if (this.atStructDef()) {
+        ast.structs.push(this.parseStruct())
+        continue
+      }
       if (!this.atType()) {
         if (this.cur.t === 'id' && this.peek().t === 'id') throw this.unknownType(this.cur)
         throw new CompileError(`expected a declaration before ${this.describe(this.cur)}`, line)
@@ -397,6 +486,49 @@ class Parser {
     return ast
   }
 
+  /** `struct Name {` or `typedef struct`: a struct definition rather than a variable or function of a struct type. */
+  private atStructDef(): boolean {
+    const t = this.cur
+    if (t.t !== 'id') return false
+    if (t.v === 'typedef') return true
+    return t.v === 'struct' && ((this.peek().t === 'id' && this.peek(2).t === 'op' && this.peek(2).v === '{') || (this.peek().t === 'op' && this.peek().v === '{'))
+  }
+
+  /** `struct Name { int a; byte b, c; };` and `typedef struct [Name] { ... } Name;` */
+  private parseStruct(): StructDef {
+    const line = this.cur.line
+    const typedef = this.cur.v === 'typedef'
+    if (typedef) this.p++
+    if (!(this.cur.t === 'id' && this.cur.v === 'struct')) throw new CompileError("only 'typedef struct' is supported here", line)
+    this.p++
+    let name = this.cur.t === 'id' ? this.next().v : ''
+    this.expect('{', "'{'")
+    const fields: StructDef['fields'] = []
+    while (!this.isOp('}')) {
+      if (this.peek(0).t === 'eof') throw new CompileError("expected '}' at end of input", this.cur.line)
+      const fline = this.cur.line
+      if (!this.atType()) throw new CompileError(`expected a member type before ${this.describe(this.cur)}`, fline)
+      const { type } = this.parseType()
+      if (type === 'void') throw new CompileError('a struct member cannot be void', fline)
+      if (type.startsWith('struct:')) throw new CompileError('a struct inside a struct is not supported by this simulator', fline)
+      do {
+        const fname = this.ident('a member name')
+        if (this.isOp('[')) throw new CompileError('array members in a struct are not supported by this simulator', this.cur.line)
+        if (fields.some((f) => f.name === fname)) throw new CompileError(`duplicate member '${fname}'`, fline)
+        fields.push({ name: fname, type })
+      } while (this.accept(','))
+      this.expect(';')
+    }
+    this.p++
+    if (typedef) name = this.ident('the type name')
+    else if (name === '') throw new CompileError('a struct needs a name', line)
+    this.expect(';')
+    if (this.structs.has(name)) throw new CompileError(`redefinition of 'struct ${name}'`, line)
+    const def: StructDef = { name, fields }
+    this.structs.set(name, def)
+    return def
+  }
+
   private parseFunction(ret: Type, name: string, line: number): FuncDef {
     this.expect('(')
     const params: Param[] = []
@@ -407,11 +539,18 @@ class Parser {
           const { type } = this.parseType()
           const pname = this.cur.t === 'id' ? this.next().v : ''
           let array = false
+          let rank: 1 | 2 = 1
           if (this.accept('[')) {
+            if (!this.isOp(']')) this.parseExpr() // the size of a parameter array means nothing
             this.expect(']')
             array = true
+            if (this.accept('[')) {
+              this.parseExpr()
+              this.expect(']')
+              rank = 2
+            }
           }
-          params.push({ type, name: pname, array })
+          params.push({ type, name: pname, array, rank })
         } while (this.accept(','))
       }
     }
@@ -427,33 +566,61 @@ class Parser {
     let name = first
     for (;;) {
       let array = false
+      let rank: 1 | 2 = 1
       let len: Expr | null = null
+      let len2: Expr | null = null
       if (this.accept('[')) {
         array = true
         if (!this.isOp(']')) len = this.parseExpr()
         this.expect(']')
-        if (this.isOp('[')) throw new CompileError('arrays with more than one dimension are not supported', this.cur.line)
+        if (this.accept('[')) {
+          rank = 2
+          if (this.isOp(']')) throw new CompileError(`the second size of array '${name}' must be given`, this.cur.line)
+          len2 = this.parseExpr()
+          this.expect(']')
+          if (this.isOp('[')) throw new CompileError('arrays with more than two dimensions are not supported', this.cur.line)
+        }
       }
+      if (this.cur.t === 'id' && this.cur.v === 'PROGMEM') this.p++
       let init: Expr | Expr[] | null = null
+      let rows: Expr[][] | null = null
       if (this.accept('=')) {
-        if (array && this.isOp('{')) {
+        if (this.isOp('{') && (array || type.startsWith('struct:'))) {
           this.p++
           const items: Expr[] = []
           if (!this.isOp('}')) {
             do {
               if (this.isOp('}')) break
-              items.push(this.parseAssign())
+              if (this.isOp('{')) {
+                // a row of a 2-D array or one struct of an array of structs
+                this.p++
+                const row: Expr[] = []
+                if (!this.isOp('}')) {
+                  do {
+                    if (this.isOp('}')) break
+                    row.push(this.parseAssign())
+                  } while (this.accept(','))
+                }
+                this.expect('}')
+                ;(rows ??= []).push(row)
+              } else if (array && rank === 2 && this.cur.t === 'str') {
+                const st = this.next()
+                const chars = [...st.v].map((ch) => ({ k: 'chr', v: ch.charCodeAt(0), line: st.line }) as Expr)
+                chars.push({ k: 'chr', v: 0, line: st.line })
+                ;(rows ??= []).push(chars)
+              } else items.push(this.parseAssign())
             } while (this.accept(','))
           }
           this.expect('}')
-          init = items
+          if (rows !== null && items.length > 0) throw new CompileError(`mixed braces in the initialiser of '${name}'`, this.cur.line)
+          init = rows !== null ? null : items
         } else if (array && this.cur.t === 'str') {
-          const s = this.next()
-          init = [...s.v].map((ch) => ({ k: 'chr', v: ch.charCodeAt(0), line: s.line }) as Expr)
-          init.push({ k: 'chr', v: 0, line: s.line })
+          const st = this.next()
+          init = [...st.v].map((ch) => ({ k: 'chr', v: ch.charCodeAt(0), line: st.line }) as Expr)
+          init.push({ k: 'chr', v: 0, line: st.line })
         } else init = this.parseAssign()
       }
-      out.push({ k: 'decl', type, name, array, len, init, isStatic, isConst, line })
+      out.push({ k: 'decl', type, name, array, rank, len, len2, init, rows, isStatic, isConst, line })
       if (!this.accept(',')) break
       name = this.ident()
     }
@@ -491,7 +658,7 @@ class Parser {
   private parseStmt(): Stmt {
     const t = this.cur
     const line = t.line
-    if (t.t === 'id' && this.peek().t === 'id' && !MODIFIERS.has(t.v) && TYPE_WORDS[t.v] === undefined && !['else', 'case', 'default', 'return', 'do'].includes(t.v)) throw this.unknownType(t)
+    if (t.t === 'id' && this.peek().t === 'id' && !MODIFIERS.has(t.v) && this.typeWord(t.v) === undefined && t.v !== 'struct' && !['else', 'case', 'default', 'return', 'do'].includes(t.v)) throw this.unknownType(t)
     if (t.t === 'op') {
       if (t.v === '{') {
         this.p++
@@ -625,7 +792,7 @@ class Parser {
     const left = this.parseTernary()
     if (this.cur.t === 'op' && ASSIGN_OPS.has(this.cur.v)) {
       const op = this.next()
-      if (left.k !== 'id' && left.k !== 'idx') throw new CompileError(`lvalue required as left operand of assignment`, op.line)
+      if (left.k !== 'id' && left.k !== 'idx' && left.k !== 'member') throw new CompileError(`lvalue required as left operand of assignment`, op.line)
       return { k: 'asg', op: op.v, target: left, v: this.parseAssign(), line: op.line }
     }
     return left
@@ -664,10 +831,15 @@ class Parser {
         this.p++
         return { k: 'un', op: t.v, e: this.parseUnary(), line: t.line }
       }
+      if (t.v === '&') {
+        // there are no pointers: `&x` is the value itself, which is all `pgm_read_byte(&table[i])` needs
+        this.p++
+        return this.parseUnary()
+      }
       if (t.v === '++' || t.v === '--') {
         this.p++
         const target = this.parseUnary()
-        if (target.k !== 'id' && target.k !== 'idx') throw new CompileError('lvalue required as increment operand', t.line)
+        if (target.k !== 'id' && target.k !== 'idx' && target.k !== 'member') throw new CompileError('lvalue required as increment operand', t.line)
         return { k: 'inc', op: t.v, prefix: true, target, line: t.line }
       }
       if (t.v === '(' && this.isCastAhead()) {
@@ -683,7 +855,7 @@ class Parser {
   private isCastAhead(): boolean {
     let k = 1
     let sawType = false
-    while (this.peek(k).t === 'id' && (MODIFIERS.has(this.peek(k).v) || TYPE_WORDS[this.peek(k).v] !== undefined)) {
+    while (this.peek(k).t === 'id' && (MODIFIERS.has(this.peek(k).v) || this.typeWord(this.peek(k).v) !== undefined)) {
       sawType = true
       k++
     }
@@ -702,14 +874,15 @@ class Parser {
         e = { k: 'idx', arr: e, i, line: t.line }
       } else if (t.v === '++' || t.v === '--') {
         this.p++
-        if (e.k !== 'id' && e.k !== 'idx') throw new CompileError('lvalue required as increment operand', t.line)
+        if (e.k !== 'id' && e.k !== 'idx' && e.k !== 'member') throw new CompileError('lvalue required as increment operand', t.line)
         e = { k: 'inc', op: t.v, prefix: false, target: e, line: t.line }
       } else if (t.v === '.') {
         this.p++
         const name = this.ident('a member name')
-        this.expect('(')
-        const args = this.parseArgs()
-        e = { k: 'method', obj: e, name, args, line: t.line }
+        if (this.isOp('(')) {
+          this.p++
+          e = { k: 'method', obj: e, name, args: this.parseArgs(), line: t.line }
+        } else e = { k: 'member', obj: e, name, line: t.line }
       } else break
     }
     return e
@@ -739,6 +912,19 @@ class Parser {
         return { k: 'str', v: s, line: t.line }
       }
       case 'id': {
+        if (t.v === 'sizeof') {
+          if (this.accept('(')) {
+            if (this.atType()) {
+              const { type } = this.parseType()
+              this.expect(')')
+              return { k: 'sizeof', type, e: null, line: t.line }
+            }
+            const e = this.parseExpr()
+            this.expect(')')
+            return { k: 'sizeof', type: null, e, line: t.line }
+          }
+          return { k: 'sizeof', type: null, e: this.parseUnary(), line: t.line }
+        }
         if (this.isOp('(')) {
           // `int(x)` style cast
           if (TYPE_WORDS[t.v] !== undefined && t.v !== 'String') {
