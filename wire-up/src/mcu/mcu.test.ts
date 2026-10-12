@@ -151,7 +151,7 @@ describe('Arduino sketches', () => {
     expect(semi.message).toContain("expected ';'")
     expect(errorOf('void setup() {}').message).toContain("'loop' was not declared")
     expect(errorOf('void setup() { x = 1; } void loop() {}').message).toContain("'x' was not declared")
-    expect(errorOf('void setup() { attachInterrupt(0, f, RISING); } void loop() {}').message).toContain('not supported')
+    expect(errorOf('void setup() { Serial.begin(9600); Serial.foo(); } void loop() {}').message).toContain('not supported')
     expect(errorOf('int f(int a) { return a; } void setup() { f(1, 2); } void loop() {}').message).toContain('too many arguments')
   })
 

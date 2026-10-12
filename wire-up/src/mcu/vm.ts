@@ -22,7 +22,7 @@ export interface McuHost {
 
 const CYCLE = 1 / 16e6
 /** Cycles one digitalWrite / digitalRead inside shiftOut and shiftIn costs, loop overhead included. */
-const SHIFT_CYCLES = 60
+const SHIFT_CYCLES = 90
 /** Bytes of EEPROM on the ATmega328P; erased cells read 0xFF. */
 export const EEPROM_SIZE = 1024
 /** A write to the EEPROM takes this long, and the next one waits for it. */
@@ -35,11 +35,11 @@ const MAX_OPS = 400_000
 
 /** Cycles of the built-in calls on a real Uno (measured figures for the Arduino core). */
 const BUILTIN_CYCLES: Record<string, number> = {
-  pinMode: 50,
-  digitalWrite: 56,
-  digitalRead: 60,
-  analogRead: 1800,
-  analogWrite: 70,
+  pinMode: 90,
+  digitalWrite: 80, // 5 us, as measured on a real Uno
+  digitalRead: 72,
+  analogRead: 1800, // 13 ADC clocks at 125 kHz
+  analogWrite: 110,
   millis: 30,
   micros: 30,
   random: 200,
@@ -131,7 +131,38 @@ interface Frame {
   pc: number
   locals: unknown[]
   st: unknown[]
+  /** An interrupt handler running on top of the sketch: its return does not push a value. */
+  isr?: boolean
 }
+
+/** Interrupt modes as the AVR core numbers them (RISING is 3). */
+const IRQ_LOW = 0
+const IRQ_CHANGE = 1
+const IRQ_FALLING = 2
+
+/** What one VM operation costs on the AVR (loads and stores move two bytes, a jump takes a few cycles, ...). */
+const OP_CYCLES: number[] = []
+OP_CYCLES[OP.PUSH] = 2
+OP_CYCLES[OP.LGET] = 4
+OP_CYCLES[OP.LSET] = 4
+OP_CYCLES[OP.GGET] = 6
+OP_CYCLES[OP.GSET] = 6
+OP_CYCLES[OP.AGET] = 10
+OP_CYCLES[OP.ASET] = 10
+OP_CYCLES[OP.POP] = 1
+OP_CYCLES[OP.ARITH] = 4
+OP_CYCLES[OP.CMP] = 6
+OP_CYCLES[OP.NEG] = 4
+OP_CYCLES[OP.NOT] = 4
+OP_CYCLES[OP.BNOT] = 4
+OP_CYCLES[OP.CAST] = 3
+OP_CYCLES[OP.JMP] = 3
+OP_CYCLES[OP.JZ] = 5
+OP_CYCLES[OP.JNZ] = 5
+OP_CYCLES[OP.JZK] = 5
+OP_CYCLES[OP.JNZK] = 5
+OP_CYCLES[OP.DUP] = 2
+OP_CYCLES[OP.BOOL] = 4
 
 export class Machine {
   /** Virtual seconds since the last reset. */
@@ -157,6 +188,18 @@ export class Machine {
   /** A `pulseIn` that is still waiting for its pulse. */
   private pulse: { phase: 0 | 1 | 2; started: number; begin: number } | null = null
   private eepromReady = 0
+  /** Pins the sketch has made outputs (an input pin is read from the circuit, an output one changes only by the sketch's own writes). */
+  private outputs = new Set<number>()
+  /** attachInterrupt handlers for interrupt 0 (pin 2) and 1 (pin 3): the function, the mode, and the last level seen. */
+  private irq: ({ fn: number; mode: number; last: number } | null)[] = [null, null]
+  /** Bit n set = interrupt n has fired and its handler has not run yet. */
+  private irqPending = 0
+  private irqEnabled = true
+  private inIsr = false
+  /** After a handler returns the sketch runs one operation before the next interrupt, as the chip guarantees. */
+  private irqHold = false
+  /** While a handler runs over a sleeping `delay`, the time that sleep ends. */
+  private resumeWake: number | null = null
   /** The EEPROM contents; the caller keeps them between runs. `eepromDirty` is set by a write that changed a byte. */
   readonly eeprom: Uint8Array
   eepromDirty = false
@@ -219,10 +262,24 @@ export class Machine {
       return
     }
     let budget = MAX_OPS
+    this.sampleIrq()
     while (this.time < until && this.error === null) {
       // a tone with a duration ends on time even while the sketch sleeps
       const lim = Math.min(until, this.nextToneEnd())
       if (this.wake > this.time) {
+        if (this.irqPending !== 0 && this.irqEnabled && !this.inIsr) {
+          this.irqHold = false
+          // an interrupt during delay(): the handler runs, then the sleep goes on
+          this.resumeWake = this.wake
+          this.wake = -1
+          budget -= this.exec(lim, budget)
+          if (budget <= 0) {
+            this.slow = true
+            this.time = until
+            return
+          }
+          continue
+        }
         if (this.wake >= lim) {
           this.time = lim
           this.expireTones()
@@ -254,9 +311,27 @@ export class Machine {
     const g = this.globals
     for (;;) {
       if (t >= until || n >= budget) break
+      if (this.irqPending !== 0 && this.irqEnabled && !this.inIsr && !this.irqHold) {
+        // between two operations, as on the chip: lowest interrupt number first
+        const k = this.irqPending & 1 ? 0 : 1
+        this.irqPending &= ~(1 << k)
+        f.pc = pc
+        f.st = st
+        this.enter(this.irq[k]!.fn, [])
+        f = this.frames[this.frames.length - 1]
+        f.isr = true
+        this.inIsr = true
+        code = f.fn.code
+        st = f.st
+        loc = f.locals
+        pc = 0
+        t += 40 * CYCLE
+        continue
+      }
       const op = code[pc++]
       n++
-      let cycles = 3
+      this.irqHold = false
+      let cycles = OP_CYCLES[op.o] ?? 3
       switch (op.o) {
         case OP.PUSH:
           st.push(op.a)
@@ -315,6 +390,7 @@ export class Machine {
           const ty = op.b as string
           let r: number
           const o = op.a as string
+          const wide = ty === 'long' || ty === 'ulong'
           if (ty === 'float') {
             cycles = o === '/' ? 300 : o === '*' ? 100 : 80
             switch (o) {
@@ -332,6 +408,7 @@ export class Machine {
                 break
             }
           } else {
+            if (wide) cycles = 8
             switch (o) {
               case '+':
                 r = x + y
@@ -340,8 +417,8 @@ export class Machine {
                 r = x - y
                 break
               case '*':
-                r = ty === 'int' || ty === 'uint' ? Math.imul(x, y) : Math.imul(x, y)
-                cycles = ty === 'int' || ty === 'uint' ? 8 : 40
+                r = Math.imul(x, y)
+                cycles = wide ? 60 : 14
                 break
               case '/':
                 if (y === 0) {
@@ -365,9 +442,11 @@ export class Machine {
                 break
               case '<<':
                 r = y >= 32 ? 0 : x << y
+                cycles = (wide ? 12 : 8) + (wide ? 8 : 4) * Math.min(Math.max(y, 0), 32)
                 break
               case '>>':
                 r = ty === 'ulong' || ty === 'uint' ? (y >= 32 ? 0 : x >>> y) : x >> Math.min(y, 31)
+                cycles = (wide ? 12 : 8) + (wide ? 8 : 4) * Math.min(Math.max(y, 0), 32)
                 break
               case '&':
                 r = x & y
@@ -486,6 +565,27 @@ export class Machine {
           break
         }
         case OP.RET: {
+          if (f.isr) {
+            // an interrupt handler is done: back to the sketch, which sees nothing of it
+            this.frames.pop()
+            this.inIsr = false
+            this.irqHold = true
+            const h = this.irq.findIndex((x) => x !== null && x.fn === this.prog.fns.indexOf(f.fn))
+            if (h >= 0 && this.irq[h]!.mode === IRQ_LOW && this.irq[h]!.last === 0) this.irqPending |= 1 << h
+            t += 40 * CYCLE
+            if (this.resumeWake !== null) {
+              this.wake = this.resumeWake
+              this.resumeWake = null
+              this.time = t
+              return n
+            }
+            f = this.frames[this.frames.length - 1]
+            code = f.fn.code
+            st = f.st
+            loc = f.locals
+            pc = f.pc
+            continue
+          }
           let v = st.pop() as number
           if (op.a !== 'void' && op.a !== 'String') v = op.a === 'float' ? v : wrapType(op.a as string, v)
           this.frames.pop()
@@ -498,7 +598,7 @@ export class Machine {
             } else {
               this.phase = 'loop'
               this.enter(this.prog.loop, [])
-              cycles += 40
+              cycles += 15 // the core's main loop: loop(), serialEventRun(), again
             }
           } else this.frames[this.frames.length - 1].st.push(v)
           f = this.frames[this.frames.length - 1]
@@ -638,10 +738,39 @@ export class Machine {
     if (!this.begun) return
     this.host.serialWrite(text, t)
     const charTime = 10 / this.baud
+    // putting a byte in the transmit buffer takes the sketch about 60 cycles each
+    this.time += text.length * 60 * CYCLE
     this.serialBusyUntil = Math.max(this.serialBusyUntil, t) + text.length * charTime
     // the 64-byte transmit buffer: past it, the sketch has to wait for the line to drain
     const over = this.serialBusyUntil - t - 64 * charTime
-    if (over > 0) this.wake = Math.max(this.wake, t + over)
+    if (over > 0 && !this.inIsr) this.wake = Math.max(this.wake, t + over)
+  }
+
+  /** The level an input pin has now, or the last one the sketch wrote to an output pin. */
+  private pinLevel(pin: number): number {
+    return this.host.digitalRead(pin, this.time) ? 1 : 0
+  }
+
+  /** A new level on interrupt pin `n` (0 = pin 2, 1 = pin 3): does it fire this interrupt? */
+  private irqEdge(n: number, level: number): void {
+    const h = this.irq[n]
+    if (!h) return
+    const prev = h.last
+    h.last = level
+    const fire = h.mode === IRQ_LOW ? level === 0 : h.mode === IRQ_CHANGE ? level !== prev : h.mode === IRQ_FALLING ? prev === 1 && level === 0 : prev === 0 && level === 1
+    if (fire) this.irqPending |= 1 << n
+  }
+
+  /**
+   * The circuit only changes between frames, so an interrupt pin driven from outside is looked at once at the start of each
+   * frame: an edge in it fires the interrupt (two edges inside one frame are seen as the net change). A pin the sketch itself drives
+   * raises its interrupt at the moment of the write instead.
+   */
+  private sampleIrq(): void {
+    for (let n = 0; n < 2; n++) {
+      if (!this.irq[n] || this.outputs.has(n + 2)) continue
+      this.irqEdge(n, this.pinLevel(n + 2))
+    }
   }
 
   private builtin(name: string, a: unknown[], ts: string[], line: number): number | string {
@@ -649,10 +778,14 @@ export class Machine {
     const num = (i: number): number => a[i] as number
     switch (name) {
       case 'pinMode':
+        if (num(1) === 1) this.outputs.add(num(0))
+        else this.outputs.delete(num(0))
         this.host.pinMode(num(0), num(1), t)
         return 0
       case 'digitalWrite':
         this.host.digitalWrite(num(0), num(1) ? 1 : 0, t)
+        // a sketch driving its own interrupt pin raises the interrupt, as on the chip
+        if ((num(0) === 2 || num(0) === 3) && this.outputs.has(num(0))) this.irqEdge(num(0) - 2, num(1) ? 1 : 0)
         return 0
       case 'digitalRead':
         return this.host.digitalRead(num(0), t) ? 1 : 0
@@ -665,11 +798,42 @@ export class Machine {
         return 0
       case 'analogReference':
         return 0
+      case 'attachInterrupt': {
+        // [interrupt number, handler function index, mode]
+        const n = num(0)
+        if (n !== 0 && n !== 1) {
+          this.fail(`interrupt ${n} does not exist on the Uno: use pin 2 (interrupt 0) or pin 3 (interrupt 1)`, line)
+          return 0
+        }
+        this.irq[n] = { fn: num(1), mode: num(2), last: this.pinLevel(n + 2) }
+        if (num(2) === IRQ_LOW && this.irq[n]!.last === 0) this.irqPending |= 1 << n
+        return 0
+      }
+      case 'detachInterrupt':
+        if (num(0) === 0 || num(0) === 1) {
+          this.irq[num(0)] = null
+          this.irqPending &= ~(1 << num(0))
+        }
+        return 0
+      case 'digitalPinToInterrupt':
+        return num(0) === 2 ? 0 : num(0) === 3 ? 1 : -1
+      case 'interrupts':
+        this.irqEnabled = true
+        return 0
+      case 'noInterrupts':
+        this.irqEnabled = false
+        return 0
       case 'delay':
+        if (this.inIsr) {
+          this.fail('delay() inside an interrupt handler would hang the chip: millis() does not advance while a handler runs', line)
+          return 0
+        }
         this.wake = t + Math.max(num(0), 0) / 1000
         return 0
       case 'delayMicroseconds':
-        if (num(0) >= 3) this.wake = t + num(0) / 1e6
+        // inside a handler the sketch cannot sleep: the time simply passes
+        if (this.inIsr) this.time = t + Math.max(num(0), 0) / 1e6
+        else if (num(0) >= 3) this.wake = t + num(0) / 1e6
         return 0
       case 'millis':
         return Math.floor(t * 1000) >>> 0

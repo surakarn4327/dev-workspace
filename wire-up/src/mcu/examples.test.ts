@@ -2,7 +2,7 @@
 // and do what the real board does.
 
 import { describe, expect, it } from 'vitest'
-import { errorOf, run } from './testkit.ts'
+import { run } from './testkit.ts'
 
 const lines = (s: string): string[] => s.split('\r\n')
 
@@ -249,11 +249,5 @@ describe('Arduino IDE examples', () => {
     const { m } = run(`void setup() { EEPROM.update(0, 255); EEPROM.update(1, 9); } void loop() {}`, 0.1)
     expect(m.eeprom[0]).toBe(255)
     expect(m.eeprom[1]).toBe(9)
-  })
-})
-
-describe('what the engine still refuses, and says so', () => {
-  it('interrupts are named as not available yet', () => {
-    expect(errorOf('void isr() {} void setup() { attachInterrupt(0, isr, RISING); } void loop() {}').message).toContain('not supported')
   })
 })

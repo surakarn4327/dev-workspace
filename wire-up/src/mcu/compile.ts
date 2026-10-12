@@ -116,6 +116,10 @@ const CONSTANTS: Record<string, [number, Type]> = {
   HEX: [16, 'int'],
   OCT: [8, 'int'],
   BIN: [2, 'int'],
+  CHANGE: [1, 'int'],
+  FALLING: [2, 'int'],
+  RISING: [3, 'int'],
+  NOT_AN_INTERRUPT: [-1, 'int'],
   LSBFIRST: [0, 'int'],
   MSBFIRST: [1, 'int'],
 }
@@ -160,6 +164,10 @@ const BUILTINS: Record<string, { ret: RetRule; min: number; max: number }> = {
   noTone: { ret: 'void', min: 1, max: 1 },
   pulseIn: { ret: 'ulong', min: 2, max: 3 },
   pulseInLong: { ret: 'ulong', min: 2, max: 3 },
+  detachInterrupt: { ret: 'void', min: 1, max: 1 },
+  digitalPinToInterrupt: { ret: 'int', min: 1, max: 1 },
+  interrupts: { ret: 'void', min: 0, max: 0 },
+  noInterrupts: { ret: 'void', min: 0, max: 0 },
   shiftOut: { ret: 'void', min: 4, max: 4 },
   shiftIn: { ret: 'byte', min: 3, max: 3 },
   lowByte: { ret: 'byte', min: 1, max: 1 },
@@ -170,7 +178,6 @@ const BUILTINS: Record<string, { ret: RetRule; min: number; max: number }> = {
   degrees: { ret: 'float', min: 1, max: 1 },
 }
 
-const UNSUPPORTED = new Set(['attachInterrupt', 'detachInterrupt', 'interrupts', 'noInterrupts'])
 
 const SERIAL: Record<string, { ret: Type; min: number; max: number }> = {
   begin: { ret: 'void', min: 1, max: 2 },
@@ -906,7 +913,7 @@ class FnCompiler {
       return { t: tag as Type, arr: false }
     }
     if (e.name === 'bitSet' || e.name === 'bitClear' || e.name === 'bitWrite') return this.bitStore(e, need)
-    if (UNSUPPORTED.has(e.name)) throw new CompileError(`${e.name}() is not supported by this simulator yet`, e.line)
+    if (e.name === 'attachInterrupt') return this.attachInterrupt(e, need)
     const b = BUILTINS[e.name]
     if (!b) throw new CompileError(`'${e.name}' was not declared in this scope`, e.line)
     if (e.args.length < b.min || e.args.length > b.max) {
@@ -929,6 +936,24 @@ class FnCompiler {
     // a built-in always leaves one value (a void one leaves 0)
     if (!need) this.emit(OP.POP, e.line)
     return { t: ret, arr: false }
+  }
+
+  /** attachInterrupt(number, handler, mode): the handler is a function named by its bare name, turned into its index here. */
+  private attachInterrupt(e: Extract<Expr, { k: 'call' }>, need: boolean): Ty {
+    if (e.args.length !== 3) throw new CompileError('wrong number of arguments to attachInterrupt(): it takes 3', e.line)
+    const h = e.args[1]
+    const fn = h.k === 'id' ? this.unit.fnTable.get(h.name) : undefined
+    if (h.k !== 'id' || !fn) throw new CompileError('the second argument of attachInterrupt() must be the name of a function', e.line)
+    if (fn.ret !== 'void' || fn.params.length > 0) throw new CompileError(`'${h.name}' must be 'void ${h.name}()' to be an interrupt handler`, e.line)
+    const n = this.expr(e.args[0], true)
+    if (!isInt(n.t) || n.arr) throw new CompileError('the interrupt number must be an integer (use digitalPinToInterrupt(pin))', e.line)
+    this.emit(OP.PUSH, e.line, fn.index)
+    const m = this.expr(e.args[2], true)
+    if (!isInt(m.t) || m.arr) throw new CompileError('the interrupt mode must be LOW, CHANGE, FALLING or RISING', e.line)
+    this.emit(OP.CALLB, e.line, 'attachInterrupt', 3)
+    if (need) throw new CompileError('void value not ignored as it ought to be', e.line)
+    this.emit(OP.POP, e.line)
+    return { t: 'void', arr: false }
   }
 
   /** bitSet / bitClear / bitWrite change their first argument, so they become an assignment to it: x = x | (1UL << n) and so on. */
