@@ -272,7 +272,7 @@ export const lcd1602i2c: PartDef = {
       // the white status lamp: on while the module draws current (the supply is wired and the right way round)
       const lampOn = live.up === undefined ? true : (live.i ?? 0) >= 0.0005
       drawSprite(c, lcdLampSprite(lampOn), LCD_LAMP.x * PX, LCD_LAMP.y * PX)
-      if (lampOn) radialGlow(c, (LCD_LAMP.x + LCD_LAMP.w / 2) * PX, (LCD_LAMP.y + LCD_LAMP.h / 2) * PX, 44, '#ffffff', 0.5)
+      if (lampOn) radialGlow(c, (LCD_LAMP.x + LCD_LAMP.w / 2) * PX, (LCD_LAMP.y + LCD_LAMP.h / 2) * PX, 30, '#ffffff', 0.25)
       // the names printed under the pads of the display header, and the numbers of its first and last pin
       HEADER_NAMES.forEach((name, k) => bold(c, name, (LCD_PAD0.x + 10 * k) * PX, (LCD_PAD0.y + 7) * PX))
       bold(c, '1', (LCD_PAD0.x - 9) * PX, (LCD_PAD0.y - 5) * PX)
