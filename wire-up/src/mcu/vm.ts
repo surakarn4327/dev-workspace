@@ -5,6 +5,8 @@
 
 import { OP } from './compile.ts'
 import type { FnInfo, Op, Program, Type } from './compile.ts'
+import { lcdCall, newLcd } from './lcdlib.ts'
+import type { LcdIo, LcdObj } from './lcdlib.ts'
 
 /** What the sketch can do to the world. `t` is the machine's own time in seconds since reset. */
 export interface McuHost {
@@ -18,6 +20,13 @@ export interface McuHost {
   /** `tone()`: a 50 % square wave of `freq` Hz on the pin until `noTone` (the machine calls it again when a duration runs out). */
   tone(pin: number, freq: number, t: number): void
   noTone(pin: number, t: number): void
+  /**
+   * The I2C bus. `write` is one whole transmission (start, address, data bytes, stop) and returns what `Wire.endTransmission()`
+   * does: 0 success, 2 no answer to the address, 3 no answer to a data byte, 4 other error. `read` asks a device for `count`
+   * bytes and gives null when nothing answers the address.
+   */
+  i2cWrite(addr: number, data: number[], t: number): number
+  i2cRead(addr: number, count: number, t: number): number[] | null
 }
 
 const CYCLE = 1 / 16e6
@@ -29,6 +38,8 @@ export const EEPROM_SIZE = 1024
 const EEPROM_WRITE = 0.0033
 /** How often `pulseIn` looks at the pin while it waits. */
 const PULSE_POLL = 20e-6
+/** Bytes the Wire library holds in one transmission. */
+const WIRE_BUFFER = 32
 const MAX_FRAMES = 40
 /** Operations one `advance` may run: a sketch that spins faster than this is slowed, not allowed to freeze the page. */
 const MAX_OPS = 400_000
@@ -198,6 +209,10 @@ export class Machine {
   private inIsr = false
   /** After a handler returns the sketch runs one operation before the next interrupt, as the chip guarantees. */
   private irqHold = false
+  private wireOn = false
+  private wireClock = 100000
+  private wireTx: { addr: number; bytes: number[] } | null = null
+  private wireRx: number[] = []
   /** While a handler runs over a sleeping `delay`, the time that sleep ends. */
   private resumeWake: number | null = null
   /** The EEPROM contents; the caller keeps them between runs. `eepromDirty` is set by a write that changed a byte. */
@@ -535,6 +550,13 @@ export class Machine {
           cycles = 20
           break
         }
+        case OP.NEWLIB: {
+          const argc = op.c ?? 0
+          const args = argc > 0 ? (st.splice(st.length - argc, argc) as number[]) : []
+          st.push(newLcd(args))
+          cycles = 40
+          break
+        }
         case OP.COPY:
           st.push((st.pop() as unknown[]).slice())
           cycles = 30
@@ -712,6 +734,36 @@ export class Machine {
     }
     if (p.phase === 2 && now !== want) return done(Math.round((t - p.begin) * 1e6))
     return null
+  }
+
+  /** Time the sketch is busy: it sleeps like `delay`, or in an interrupt handler (which cannot sleep) the time just passes. */
+  private spend(seconds: number): void {
+    if (seconds <= 0) return
+    if (this.inIsr) this.time += seconds
+    else this.wake = Math.max(this.wake, this.time) + seconds
+  }
+
+  /** Seconds a transmission of `bytes` bytes (the address byte included) takes on the bus: nine clocks a byte, start and stop. */
+  private wireTime(bytes: number): number {
+    return (bytes * 9 + 2) / this.wireClock + 100 * CYCLE
+  }
+
+  /** What the LiquidCrystal_I2C library needs of the machine: the Wire path and the delays. */
+  private lcdIo(t: number): LcdIo {
+    return {
+      wireBegin: () => {
+        this.wireOn = true
+        this.host.pinMode(18, 2, t)
+        this.host.pinMode(19, 2, t)
+      },
+      expander: (addr, byte) => {
+        if (!this.wireOn) return
+        this.host.i2cWrite(addr, [byte], t)
+        this.spend(this.wireTime(2))
+      },
+      delayMs: (ms) => this.spend(ms / 1000),
+      delayUs: (us) => this.spend(us / 1e6),
+    }
   }
 
   private eepromAddr(a: number): number {
@@ -902,6 +954,64 @@ export class Machine {
       case 'pgm_read_float':
         // flash tables are ordinary arrays here, and `&table[i]` was already read as the element
         return num(0)
+      case 'Wire.begin':
+        this.wireOn = true
+        // the library turns on the pull-ups of SDA (A4) and SCL (A5)
+        this.host.pinMode(18, 2, t)
+        this.host.pinMode(19, 2, t)
+        return 0
+      case 'Wire.end':
+        this.wireOn = false
+        return 0
+      case 'Wire.setClock':
+        this.wireClock = Math.min(Math.max(num(0), 1000), 1000000)
+        return 0
+      case 'Wire.setWireTimeout':
+        return 0
+      case 'Wire.beginTransmission':
+        this.wireTx = { addr: num(0) & 0x7f, bytes: [] }
+        return 0
+      case 'Wire.write': {
+        const tx = this.wireTx
+        if (!tx) return 0
+        const src: number[] = Array.isArray(a[0])
+          ? (a[0] as number[]).slice(0, a.length > 1 ? num(1) : undefined)
+          : typeof a[0] === 'string'
+            ? [...(a[0] as string)].map((c) => c.charCodeAt(0))
+            : [num(0)]
+        let n = 0
+        for (const b of src) {
+          if (tx.bytes.length >= WIRE_BUFFER) break
+          tx.bytes.push(b & 0xff)
+          n++
+        }
+        return n
+      }
+      case 'Wire.endTransmission': {
+        const tx = this.wireTx
+        this.wireTx = null
+        // without Wire.begin() the bus is not set up: nothing is sent
+        if (!tx || !this.wireOn) return 4
+        const status = this.host.i2cWrite(tx.addr, tx.bytes, t)
+        this.spend(this.wireTime(tx.bytes.length + 1))
+        return status
+      }
+      case 'Wire.requestFrom': {
+        this.wireRx = []
+        if (!this.wireOn) return 0
+        const want = Math.min(Math.max(num(1), 0), WIRE_BUFFER)
+        const got = this.host.i2cRead(num(0) & 0x7f, want, t)
+        this.spend(this.wireTime(want + 1))
+        if (got === null) return 0
+        this.wireRx = got.slice(0, want).map((b) => b & 0xff)
+        return this.wireRx.length
+      }
+      case 'Wire.available':
+        return this.wireRx.length
+      case 'Wire.read':
+        return this.wireRx.length > 0 ? this.wireRx.shift()! : -1
+      case 'Wire.peek':
+        return this.wireRx.length > 0 ? this.wireRx[0] : -1
       case '__sizeof': {
         // [array, element size, rank]
         const arr = a[0] as unknown[]
@@ -1049,6 +1159,7 @@ export class Machine {
       case 'Serial.setTimeout':
         return 0
       default:
+        if (name.startsWith('LiquidCrystal_I2C.')) return lcdCall(this.lcdIo(t), a[0] as LcdObj, name.slice('LiquidCrystal_I2C.'.length), a, ts)
         this.fail(`'${name}' is not available`, line)
         return 0
     }

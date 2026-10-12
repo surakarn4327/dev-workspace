@@ -5,7 +5,7 @@
 // parameters and return values (recursion included); if / else, for, while, do-while, switch, break, continue, return; the C
 // operators with C precedence, casts, ++ / --, compound assignment, ?: ; object-like #define; Serial and the Arduino core calls.
 
-export type Type = 'void' | 'bool' | 'char' | 'byte' | 'int' | 'uint' | 'long' | 'ulong' | 'float' | 'String' | `struct:${string}`
+export type Type = 'void' | 'bool' | 'char' | 'byte' | 'int' | 'uint' | 'long' | 'ulong' | 'float' | 'String' | `struct:${string}` | `lib:${string}`
 
 export class CompileError extends Error {
   readonly line: number
@@ -270,6 +270,8 @@ export type Stmt =
       len2: Expr | null
       /** A value, a `{...}` list, or null. */
       init: Expr | Expr[] | null
+      /** The arguments of a library object's constructor: `LiquidCrystal_I2C lcd(0x27, 16, 2);` */
+      ctor: Expr[] | null
       /** A `{{...}, {...}}` list of rows (2-D arrays and arrays of structs). */
       rows: Expr[][] | null
       isStatic: boolean
@@ -338,6 +340,9 @@ const TYPE_WORDS: Record<string, Type> = {
   word: 'uint',
   size_t: 'uint',
 }
+/** Library classes a sketch can declare objects of. */
+export const LIB_TYPES = new Set(['LiquidCrystal_I2C'])
+
 const MODIFIERS = new Set(['const', 'static', 'volatile', 'unsigned', 'signed', 'register', 'inline', 'PROGMEM'])
 
 const BIN_PREC: Record<string, number> = {
@@ -404,7 +409,7 @@ class Parser {
 
   /** The type a word names: a built-in type word or a struct declared earlier. */
   private typeWord(v: string): Type | undefined {
-    return TYPE_WORDS[v] ?? (this.structs.has(v) ? (`struct:${v}` as Type) : undefined)
+    return TYPE_WORDS[v] ?? (this.structs.has(v) ? (`struct:${v}` as Type) : LIB_TYPES.has(v) ? (`lib:${v}` as Type) : undefined)
   }
 
   /** Is the next thing the start of a declaration (a type, perhaps with modifiers)? */
@@ -477,7 +482,7 @@ class Parser {
       }
       const { type, isStatic, isConst } = this.parseType()
       const name = this.ident()
-      if (this.isOp('(')) {
+      if (this.isOp('(') && !type.startsWith('lib:')) {
         ast.funcs.push(this.parseFunction(type, name, line))
       } else {
         this.parseDeclRest(type, name, isStatic, isConst, line, ast.globals)
@@ -583,6 +588,12 @@ class Parser {
         }
       }
       if (this.cur.t === 'id' && this.cur.v === 'PROGMEM') this.p++
+      let ctor: Expr[] | null = null
+      if (type.startsWith('lib:') && !array) {
+        // `LiquidCrystal_I2C lcd(0x27, 16, 2);` or just `LiquidCrystal_I2C lcd;`
+        if (this.accept('(')) ctor = this.parseArgs()
+        else ctor = []
+      }
       let init: Expr | Expr[] | null = null
       let rows: Expr[][] | null = null
       if (this.accept('=')) {
@@ -621,7 +632,7 @@ class Parser {
           init.push({ k: 'chr', v: 0, line: st.line })
         } else init = this.parseAssign()
       }
-      out.push({ k: 'decl', type, name, array, rank, len, len2, init, rows, isStatic, isConst, line })
+      out.push({ k: 'decl', type, name, array, rank, len, len2, init, ctor, rows, isStatic, isConst, line })
       if (!this.accept(',')) break
       name = this.ident()
     }

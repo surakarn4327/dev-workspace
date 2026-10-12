@@ -37,6 +37,7 @@ export const OP = {
   CONCAT: 25,
   CALLM: 26,
   COPY: 27,
+  NEWLIB: 28,
 }
 
 export interface Op {
@@ -89,6 +90,15 @@ interface Ty {
 
 function isStruct(t: Type): boolean {
   return t.startsWith('struct:')
+}
+
+function isLib(t: Type): boolean {
+  return t.startsWith('lib:')
+}
+
+/** A struct or a library object: something that is not a number and cannot be used as one. */
+function isObject(t: Type): boolean {
+  return isStruct(t) || isLib(t)
 }
 
 const BOOL: Ty = { t: 'bool', arr: false }
@@ -204,6 +214,50 @@ const EEPROM_METHODS: Record<string, { ret: Type; min: number; max: number }> = 
   length: { ret: 'int', min: 0, max: 0 },
   put: { ret: 'void', min: 2, max: 2 },
   get: { ret: 'void', min: 2, max: 2 },
+}
+
+const WIRE_METHODS: Record<string, { ret: Type; min: number; max: number }> = {
+  begin: { ret: 'void', min: 0, max: 1 },
+  end: { ret: 'void', min: 0, max: 0 },
+  setClock: { ret: 'void', min: 1, max: 1 },
+  beginTransmission: { ret: 'void', min: 1, max: 1 },
+  write: { ret: 'uint', min: 1, max: 2 },
+  endTransmission: { ret: 'byte', min: 0, max: 1 },
+  requestFrom: { ret: 'byte', min: 2, max: 3 },
+  available: { ret: 'int', min: 0, max: 0 },
+  read: { ret: 'int', min: 0, max: 0 },
+  peek: { ret: 'int', min: 0, max: 0 },
+  setWireTimeout: { ret: 'void', min: 0, max: 2 },
+}
+
+/** Methods of the library classes a sketch can declare (see `LIB_TYPES` in lang.ts). */
+const LIB_METHODS: Record<string, Record<string, { ret: Type; min: number; max: number }>> = {
+  LiquidCrystal_I2C: {
+    init: { ret: 'void', min: 0, max: 0 },
+    begin: { ret: 'void', min: 0, max: 3 },
+    clear: { ret: 'void', min: 0, max: 0 },
+    home: { ret: 'void', min: 0, max: 0 },
+    noDisplay: { ret: 'void', min: 0, max: 0 },
+    display: { ret: 'void', min: 0, max: 0 },
+    noBlink: { ret: 'void', min: 0, max: 0 },
+    blink: { ret: 'void', min: 0, max: 0 },
+    noCursor: { ret: 'void', min: 0, max: 0 },
+    cursor: { ret: 'void', min: 0, max: 0 },
+    scrollDisplayLeft: { ret: 'void', min: 0, max: 0 },
+    scrollDisplayRight: { ret: 'void', min: 0, max: 0 },
+    leftToRight: { ret: 'void', min: 0, max: 0 },
+    rightToLeft: { ret: 'void', min: 0, max: 0 },
+    autoscroll: { ret: 'void', min: 0, max: 0 },
+    noAutoscroll: { ret: 'void', min: 0, max: 0 },
+    backlight: { ret: 'void', min: 0, max: 0 },
+    noBacklight: { ret: 'void', min: 0, max: 0 },
+    setBacklight: { ret: 'void', min: 1, max: 1 },
+    setCursor: { ret: 'void', min: 2, max: 2 },
+    createChar: { ret: 'void', min: 2, max: 2 },
+    write: { ret: 'uint', min: 1, max: 1 },
+    print: { ret: 'uint', min: 1, max: 2 },
+    println: { ret: 'uint', min: 0, max: 2 },
+  },
 }
 
 const STRING_METHODS: Record<string, { ret: Type; min: number; max: number }> = {
@@ -450,7 +504,7 @@ class FnCompiler {
   private condition(e: Expr): void {
     const t = this.expr(e, true)
     if (t.arr) throw new CompileError('an array cannot be used as a condition', e.line)
-    if (isStruct(t.t)) throw new CompileError('a struct cannot be used as a condition', e.line)
+    if (isObject(t.t)) throw new CompileError('a struct or object cannot be used as a condition', e.line)
   }
 
   private decl(s: Extract<Stmt, { k: 'decl' }>): void {
@@ -470,10 +524,23 @@ class FnCompiler {
   initVar(v: VarInfo, s: Extract<Stmt, { k: 'decl' }>): void {
     const set = (): void => {
       // an array or struct reference is stored as it is (no integer wrap)
-      this.emit(v.global ? OP.GSET : OP.LSET, s.line, v.slot, s.array || isStruct(v.type) ? 'float' : v.type)
+      this.emit(v.global ? OP.GSET : OP.LSET, s.line, v.slot, s.array || isObject(v.type) ? 'float' : v.type)
     }
     const load = (): void => {
       this.emit(v.global ? OP.GGET : OP.LGET, s.line, v.slot)
+    }
+    if (isLib(v.type)) {
+      if (s.array) throw new CompileError('arrays of library objects are not supported by this simulator', s.line)
+      if (s.init !== null) throw new CompileError('a library object cannot be copied or converted: use it where it was declared', s.line)
+      const args = s.ctor ?? []
+      for (const a of args) {
+        const t = this.expr(a, true)
+        if (t.arr || t.t === 'String' || isObject(t.t)) throw new CompileError(`the constructor of ${v.type.slice(4)} takes numbers`, s.line)
+      }
+      const at = this.emit(OP.NEWLIB, s.line, v.type.slice(4), args.length)
+      this.code[at].c = args.length
+      set()
+      return
     }
     const fields = isStruct(v.type) ? this.unit.structOf(v.type, s.line).fields : null
     if (s.array) {
@@ -563,6 +630,7 @@ class FnCompiler {
   /** Convert the value on top of the stack from type `from` to type `to`. */
   private convert(from: Ty, to: Ty, line: number): void {
     if (from.arr !== to.arr) throw new CompileError('invalid conversion between an array and a value', line)
+    if (isLib(from.t) || isLib(to.t)) throw new CompileError('a library object cannot be copied or converted: use it where it was declared', line)
     if (isStruct(from.t) || isStruct(to.t)) {
       if (from.t !== to.t) throw new CompileError(`cannot convert '${from.t.replace('struct:', '')}' to '${to.t.replace('struct:', '')}'`, line)
       if (!to.arr) this.emit(OP.COPY, line) // a struct is passed and assigned by value
@@ -652,7 +720,7 @@ class FnCompiler {
       }
       case 'un': {
         const t = this.expr(e.e, true)
-        if (t.arr || isStruct(t.t)) throw new CompileError('invalid operand to unary operator', e.line)
+        if (t.arr || isObject(t.t)) throw new CompileError('invalid operand to unary operator', e.line)
         let r: Ty
         if (e.op === '-') {
           if (t.t === 'String') throw new CompileError("invalid operand 'String' to unary minus", e.line)
@@ -686,7 +754,7 @@ class FnCompiler {
       }
       case 'cast': {
         const t = this.expr(e.e, true)
-        if (t.arr || isStruct(t.t)) throw new CompileError('invalid cast of an array or struct', e.line)
+        if (t.arr || isObject(t.t)) throw new CompileError('invalid cast of an array or object', e.line)
         if (t.t === 'String') throw new CompileError("invalid cast from type 'String'", e.line)
         if (e.type === 'String') throw new CompileError("use String(x) to make text of a number", e.line)
         this.emit(OP.CAST, e.line, e.type)
@@ -722,7 +790,7 @@ class FnCompiler {
     const a = this.expr(e.a, true)
     const b = this.expr(e.b, true)
     if (a.arr || b.arr) throw new CompileError(`invalid operands to binary ${op}: arrays cannot be used here`, e.line)
-    if (isStruct(a.t) || isStruct(b.t)) throw new CompileError(`invalid operands to binary ${op}: a struct cannot be used here (use its members)`, e.line)
+    if (isObject(a.t) || isObject(b.t)) throw new CompileError(`invalid operands to binary ${op}: a struct or object cannot be used here (use its members)`, e.line)
     let r: Ty
     if (op === '==' || op === '!=' || op === '<' || op === '<=' || op === '>' || op === '>=') {
       if ((a.t === 'String') !== (b.t === 'String')) throw new CompileError(`invalid operands of types '${a.t}' and '${b.t}' to binary '${op}'`, e.line)
@@ -923,7 +991,7 @@ class FnCompiler {
     for (const a of e.args) {
       const t = this.expr(a, true)
       if (t.arr) throw new CompileError(`an array cannot be passed to ${e.name}()`, e.line)
-      if (isStruct(t.t)) throw new CompileError(`a struct cannot be passed to ${e.name}()`, e.line)
+      if (isObject(t.t)) throw new CompileError(`a struct or object cannot be passed to ${e.name}()`, e.line)
       types.push(t.t)
     }
     const at = this.emit(OP.CALLB, e.line, e.name, e.args.length)
@@ -971,6 +1039,45 @@ class FnCompiler {
     return this.expr({ k: 'asg', op: '=', target: x, v, line }, need)
   }
 
+  /** `Wire.begin()` and friends: the I2C master. */
+  private wire(e: Extract<Expr, { k: 'method' }>, need: boolean): Ty {
+    const m = WIRE_METHODS[e.name]
+    if (!m) throw new CompileError(`'Wire.${e.name}' is not supported by this simulator${e.name === 'onReceive' || e.name === 'onRequest' ? ' (it can only be an I2C master)' : ''}`, e.line)
+    if (e.name === 'begin' && e.args.length > 0) throw new CompileError('Wire.begin(address) would make the Uno an I2C slave, which this simulator does not do: use Wire.begin()', e.line)
+    if (e.args.length < m.min || e.args.length > m.max) throw new CompileError(`wrong number of arguments to Wire.${e.name}()`, e.line)
+    const types: Type[] = []
+    for (const a of e.args) {
+      const t = this.expr(a, true)
+      if (isObject(t.t)) throw new CompileError(`Wire.${e.name}() cannot take a struct or object`, e.line)
+      // a byte array or a string is written as bytes
+      types.push(t.arr ? 'String' : t.t)
+    }
+    const at = this.emit(OP.CALLB, e.line, `Wire.${e.name}`, e.args.length)
+    this.code[at].ts = types
+    if (need && m.ret === 'void') throw new CompileError('void value not ignored as it ought to be', e.line)
+    if (!need) this.emit(OP.POP, e.line)
+    return { t: m.ret, arr: false }
+  }
+
+  /** A call on a library object: the object is already on the stack and goes first. */
+  private libMethod(e: Extract<Expr, { k: 'method' }>, type: Type, need: boolean): Ty {
+    const lib = type.slice(4)
+    const m = LIB_METHODS[lib]?.[e.name]
+    if (!m) throw new CompileError(`'${lib}' has no member '${e.name}' in this simulator`, e.line)
+    if (e.args.length < m.min || e.args.length > m.max) throw new CompileError(`wrong number of arguments to ${lib}::${e.name}()`, e.line)
+    const types: Type[] = [type]
+    for (const a of e.args) {
+      const t = this.expr(a, true)
+      if (isObject(t.t)) throw new CompileError(`${e.name}() cannot take a struct or object`, e.line)
+      types.push(t.arr ? (t.t === 'char' || t.t === 'byte' ? 'String' : t.t) : t.t)
+    }
+    const at = this.emit(OP.CALLB, e.line, `${lib}.${e.name}`, e.args.length + 1)
+    this.code[at].ts = types
+    if (need && m.ret === 'void') throw new CompileError('void value not ignored as it ought to be', e.line)
+    if (!need) this.emit(OP.POP, e.line)
+    return { t: m.ret, arr: false }
+  }
+
   private eeprom(e: Extract<Expr, { k: 'method' }>, need: boolean): Ty {
     const m = EEPROM_METHODS[e.name]
     if (!m) throw new CompileError(`'EEPROM.${e.name}' is not supported by this simulator`, e.line)
@@ -1005,7 +1112,7 @@ class FnCompiler {
       const types: Type[] = []
       for (const a of e.args) {
         const t = this.expr(a, true)
-        if (isStruct(t.t)) throw new CompileError(`Serial.${e.name}() cannot print a struct: print its members`, e.line)
+        if (isObject(t.t)) throw new CompileError(`Serial.${e.name}() cannot print a struct or object`, e.line)
         if (t.arr) {
           // a char array prints as text; handled by the machine
           types.push(t.t === 'char' || t.t === 'byte' ? 'String' : t.t)
@@ -1020,7 +1127,9 @@ class FnCompiler {
       return { t: m.ret, arr: false }
     }
     if (e.obj.k === 'id' && e.obj.name === 'EEPROM' && !this.lookup('EEPROM')) return this.eeprom(e, need)
+    if (e.obj.k === 'id' && e.obj.name === 'Wire' && !this.lookup('Wire')) return this.wire(e, need)
     const o = this.expr(e.obj, true)
+    if (isLib(o.t) && !o.arr) return this.libMethod(e, o.t, need)
     if (o.t !== 'String' || o.arr) throw new CompileError(`request for member '${e.name}' in something that is not a String`, e.line)
     const m = STRING_METHODS[e.name]
     if (!m) throw new CompileError(`'String' has no member '${e.name}' in this simulator`, e.line)
