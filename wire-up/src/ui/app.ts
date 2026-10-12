@@ -52,6 +52,7 @@ export class App {
 
     this.inspector = new Inspector(this.ws, $('panel-inspect'))
     this.code = new CodePanel($('code-panel'), this.ws)
+    this.code.onToggle = () => this.menubar?.refresh()
     this.lessons = new LessonPanel(this.ws, $('panel-lessons'), {
       enter: (setup) => this.enterLesson(setup),
       exit: () => this.exitLesson(),
@@ -64,7 +65,7 @@ export class App {
       this.inspector.rebuild()
       const picked = this.ws.selectedPart ? this.world.getPart(this.ws.selectedPart) : undefined
       updateChipSheet($<HTMLCanvasElement>('ic-sheet'), picked)
-      this.code.setPart(picked)
+      this.code.select(picked)
       this.menubar?.refresh()
     }
     this.ws.onEdit = () => this.afterEdit()
@@ -204,6 +205,14 @@ export class App {
         tip: 'Show or hide the current-flow dots on wires',
         run: () => this.setFlowDots(ws.renderer.hide.dots),
         active: () => !ws.renderer.hide.dots,
+      }),
+      '|',
+      act({
+        icon: nodeIcon('code'),
+        label: () => 'Code',
+        tip: 'Show or hide the code window of the Arduino boards (click a board to edit its sketch)',
+        run: () => this.code.toggle(),
+        active: () => this.code.isOpen,
       }),
       '|',
       act({

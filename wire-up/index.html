@@ -48,7 +48,7 @@
       </aside>
       <section id="code-panel" class="float-panel bottom" hidden>
         <div class="cp-head">
-          <span class="cp-title" id="cp-title">ARDUINO UNO</span>
+          <select id="cp-board" title="Which board's sketch is shown (clicking a board on the canvas picks it too)"></select>
           <span class="cp-state" id="cp-state"></span>
           <span class="cp-spacer"></span>
           <button id="cp-verify" title="Check the sketch for mistakes (nothing is changed on the board)">Verify</button>
@@ -56,11 +56,13 @@
           <button id="cp-example" title="Put the factory Blink sketch in the editor">Blink</button>
           <button id="cp-clear" title="Clear the Serial Monitor">Clear</button>
           <button id="cp-fold" title="Fold or unfold the panel">&#9662;</button>
+          <button id="cp-close" title="Close the code window">&times;</button>
         </div>
         <div class="cp-body">
           <div class="cp-editor">
             <pre class="cp-gutter" id="cp-gutter"></pre>
             <textarea id="cp-code" spellcheck="false" wrap="off" autocomplete="off" autocapitalize="off"></textarea>
+            <div class="cp-empty" id="cp-empty" hidden>No Arduino board in the lab yet. Drag an <b>Arduino Uno R3</b> from the toolbox (Boards) onto the board, then click it.</div>
           </div>
           <div class="cp-side">
             <div class="cp-log" id="cp-log"></div>
@@ -92,6 +94,7 @@
           <li><b>Wires</b> follow the grid in right angles and route around each other. Drag from a hole even if a wire passes over it; click the wire to select it.</li>
           <li><b>Rotate:</b> R. <b>Replace burnt parts:</b> Y. <b>Delete:</b> Del. <b>Undo / redo:</b> Ctrl+Z / Ctrl+Y. <b>Fit view:</b> F.</li>
           <li><b>Tweak values:</b> select a part and use the inspector, or Shift + mouse wheel over a part.</li>
+          <li><b>Code:</b> the Code button in the top bar opens the code window of the Arduino boards. Click a board to see its name and the sketch it holds; Upload flashes the text into that board.</li>
           <li><b>Click</b> switches to flip them, hold the mouse on a push button to press it, click the meter dial to change mode.</li>
           <li>Parts burn when you push them past their rating. Select a burnt part and press Replace.</li>
         </ul>

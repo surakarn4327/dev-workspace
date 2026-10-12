@@ -824,6 +824,45 @@ dialog li {
   font-size: 11px;
 }
 
+/* the board list in the code panel's header, the empty message, and the panel when there is no board */
+#cp-board {
+  background: #070b10;
+  color: var(--cyan);
+  border: 1px solid #1c4a56;
+  border-radius: 2px;
+  padding: 2px 4px;
+  font: 12px Consolas, 'Cascadia Mono', 'Lucida Console', monospace;
+  letter-spacing: 0.5px;
+  max-width: 220px;
+}
+
+.cp-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--dim);
+  line-height: 1.6;
+  background: #05070b;
+}
+
+.cp-empty[hidden] {
+  display: none;
+}
+
+.cp-editor {
+  position: relative;
+}
+
+.float-panel.bottom.no-board .cp-head button:not(#cp-fold):not(#cp-close),
+.float-panel.bottom.no-board .cp-side {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 /* The code panel of an Arduino board: a terminal on the bottom edge of the board, floating over it like the side panels. */
 .float-panel.bottom {
   align-self: end;

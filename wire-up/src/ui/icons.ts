@@ -19,6 +19,7 @@ const PATHS = {
   delete: '<path d="M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 11v6 M14 11v6"/>',
   export: '<path d="M12 15V4 M8 8l4-4 4 4 M4 15v5h16v-5"/>',
   import: '<path d="M12 4v11 M8 11l4 4 4-4 M4 15v5h16v-5"/>',
+  code: '<path d="M3 5h18v14H3z M7 10l3 2.5-3 2.5 M12 15h5"/>',
 } as const
 
 export type IconName = keyof typeof PATHS
