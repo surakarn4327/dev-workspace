@@ -2,7 +2,7 @@
 // status LED. Pins in grid units: along the bottom edge GND, IN1..INn, VCC; for channel i three screw terminals on the top edge
 // (NC, COM, NO). The trigger jumper picks which level at IN pulls the relay in (low: IN to GND, high: IN to VCC).
 
-import { COL, drawLabelAbove, drawText, rrect } from '../render/draw.ts'
+import { COL, drawLabelAbove, drawText, radialGlow, rrect } from '../render/draw.ts'
 import { drawSprite, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, RELAY } from '../sim/models.ts'
@@ -43,21 +43,10 @@ function namesFor(n: number): string[] {
   return out
 }
 
-/** One SMD status LED's lens at art (ax, ay): a small shaded dome, dim while off, bright with a soft halo while on (normal blend, like the gates). */
+/** One SMD status LED's lens at art (ax, ay): a small shaded dome, dim while off, bright with a halo of light while on. */
 function statusLed(c: CanvasRenderingContext2D, ax: number, ay: number, on: boolean, color: 'green' | 'red'): void {
-  if (on) {
-    const x = (ax + 2) * 2
-    const y = (ay + 2) * 2
-    const rgb = color === 'red' ? '255,60,60' : '57,255,136'
-    const g = c.createRadialGradient(x, y, 0, x, y, 12)
-    g.addColorStop(0, `rgba(${rgb},0.7)`)
-    g.addColorStop(0.5, `rgba(${rgb},0.3)`)
-    g.addColorStop(1, `rgba(${rgb},0)`)
-    c.fillStyle = g
-    c.beginPath()
-    c.arc(x, y, 12, 0, Math.PI * 2)
-    c.fill()
-  }
+  // a lit lamp gives off light: a halo round its lens (the same look as the LED part and the Uno's lamps)
+  if (on) radialGlow(c, (ax + 2) * 2, (ay + 2) * 2, 26, color === 'red' ? '#ff3b3b' : '#39ff88', 0.85)
   drawSprite(c, relayLensSprite(color, on), ax * 2, ay * 2)
 }
 

@@ -3,7 +3,7 @@
 // socket) and the board goes dark, like a switch. Every wired I/O pin is a pad of the ATmega328P (`McuPinElement`): a driven pad
 // is 5 V or 0 V behind 25 ohm, an input pad draws nothing, and every pad has the two protection diodes to the rails.
 
-import { COL, drawLabelAbove, drawText, rrect } from '../render/draw.ts'
+import { COL, drawLabelAbove, drawText, radialGlow, rrect } from '../render/draw.ts'
 import { drawSprite, spriteInk } from '../render/pixel.ts'
 import { scene } from '../render/scene.ts'
 import { eng, LED_COLORS, LED_N, ledIs, MCU } from '../sim/models.ts'
@@ -219,10 +219,15 @@ export const arduinoUno: PartDef = {
       // the sockets are part of the board's picture: wires are drawn over them like over the rest of the board
       drawSprite(c, unoHeaderSprite(), -2 * UNO_PAD, 0)
       // the lamps: ON (power), L (pin 13), and TX / RX which wait for the sketch's serial traffic
-      const lamp = (at: { x: number; y: number }, color: 'green' | 'orange' | 'yellow', on: boolean): void => drawSprite(c, unoLensSprite(color, on), at.x * 2, at.y * 2)
+      const GLOW = { green: '#39ff88', orange: '#ffa23a', yellow: '#ffe24a' }
+      const lamp = (at: { x: number; y: number }, color: 'green' | 'orange' | 'yellow', on: boolean): void => {
+        drawSprite(c, unoLensSprite(color, on), at.x * 2, at.y * 2)
+        // a lit lamp gives off light: a halo round the 4 x 4 lens (centre = lens + 2 art pixels)
+        if (on) radialGlow(c, (at.x + 2) * 2, (at.y + 2) * 2, 26, GLOW[color], 0.85)
+      }
       lamp(UNO_LAMPS.l, 'orange', (live.l ?? 0) > 0.5)
-      lamp(UNO_LAMPS.tx, 'yellow', false)
-      lamp(UNO_LAMPS.rx, 'yellow', false)
+      lamp(UNO_LAMPS.tx, 'yellow', (live.tx ?? 0) > 0.5)
+      lamp(UNO_LAMPS.rx, 'yellow', (live.rx ?? 0) > 0.5)
       lamp(UNO_LAMPS.on, 'green', (live.pw ?? 0) > 0.5)
       drawSprite(c, unoResetSprite(flag(p, 'pressed')), UNO_RESET.x * 2, UNO_RESET.y * 2)
       // the pin names, printed under the top header and over the bottom one
