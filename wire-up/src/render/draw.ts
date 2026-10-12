@@ -24,6 +24,9 @@ const FONT_STACK = 'Silver, "Cascadia Mono", Consolas, Menlo, "Courier New", mon
 /** Silver has small glyphs for its em; this matches the size the old pixel text had. */
 const FONT_BOOST = 1.6
 
+/** Ordinary sans-serif for lettering that must read like print (a board's silkscreen): the system's own fonts, nothing loaded. */
+const WEB_STACK = '"Segoe UI", Arial, Helvetica, "Liberation Sans", sans-serif'
+
 export interface TextOpts {
   color?: string
   /** Multiplier on the base size. */
@@ -33,6 +36,8 @@ export interface TextOpts {
   size?: number
   /** Draw on a white label box with black text (colour is ignored). */
   box?: boolean
+  /** Bold web sans-serif instead of the pixel font; `size` is then the font size in world px. */
+  web?: boolean
 }
 
 /** (x, y) is the top of the text box. Drawn as real text, so it stays sharp at every zoom level. */
@@ -40,7 +45,7 @@ export function drawText(c: CanvasRenderingContext2D, str: string, x: number, y:
   const px = (o.size ?? 8) * (o.scale ?? 1)
   const align = o.align ?? 'left'
   c.save()
-  c.font = `${px * FONT_BOOST}px ${FONT_STACK}`
+  c.font = o.web ? `bold ${px}px ${WEB_STACK}` : `${px * FONT_BOOST}px ${FONT_STACK}`
   c.textAlign = align
   c.textBaseline = 'alphabetic'
   const base = y + px

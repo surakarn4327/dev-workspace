@@ -55,10 +55,15 @@ function printedName(idx: number): string {
   return name
 }
 
-/** Silkscreen lettering is heavier than the pixel font: the same text twice, one world pixel apart. */
-function bold(c: CanvasRenderingContext2D, text: string, x: number, y: number, align: 'left' | 'center' | 'right', color: string, size: number): void {
+/** The two names the user keeps in the pixel font (ARDUINO, UNO): heavier than the font, so the same text twice, one world pixel apart. */
+function pixelBold(c: CanvasRenderingContext2D, text: string, x: number, y: number, align: 'left' | 'center' | 'right', color: string, size: number): void {
   drawText(c, text, x, y, { color, align, size })
   drawText(c, text, x + 1, y, { color, align, size })
+}
+
+/** All other white lettering on the board is plain bold web sans-serif: it reads at every zoom (the pixel font did not). */
+function bold(c: CanvasRenderingContext2D, text: string, x: number, y: number, align: 'left' | 'center' | 'right', color: string, size: number): void {
+  drawText(c, text, x, y, { color, align, size, web: true })
 }
 
 /**
@@ -74,11 +79,11 @@ function printed(c: CanvasRenderingContext2D, text: string, x: number, y: number
 }
 
 /** Small lettering turned a quarter, reading upward, centred on (x, y). */
-function turnedText(c: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string): void {
+function turnedText(c: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string, web = false): void {
   c.save()
   c.translate(x, y)
   c.rotate(-Math.PI / 2)
-  drawText(c, text, 0, -size / 2, { color, align: 'center', size })
+  drawText(c, text, 0, -size / 2, { color, align: 'center', size, web })
   c.restore()
 }
 
@@ -214,26 +219,25 @@ export const arduinoUno: PartDef = {
           const text = printedName(idx)
           if (!text) continue
           const analog = UNO_PINS[idx].startsWith('A')
-          printed(c, text, (h.x + k) * 20 + 1, h.y < 10 ? 38 : 387, h.y < 10 ? 'top' : 'bottom', analog ? 17 : h.y < 10 ? 19 : 15)
+          printed(c, text, (h.x + k) * 20 + 1, h.y < 10 ? 38 : 387, h.y < 10 ? 'top' : 'bottom', analog ? 15 : h.y < 10 ? 14 : 12)
         }
       }
       const upright = (text: string, x: number, y: number, align: 'left' | 'center' | 'right', size: number, color = INK, heavy = true): void =>
         heavy ? bold(c, text, x, y - size / 2, align, color, size) : drawText(c, text, x, y - size / 2, { color, align, size })
-      upright('DIGITAL (PWM~)', 412, 70, 'center', 17)
-      upright('POWER', 367, 357, 'right', 17)
-      upright('ANALOG IN', 508, 357, 'right', 16)
-      upright('ARDUINO', 302, 147, 'center', 24)
+      upright('DIGITAL (PWM~)', 412, 70, 'center', 14)
+      upright('POWER', 367, 354, 'right', 13)
+      upright('ANALOG IN', 508, 354, 'right', 14)
+      pixelBold(c, 'ARDUINO', 302, 147 - 12, 'center', INK, 24)
       upright('UNO', 404, 110, 'center', 34, INK, false)
-      upright('L', 200, 87, 'right', 15)
-      upright('TX', 200, 133, 'right', 15)
-      upright('RX', 200, 150, 'right', 15)
-      upright('ON', 478, 132, 'left', 15)
-      upright('ICSP', 514, 160, 'center', 10)
-      upright('WWW.ARDUINO.CC - MADE IN ITALY', 534, 242, 'right', 12)
+      upright('L', 194, 87, 'right', 14)
+      upright('TX', 194, 133, 'right', 14)
+      upright('RX', 194, 150, 'right', 14)
+      upright('ON', 479, 132, 'left', 14)
+      upright('ICSP', 514, 160, 'center', 11)
       upright('T16.000', 146, 217, 'center', 9, '#6a6558', false)
-      turnedText(c, 'RESET', 3, 30, 8, INK)
-      turnedText(c, 'JP2', 124, 110, 9, INK)
-      turnedText(c, 'RESET EN', 240, 206, 7, INK)
+      turnedText(c, 'RESET', 3, 30, 7, INK, true)
+      turnedText(c, 'JP2', 124, 110, 8, INK, true)
+      turnedText(c, 'RESET EN', 240, 206, 6, INK, true)
       turnedText(c, '503C', 30, 212, 8, '#f0cf48')
       // the chip's marking, upside down like the real one, and the capacitors' three printed lines
       c.save()
