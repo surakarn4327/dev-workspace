@@ -40,16 +40,19 @@ const INK = '#eef4ff'
 /** The lamp that says the board has power draws a milliamp or so; below half of that it is dark. */
 const LAMP_ON = 0.0005
 
-/** What is printed beside each pin on the board. */
+/** What is printed beside each pin on the board (as on the Pololu photo: SCL and SDA carry no name on this revision). */
 function printedName(idx: number): string {
   const name = UNO_PINS[idx]
   if (/^D\d+$/.test(name)) {
     const n = Number(name.slice(1))
-    if (n === 0) return 'RX0'
-    if (n === 1) return 'TX1'
+    if (n === 0) return 'RX<0'
+    if (n === 1) return 'TX>1'
     return `${PWM_PINS.has(n) ? '~' : ''}${n}`
   }
-  return name === 'NC' ? '' : name
+  if (name === 'NC' || name === 'SCL' || name === 'SDA') return ''
+  if (name === '3V3') return '3.3V'
+  if (name === 'VIN') return 'Vin'
+  return name
 }
 
 /** Silkscreen lettering is heavier than the pixel font: the same text twice, one world pixel apart. */
@@ -60,13 +63,22 @@ function bold(c: CanvasRenderingContext2D, text: string, x: number, y: number, a
 
 /**
  * A pin name printed on the board as on the real one: turned a quarter so it reads upward along the pin's column. Under the top
- * header it ends at the header; over the bottom header it starts at it.
+ * header it ends 8 pixels under the header; over the bottom header it starts 4 above it.
  */
-function printed(c: CanvasRenderingContext2D, text: string, x: number, y: number, edge: 'top' | 'bottom'): void {
+function printed(c: CanvasRenderingContext2D, text: string, x: number, y: number, edge: 'top' | 'bottom', size: number): void {
   c.save()
   c.translate(x, y)
   c.rotate(-Math.PI / 2)
-  bold(c, text, 0, -7, edge === 'top' ? 'right' : 'left', INK, 14)
+  bold(c, text, 0, -size / 2 - 1, edge === 'top' ? 'right' : 'left', INK, size)
+  c.restore()
+}
+
+/** Small lettering turned a quarter, reading upward, centred on (x, y). */
+function turnedText(c: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string): void {
+  c.save()
+  c.translate(x, y)
+  c.rotate(-Math.PI / 2)
+  drawText(c, text, 0, -size / 2, { color, align: 'center', size })
   c.restore()
 }
 
@@ -200,35 +212,40 @@ export const arduinoUno: PartDef = {
       for (const h of UNO_HEADERS) {
         for (let k = 0; k < h.n; k++, idx++) {
           const text = printedName(idx)
-          if (text) printed(c, text, (h.x + k) * 20 + 4, h.y < 10 ? 30 : 386, h.y < 10 ? 'top' : 'bottom')
+          if (!text) continue
+          const analog = UNO_PINS[idx].startsWith('A')
+          printed(c, text, (h.x + k) * 20 + 1, h.y < 10 ? 38 : 387, h.y < 10 ? 'top' : 'bottom', analog ? 17 : h.y < 10 ? 19 : 15)
         }
       }
-      const upright = (text: string, x: number, y: number, align: 'left' | 'center' | 'right', size: number, color = INK): void =>
-        bold(c, text, x, y - size / 2, align, color, size)
+      const upright = (text: string, x: number, y: number, align: 'left' | 'center' | 'right', size: number, color = INK, heavy = true): void =>
+        heavy ? bold(c, text, x, y - size / 2, align, color, size) : drawText(c, text, x, y - size / 2, { color, align, size })
       upright('DIGITAL (PWM~)', 412, 70, 'center', 17)
-      upright('POWER', 346, 356, 'center', 15)
-      upright('ANALOG IN', 470, 356, 'center', 14)
-      upright('ARDUINO', 302, 148, 'center', 24)
-      upright('UNO', 406, 107, 'center', 36)
-      upright('L', 198, 86, 'right', 15)
-      upright('TX', 198, 132, 'right', 15)
-      upright('RX', 198, 150, 'right', 15)
-      upright('ON', 478, 134, 'left', 15)
-      upright('ICSP', 514, 166, 'center', 10)
-      upright('WWW.ARDUINO.CC - MADE IN ITALY', 532, 242, 'right', 11)
-      upright('T16.000', 138, 216, 'center', 8, '#4a505c')
-      // the chip's marking, upside down like the real one, and the capacitors' values
+      upright('POWER', 367, 357, 'right', 17)
+      upright('ANALOG IN', 508, 357, 'right', 16)
+      upright('ARDUINO', 302, 147, 'center', 24)
+      upright('UNO', 404, 110, 'center', 34, INK, false)
+      upright('L', 200, 87, 'right', 15)
+      upright('TX', 200, 133, 'right', 15)
+      upright('RX', 200, 150, 'right', 15)
+      upright('ON', 478, 132, 'left', 15)
+      upright('ICSP', 514, 160, 'center', 10)
+      upright('WWW.ARDUINO.CC - MADE IN ITALY', 534, 242, 'right', 12)
+      upright('T16.000', 146, 217, 'center', 9, '#6a6558', false)
+      turnedText(c, 'RESET', 3, 30, 8, INK)
+      turnedText(c, 'JP2', 124, 110, 9, INK)
+      turnedText(c, 'RESET EN', 240, 206, 7, INK)
+      turnedText(c, '503C', 30, 212, 8, '#f0cf48')
+      // the chip's marking, upside down like the real one, and the capacitors' three printed lines
       c.save()
-      c.translate(366, 286)
+      c.translate(366, 282)
       c.rotate(Math.PI)
-      drawText(c, 'ATMEGA328P-PU', 0, -5, { color: '#4a4a55', align: 'center', size: 10 })
+      drawText(c, 'ATMEGA328P-PU', 0, -5, { color: '#6b5a48', align: 'center', size: 10 })
+      drawText(c, '1320', -60, 8, { color: '#6b5a48', align: 'center', size: 10 })
       c.restore()
-      for (const cx of [142, 196]) {
-        c.save()
-        c.translate(cx, 352)
-        c.rotate(-Math.PI / 2)
-        drawText(c, '47 25V', 0, -4, { color: '#2a2e36', align: 'center', size: 8 })
-        c.restore()
+      for (const cx of [140, 198]) {
+        turnedText(c, '35462', cx - 16, 351, 8, '#2a2a30')
+        turnedText(c, '47', cx, 351, 13, '#2a2a30')
+        turnedText(c, '25V', cx + 13, 351, 13, '#2a2a30')
       }
       if (usb) drawSprite(c, unoPlugSprite(), PLUG_AT.x, PLUG_AT.y)
       if (scene.labeled.has(p.id)) drawLabelAbove(c, 'Arduino Uno R3', 270, spriteInk(board, -2 * UNO_PAD, 0).top)
