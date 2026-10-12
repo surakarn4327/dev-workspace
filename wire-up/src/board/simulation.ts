@@ -64,6 +64,10 @@ export class Simulation {
   private pwmPhase = 0
   /** The frequency of the PWM wave on each pad that has duty between 0 and 1 (by pad key); 0 or missing = a stand-in rate. */
   private padHz = new Map<string, number>()
+  /** The moments a pad that a sketch toggled by hand changed in the frame just run (by pad key): the level it began at and each change. */
+  private padWave = new Map<string, { start: number; edges: { at: number; v: number }[] }>()
+  /** Answers for patterns of high and low pads, kept from frame to frame while the circuit stays the same (a display scan repeats itself). */
+  private patternCache = new Map<string, SolveResult & { raw: Float64Array }>()
 
   constructor(world: World) {
     this.world = world
@@ -91,6 +95,7 @@ export class Simulation {
     }
     this.sig = sig
     this.settled = false
+    this.patternCache.clear()
     this.show(advance(this.net.circuit, this.charge, 0, this.warm))
   }
 
@@ -134,6 +139,16 @@ export class Simulation {
     if ((this.charge.get(key) ?? -1) === value) return
     this.charge.set(key, value)
     this.settled = false
+  }
+
+  /**
+   * What a pad did within the frame just run, when the sketch toggled it by hand: its level at the start (0 or 1) and each change
+   * (`at` in the simulation clock). `null` clears it. The next `stepPwm` samples these, so pins that were high together stay together.
+   */
+  setPadWave(partId: string, pad: number, start: number, edges: { at: number; v: number }[] | null): void {
+    const key = `${partId}:p${pad}:m`
+    if (edges && edges.length > 0) this.padWave.set(key, { start, edges: edges.slice() })
+    else this.padWave.delete(key)
   }
 
   /** Voltage of one I/O pad of an Arduino board (pad 0..19 = D0..D13, A0..A5) against the board's GND, from the last solve. */
@@ -189,7 +204,24 @@ export class Simulation {
       }
     })
     const segs: { len: number; high: boolean[] }[] = []
-    if (cuts.length <= 72) {
+    const waves = keys.map((k) => this.padWave.get(k))
+    const levelAt = (wave: { start: number; edges: { at: number; v: number }[] }, time: number): boolean => {
+      let v = wave.start
+      for (const e of wave.edges) {
+        if (e.at <= time) v = e.v
+        else break
+      }
+      return v >= 0.5
+    }
+    if (waves.some((w) => w !== undefined)) {
+      // pins the sketch toggled by hand (a display scan): the frame is sampled finely and every pin is read at the same moment of
+      // it, so a row that was high is seen with the columns that were low at that time. Pins on a PWM keep their own waves.
+      const K = 32
+      for (let j = 0; j < K; j++) {
+        const mid = t0 + ((j + 0.5) / K) * dt
+        segs.push({ len: dt / K, high: keys.map((_, n) => (waves[n] ? levelAt(waves[n]!, mid) : (mid / period[n]) % 1 < duty[n])) })
+      }
+    } else if (cuts.length <= 72) {
       cuts.sort((x, y) => x - y)
       for (let j = 1; j < cuts.length; j++) {
         const len = cuts[j] - cuts[j - 1]
@@ -212,15 +244,22 @@ export class Simulation {
     let iters = 0
     let last: (SolveResult & { raw: Float64Array }) | null = null
     // with nothing that stores state, a piece of the frame is solved once per pattern of high and low pads, however often it comes
-    const seen = new Map<string, SolveResult & { raw: Float64Array }>()
+    // (and kept for the next frames: a display scan shows the same few patterns again and again, until the circuit changes)
+    const cache = this.dynamic ? null : this.patternCache
+    const base = cache ? [...this.charge].filter(([k]) => !keys.includes(k)).map(([k, v]) => `${k}=${v}`).join(';') : ''
     for (const seg of segs) {
       const w = seg.len / dt
       keys.forEach((k, n) => this.charge.set(k, seg.high[n] ? 1 : 0))
       const pattern = seg.high.map((h) => (h ? '1' : '0')).join('')
-      let r = this.dynamic ? undefined : seen.get(pattern)
+      let r = cache?.get(`${base}|${pattern}`)
+      let fresh = false
       if (!r) {
         r = advance(this.net.circuit, this.charge, this.dynamic ? seg.len : 0, this.warm, 1)
-        if (!this.dynamic) seen.set(pattern, r)
+        fresh = true
+        if (cache) {
+          if (cache.size > 300) cache.clear()
+          cache.set(`${base}|${pattern}`, r)
+        }
       }
       last = r
       this.warm = r.raw
@@ -235,7 +274,7 @@ export class Simulation {
       }
       for (const id of r.ccIds) cc.add(id)
       if (!r.converged) ok = false
-      iters += r.iterations
+      if (fresh) iters += r.iterations
     }
     keys.forEach((k, n) => this.charge.set(k, duty[n]))
     if (!last || !vSum) return

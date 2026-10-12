@@ -39,6 +39,13 @@ interface Pad {
   sentHz: number
   /** Frequency of the `tone()` running on the pin, 0 when none. */
   tone: number
+  /**
+   * The frame's waveform of a pin the sketch drives by hand (digitalWrite): the level it began the frame at (-1 if it was not such a
+   * pin), and each change with its time. A display scan needs it: which rows and columns were high at the same moment.
+   */
+  startV: number
+  edges: { at: number; v: number }[]
+  wavy: boolean
 }
 
 class Board {
@@ -54,7 +61,7 @@ class Board {
   rxAt = -1
   frameStart = 0
   slow = false
-  pads: Pad[] = Array.from({ length: 20 }, () => ({ eff: -1, mode: 'in', level: 0, pwm: null, acc: 0, seg: 0, sent: -1, sentHz: 0, tone: 0 }))
+  pads: Pad[] = Array.from({ length: 20 }, () => ({ eff: -1, mode: 'in', level: 0, pwm: null, acc: 0, seg: 0, sent: -1, sentHz: 0, tone: 0, startV: -1, edges: [], wavy: false }))
 }
 
 /** The EEPROM saved in a board's `eeprom` parameter (hex text); cells never written read 0xFF. */
@@ -153,6 +160,9 @@ export class McuBoards {
       p.pwm = null
       p.tone = 0
       p.acc = 0
+      p.edges = []
+      p.wavy = false
+      sim.setPadWave(partId, padOf(n), 0, null)
       if (p.sent !== -1) sim.setPad(partId, padOf(n), -1)
       p.sent = -1
       p.sentHz = 0
@@ -209,6 +219,9 @@ export class McuBoards {
     for (const p of b.pads) {
       p.acc = 0
       p.seg = b.frameStart
+      p.edges = []
+      p.wavy = p.mode === 'out' && p.pwm === null && p.tone === 0
+      p.startV = p.wavy ? p.level : -1
     }
     m.advance(now - b.startedAt)
     b.slow = m.slow
@@ -244,6 +257,10 @@ export class McuBoards {
         p.sent = v
         p.sentHz = hz
       }
+      // a pin the sketch toggled by hand within the frame (a display scan) is passed on with the moments it changed, so the circuit
+      // sees which pins were high together and not only how long each one was
+      const toggled = p.wavy && p.mode === 'out' && p.pwm === null && p.tone === 0 && p.edges.length > 0 && v > 0 && v < 1
+      sim.setPadWave(part.id, padOf(n), p.startV, toggled ? p.edges : null)
       p.eff = v
     }
     b.frameStart = now
@@ -258,6 +275,10 @@ export class McuBoards {
       if (p.mode === 'out') p.acc += (p.pwm !== null ? p.pwm : p.level) * (at - p.seg)
       p.seg = at
       apply(p)
+      if (p.wavy) {
+        if (p.mode === 'out' && p.pwm === null && p.tone === 0) p.edges.push({ at, v: p.level })
+        else p.wavy = false // it became an input, a PWM or a tone within the frame: the average will do
+      }
     }
     const index = (pin: number): number => (pin >= 0 && pin <= 19 ? pin : -1)
     return {

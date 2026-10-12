@@ -249,6 +249,55 @@ describe('sketches on the board', () => {
     }
   })
 
+  it('a scanned LED matrix lights the right LEDs: rows and columns are seen high and low together', () => {
+    const w = new World()
+    const b = new SceneBuilder(w)
+    const program = `
+      int rowPins[2] = {2, 3};
+      int colPins[2] = {4, 5};
+      int image[2] = {1, 2};
+      void setup() {
+        for (int i = 0; i < 2; i++) {
+          pinMode(rowPins[i], OUTPUT); pinMode(colPins[i], OUTPUT);
+          digitalWrite(rowPins[i], LOW); digitalWrite(colPins[i], HIGH);
+        }
+      }
+      void showRow(int r) {
+        for (int c = 0; c < 2; c++) digitalWrite(colPins[c], ((image[r] >> c) & 1) ? LOW : HIGH);
+        digitalWrite(rowPins[r], HIGH);
+        delay(2);
+        digitalWrite(rowPins[r], LOW);
+      }
+      void loop() { for (int r = 0; r < 2; r++) showRow(r); }`
+    const uno = b.place('arduino-uno', 400, 100, { usb: true, program })
+    const leds = [
+      [b.place('led', 800, 100, { color: 'red' }), b.place('led', 900, 100, { color: 'red' })],
+      [b.place('led', 800, 300, { color: 'red' }), b.place('led', 900, 300, { color: 'red' })],
+    ]
+    const res = [b.place('resistor', 800, 500, { value: 330 }), b.place('resistor', 1000, 500, { value: 330 })]
+    const pins = pinWorld(uno)
+    // row r: Uno pin -> the first LED's anode, and on to the second one's; column c: both cathodes -> a resistor -> Uno pin
+    for (let r = 0; r < 2; r++) {
+      b.wire(pins[padOf(2 + r)], pinWorld(leds[r][0])[0])
+      b.wire(pinWorld(leds[r][0])[0], pinWorld(leds[r][1])[0])
+    }
+    for (let c = 0; c < 2; c++) {
+      const [r0, r1] = pinWorld(res[c])
+      b.wire(pinWorld(leds[0][c])[1], r0, '#2f6fe0')
+      b.wire(pinWorld(leds[1][c])[1], r0, '#2f6fe0')
+      b.wire(r1, pins[padOf(4 + c)], '#2f6fe0')
+    }
+    w.commit()
+    const sim = new Simulation(w)
+    run(sim, 0.5)
+    const amps = leds.map((row) => row.map((l) => sim.live.get(l.id)!.i))
+    // image: row 0 has column 0 lit, row 1 has column 1 lit
+    expect(amps[0][0]).toBeGreaterThan(0.002)
+    expect(amps[1][1]).toBeGreaterThan(0.002)
+    expect(amps[0][1]).toBeLessThan(0.0002)
+    expect(amps[1][0]).toBeLessThan(0.0002)
+  })
+
   it('a pin an interrupt watches sees a button wired to it: falling edges counted by the sketch', () => {
     const s = lab(
       'volatile int n = 0; void isr() { n++; } void setup() { Serial.begin(9600); pinMode(2, INPUT_PULLUP); attachInterrupt(0, isr, FALLING); } void loop() { Serial.println(n); delay(50); }',
