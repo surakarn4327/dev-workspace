@@ -81,6 +81,7 @@ export function lex(source: string): { tokens: Token[]; includes: string[] } {
       } else if (m[1] === 'define') {
         // `#define NAME(a, b) body` is function-like only when the ( touches the name
         const fn = /^(\w+)\(([^)]*)\)\s*(.*)$/.exec(m[2])
+        if (!fn && /^\w+\(/.test(m[2])) throw new CompileError("missing ')' in macro parameter list", at)
         const d = fn ?? /^(\w+)\s*(.*)$/.exec(m[2])
         if (!d) throw new CompileError("macro names must be identifiers: '#define' needs a name", at)
         const params = fn
