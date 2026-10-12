@@ -47,32 +47,46 @@
         <section id="panel-lessons" hidden></section>
       </aside>
       <section id="code-panel" class="float-panel bottom" hidden>
-        <div class="cp-head">
+        <div class="cp-bar">
+          <button class="cp-round" id="cp-verify" title="Verify: check the sketch for mistakes (nothing changes on the board)" aria-label="Verify">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+          </button>
+          <button class="cp-round" id="cp-upload" title="Upload: verify, then flash the sketch into the board and restart it (Ctrl+Enter)" aria-label="Upload">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15 M13 6l6 6-6 6"/></svg>
+          </button>
           <select id="cp-board" title="Which board's sketch is shown (clicking a board on the canvas picks it too)"></select>
           <span class="cp-state" id="cp-state"></span>
           <span class="cp-spacer"></span>
-          <button id="cp-verify" title="Check the sketch for mistakes (nothing is changed on the board)">Verify</button>
-          <button id="cp-upload" title="Verify, then flash the sketch into the board and restart it (Ctrl+Enter)">Upload</button>
-          <button id="cp-example" title="Put the factory Blink sketch in the editor">Blink</button>
-          <button id="cp-clear" title="Clear the Serial Monitor">Clear</button>
-          <button id="cp-fold" title="Fold or unfold the panel">&#9662;</button>
-          <button id="cp-close" title="Close the code window">&times;</button>
+          <button class="cp-flat" id="cp-example" title="Put the factory Blink sketch in the editor">Blink example</button>
+          <button class="cp-flat" id="cp-clear" title="Clear the Serial Monitor">Clear serial</button>
+          <button class="cp-flat" id="cp-fold" title="Fold or unfold the window">&#9662;</button>
+          <button class="cp-flat" id="cp-close" title="Close the code window">&times;</button>
         </div>
         <div class="cp-body">
+          <div class="cp-tabs"><span class="cp-tab" id="cp-file">sketch.ino</span></div>
           <div class="cp-editor">
             <pre class="cp-gutter" id="cp-gutter"></pre>
-            <textarea id="cp-code" spellcheck="false" wrap="off" autocomplete="off" autocapitalize="off"></textarea>
+            <div class="cp-code-wrap">
+              <pre class="cp-mono" id="cp-hl" aria-hidden="true"></pre>
+              <textarea class="cp-mono" id="cp-code" spellcheck="false" wrap="off" autocomplete="off" autocapitalize="off"></textarea>
+            </div>
             <div class="cp-empty" id="cp-empty" hidden>No Arduino board in the lab yet. Drag an <b>Arduino Uno R3</b> from the toolbox (Boards) onto the board, then click it.</div>
           </div>
-          <div class="cp-side">
-            <div class="cp-log" id="cp-log"></div>
-            <div class="cp-serial-head">Serial Monitor <span>9600 baud as the sketch sets it</span></div>
-            <pre class="cp-serial" id="cp-serial"></pre>
-            <form class="cp-send" id="cp-send">
-              <input id="cp-input" placeholder="text for Serial.read() ..." autocomplete="off" spellcheck="false" />
-              <button>Send</button>
-            </form>
+          <div class="cp-bottom">
+            <div class="cp-out">
+              <div class="cp-head2">Output</div>
+              <div class="cp-log" id="cp-log"></div>
+            </div>
+            <div class="cp-ser">
+              <div class="cp-head2">Serial Monitor <span>as the sketch sets its baud</span></div>
+              <pre class="cp-serial" id="cp-serial"></pre>
+              <form class="cp-send" id="cp-send">
+                <input id="cp-input" placeholder="Message for Serial.read()" autocomplete="off" spellcheck="false" />
+                <button>Send</button>
+              </form>
+            </div>
           </div>
+          <div class="cp-status"><span id="cp-pos">Ln 1, Col 1</span><span id="cp-info"></span></div>
         </div>
       </section>
       <footer id="status">

@@ -824,16 +824,246 @@ dialog li {
   font-size: 11px;
 }
 
-/* the board list in the code panel's header, the empty message, and the panel when there is no board */
+/*
+ * The code window of an Arduino board (ui/codePanel.ts): a light window in the manner of the Arduino IDE, floating on the bottom
+ * edge of the board like the side panels: teal tool bar with round Verify / Upload buttons, a file tab, the sketch with
+ * syntax colours, then Output and Serial Monitor side by side and a teal status line.
+ */
+.float-panel.bottom {
+  align-self: end;
+  justify-self: stretch;
+  margin: 0 calc(var(--rw) + 12px) 12px calc(var(--lw) + 12px);
+  height: min(52vh, 400px);
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  color: #2b3436;
+  border: 1px solid #b9c4c7;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.55);
+  font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  transition: margin 0.2s ease;
+}
+
+.float-panel.bottom[hidden] {
+  display: none;
+}
+
+.float-panel.bottom.folded {
+  height: 46px;
+}
+
+.float-panel.bottom.folded .cp-body {
+  display: none;
+}
+
+.cp-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 46px;
+  padding: 0 10px;
+  background: #00979d;
+  color: #ffffff;
+}
+
+.cp-round {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  background: #ffffff;
+  color: #00979d;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.cp-round:hover {
+  background: #d6f3f4;
+}
+
+.cp-round svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 #cp-board {
-  background: #070b10;
-  color: var(--cyan);
-  border: 1px solid #1c4a56;
-  border-radius: 2px;
-  padding: 2px 4px;
-  font: 12px Consolas, 'Cascadia Mono', 'Lucida Console', monospace;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: 13px 'Segoe UI', Arial, sans-serif;
+  max-width: 230px;
+}
+
+#cp-board option {
+  color: #2b3436;
+  background: #ffffff;
+}
+
+.cp-spacer {
+  flex: 1;
+}
+
+.cp-state {
+  font-size: 11px;
   letter-spacing: 0.5px;
-  max-width: 220px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.cp-state.ok {
+  color: #1a7f37;
+}
+
+.cp-state.warn {
+  color: #b35900;
+}
+
+.cp-state.bad {
+  color: #c62828;
+}
+
+.cp-flat {
+  background: transparent;
+  color: #ffffff;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 9px;
+  font: 12px 'Segoe UI', Arial, sans-serif;
+  cursor: pointer;
+}
+
+.cp-flat:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.cp-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.cp-tabs {
+  flex: none;
+  background: #e9eef0;
+  border-bottom: 1px solid #c9d2d4;
+  padding: 0 8px;
+}
+
+.cp-tab {
+  display: inline-block;
+  padding: 5px 14px;
+  background: #ffffff;
+  border-bottom: 2px solid #00979d;
+  font-size: 12px;
+}
+
+.cp-editor {
+  position: relative;
+  display: flex;
+  flex: 1 1 56%;
+  min-height: 70px;
+  background: #ffffff;
+}
+
+.cp-gutter {
+  margin: 0;
+  padding: 8px 8px 8px 10px;
+  width: 46px;
+  flex: none;
+  overflow: hidden;
+  text-align: right;
+  color: #8e9ea2;
+  background: #f4f7f8;
+  border-right: 1px solid #dde4e6;
+  font: 13px/18px Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  user-select: none;
+}
+
+.cp-gutter span.bad {
+  color: #ffffff;
+  background: #c62828;
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+.cp-code-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-mono {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  font: 13px/18px Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  background: transparent;
+}
+
+#cp-hl {
+  color: #2b3436;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#cp-code {
+  color: transparent;
+  caret-color: #00979d;
+}
+
+#cp-code::selection {
+  background: rgba(0, 151, 157, 0.28);
+}
+
+.cp-hl-k {
+  color: #00979d;
+}
+
+.cp-hl-f {
+  color: #d35400;
+}
+
+.cp-hl-n {
+  color: #005c5f;
+}
+
+.cp-hl-s {
+  color: #4b7f1e;
+}
+
+.cp-hl-c {
+  color: #7f8c8d;
+}
+
+.cp-hl-p {
+  color: #728e00;
+}
+
+.cp-hl-err {
+  background: #fde8e8;
 }
 
 .cp-empty {
@@ -844,202 +1074,81 @@ dialog li {
   justify-content: center;
   padding: 24px;
   text-align: center;
-  color: var(--dim);
+  color: #5b6b6f;
   line-height: 1.6;
-  background: #05070b;
+  background: #ffffff;
 }
 
 .cp-empty[hidden] {
   display: none;
 }
 
-.cp-editor {
-  position: relative;
+.cp-bottom {
+  display: flex;
+  flex: 1 1 36%;
+  min-height: 80px;
+  border-top: 1px solid #c9d2d4;
 }
 
-.float-panel.bottom.no-board .cp-head button:not(#cp-fold):not(#cp-close),
-.float-panel.bottom.no-board .cp-side {
-  opacity: 0.35;
-  pointer-events: none;
-}
-
-/* The code panel of an Arduino board: a terminal on the bottom edge of the board, floating over it like the side panels. */
-.float-panel.bottom {
-  align-self: end;
-  justify-self: stretch;
-  margin: 0 calc(var(--rw) + 12px) 12px calc(var(--lw) + 12px);
-  height: min(46vh, 340px);
+.cp-out,
+.cp-ser {
   display: flex;
   flex-direction: column;
-  background: #05070b;
-  border: 1px solid #1c4a56;
-  box-shadow: 0 0 18px rgba(56, 249, 255, 0.18);
-  border-radius: 4px;
-  font-family: Consolas, 'Cascadia Mono', 'Lucida Console', monospace;
-  transition: margin 0.2s ease;
+  min-width: 0;
+  background: #f6f8f9;
 }
 
-.float-panel.bottom[hidden] {
-  display: none;
+.cp-out {
+  flex: 1 1 44%;
+  border-right: 1px solid #c9d2d4;
 }
 
-.float-panel.bottom.folded {
-  height: 34px;
+.cp-ser {
+  flex: 1 1 56%;
 }
 
-.float-panel.bottom.folded .cp-body {
-  display: none;
-}
-
-.cp-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  height: 34px;
+.cp-head2 {
   flex: none;
-  border-bottom: 1px solid #1c4a56;
-  background: #0a1117;
-}
-
-.cp-title {
-  color: var(--cyan);
-  letter-spacing: 1px;
-  font-size: 12px;
-}
-
-.cp-spacer {
-  flex: 1;
-}
-
-.cp-state {
+  padding: 3px 10px;
   font-size: 11px;
-  padding: 1px 6px;
-  border: 1px solid;
-  border-radius: 2px;
+  color: #5b6b6f;
+  background: #e9eef0;
+  border-bottom: 1px solid #dde4e6;
 }
 
-.cp-state.ok {
-  color: var(--green);
-}
-
-.cp-state.warn {
-  color: var(--amber);
-}
-
-.cp-state.bad {
-  color: var(--red);
-}
-
-.cp-head button {
-  font-family: inherit;
-  font-size: 12px;
-  padding: 2px 9px;
-}
-
-.cp-body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.cp-editor {
-  display: flex;
-  flex: 1 1 58%;
-  min-width: 0;
-  border-right: 1px solid #1c4a56;
-}
-
-.cp-gutter {
-  margin: 0;
-  padding: 8px 6px 8px 8px;
-  width: 44px;
-  flex: none;
-  overflow: hidden;
-  text-align: right;
-  color: #3d6672;
-  background: #070b10;
-  font: 13px/18px Consolas, 'Cascadia Mono', 'Lucida Console', monospace;
-  user-select: none;
-}
-
-.cp-gutter span.bad {
-  color: #fff;
-  background: var(--red);
-  padding: 0 3px;
-}
-
-#cp-code {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  padding: 8px;
-  border: 0;
-  outline: 0;
-  resize: none;
-  background: transparent;
-  color: #dff9ff;
-  caret-color: var(--cyan);
-  font: 13px/18px Consolas, 'Cascadia Mono', 'Lucida Console', monospace;
-  tab-size: 2;
-  white-space: pre;
-  overflow: auto;
-}
-
-.cp-side {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 42%;
-  min-width: 0;
+.cp-head2 span {
+  color: #8e9ea2;
+  margin-left: 6px;
 }
 
 .cp-log {
-  flex: none;
-  max-height: 34%;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding: 6px 8px;
-  font-size: 12px;
-  line-height: 1.4;
-  border-bottom: 1px solid #12303a;
-}
-
-.cp-log:empty {
-  display: none;
+  padding: 6px 10px;
+  font: 12px/1.45 Consolas, 'Cascadia Mono', 'Courier New', monospace;
 }
 
 .cp-log .ok {
-  color: var(--green);
+  color: #1a7f37;
 }
 
 .cp-log .err {
-  color: #ff7d88;
+  color: #c62828;
 }
 
 .cp-log .dim {
-  color: var(--dim);
-}
-
-.cp-serial-head {
-  flex: none;
-  padding: 3px 8px;
-  font-size: 11px;
-  color: var(--cyan);
-  background: #0a1117;
-}
-
-.cp-serial-head span {
-  color: var(--dim);
-  margin-left: 6px;
+  color: #5b6b6f;
 }
 
 .cp-serial {
   flex: 1;
   min-height: 0;
   margin: 0;
-  padding: 6px 8px;
+  padding: 6px 10px;
   overflow: auto;
-  color: #b8ffd0;
-  font: 13px/1.35 Consolas, 'Cascadia Mono', 'Lucida Console', monospace;
+  color: #2b3436;
+  font: 12px/1.45 Consolas, 'Cascadia Mono', 'Courier New', monospace;
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -1049,16 +1158,43 @@ dialog li {
   flex: none;
   gap: 6px;
   padding: 5px 8px;
-  border-top: 1px solid #12303a;
+  border-top: 1px solid #dde4e6;
+  background: #eef2f3;
 }
 
 .cp-send input {
   flex: 1;
   min-width: 0;
-  background: #070b10;
-  color: #dff9ff;
-  border: 1px solid #1c4a56;
-  border-radius: 2px;
-  padding: 3px 6px;
-  font: 12px Consolas, 'Cascadia Mono', 'Lucida Console', monospace;
+  background: #ffffff;
+  color: #2b3436;
+  border: 1px solid #b9c4c7;
+  border-radius: 3px;
+  padding: 3px 7px;
+  font: 12px 'Segoe UI', Arial, sans-serif;
+}
+
+.cp-send button {
+  background: #00979d;
+  color: #ffffff;
+  border: 0;
+  border-radius: 3px;
+  padding: 3px 12px;
+  font: 12px 'Segoe UI', Arial, sans-serif;
+  cursor: pointer;
+}
+
+.cp-status {
+  display: flex;
+  justify-content: space-between;
+  flex: none;
+  padding: 2px 12px;
+  background: #00979d;
+  color: #ffffff;
+  font-size: 11px;
+}
+
+.float-panel.bottom.no-board .cp-round,
+.float-panel.bottom.no-board .cp-bottom {
+  opacity: 0.4;
+  pointer-events: none;
 }

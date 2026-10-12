@@ -24,6 +24,52 @@ const STATE_TEXT: Record<string, [string, string]> = {
 
 const KEY = 'wire-up:code'
 
+const WORDS_K = new Set(
+  'void bool boolean char byte int short long float double unsigned signed const static volatile String word size_t uint8_t uint16_t uint32_t int8_t int16_t int32_t if else for while do switch case default break continue return true false HIGH LOW INPUT OUTPUT INPUT_PULLUP LED_BUILTIN A0 A1 A2 A3 A4 A5 PI DEC HEX BIN OCT'.split(' '),
+)
+const WORDS_F = new Set(
+  'setup loop pinMode digitalWrite digitalRead analogRead analogWrite analogReference delay delayMicroseconds millis micros random randomSeed map constrain min max abs sq sqrt pow sin cos tan exp log floor ceil round bitRead lowByte highByte Serial begin end print println write available read peek parseInt parseFloat flush F'.split(' '),
+)
+
+const TOKEN = /\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$)|"(?:\.|[^"\\n])*"?|'(?:\.|[^'\\n])*'?|^[ \t]*#[^\n]*|\b0[xX][0-9a-fA-F]+\b|\b0[bB][01]+\b|\b\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[uUlLfF]*\b|[A-Za-z_]\w*/gm
+
+function esc(t: string): string {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/** The sketch as HTML for the layer under the editor: syntax colours as in the Arduino IDE, one line per row, the bad line tinted. */
+export function highlight(src: string, errLine: number): string {
+  const lines: string[] = ['']
+  const put = (cls: string, text: string): void => {
+    const parts = text.split('\n')
+    parts.forEach((piece, i) => {
+      if (i > 0) lines.push('')
+      if (piece !== '') lines[lines.length - 1] += cls ? `<span class="${cls}">${esc(piece)}</span>` : esc(piece)
+    })
+  }
+  let at = 0
+  TOKEN.lastIndex = 0
+  for (let m = TOKEN.exec(src); m !== null; m = TOKEN.exec(src)) {
+    if (m[0] === '') {
+      TOKEN.lastIndex++
+      continue
+    }
+    if (m.index > at) put('', src.slice(at, m.index))
+    const t = m[0]
+    let cls = ''
+    if (t.startsWith('//') || t.startsWith('/*')) cls = 'cp-hl-c'
+    else if (t[0] === '"' || t[0] === "'") cls = 'cp-hl-s'
+    else if (/^\s*#/.test(t)) cls = 'cp-hl-p'
+    else if (/^\d/.test(t)) cls = 'cp-hl-n'
+    else if (WORDS_F.has(t)) cls = 'cp-hl-f'
+    else if (WORDS_K.has(t)) cls = 'cp-hl-k'
+    put(cls, t)
+    at = m.index + t.length
+  }
+  if (at < src.length) put('', src.slice(at))
+  return lines.map((l, i) => (i + 1 === errLine ? `<span class="cp-hl-err">${l === '' ? ' ' : l}</span>` : l)).join('\n') + '\n'
+}
+
 export class CodePanel {
   private root: HTMLElement
   private ws: Workspace
@@ -34,6 +80,10 @@ export class CodePanel {
   private state: HTMLElement
   private pick: HTMLSelectElement
   private empty: HTMLElement
+  private hl: HTMLElement
+  private pos: HTMLElement
+  private info: HTMLElement
+  private fileTab: HTMLElement
   /** The board being edited (the last Arduino the player picked), or null while the lab has none. */
   private id: string | null = null
   private open = false
@@ -61,6 +111,10 @@ export class CodePanel {
     this.state = q('cp-state')
     this.pick = q<HTMLSelectElement>('cp-board')
     this.empty = q('cp-empty')
+    this.hl = q('cp-hl')
+    this.pos = q('cp-pos')
+    this.info = q('cp-info')
+    this.fileTab = q('cp-file')
 
     try {
       this.open = localStorage.getItem(KEY) === '1'
@@ -72,7 +126,10 @@ export class CodePanel {
     this.ta.addEventListener('input', () => this.typed())
     this.ta.addEventListener('scroll', () => {
       this.gutter.scrollTop = this.ta.scrollTop
+      this.hl.scrollTop = this.ta.scrollTop
+      this.hl.scrollLeft = this.ta.scrollLeft
     })
+    for (const ev of ['keyup', 'click', 'focus']) this.ta.addEventListener(ev, () => this.updatePos())
     this.ta.addEventListener('keydown', (e) => {
       if (e.key === 'Tab') {
         e.preventDefault()
@@ -192,6 +249,7 @@ export class CodePanel {
       )
     }
     if (this.id) this.pick.value = this.id
+    this.fileTab.textContent = this.id ? `${this.id}.ino` : 'sketch.ino'
     const has = this.id !== null
     this.empty.hidden = has
     this.ta.disabled = !has
@@ -222,7 +280,18 @@ export class CodePanel {
     this.drawGutter()
   }
 
+  /** Line and column of the caret, in the status line. */
+  private updatePos(): void {
+    const upto = this.ta.value.slice(0, this.ta.selectionStart)
+    const ln = upto.split('\n').length
+    const col = upto.length - upto.lastIndexOf('\n')
+    this.pos.textContent = `Ln ${ln}, Col ${col}`
+  }
+
   private drawGutter(): void {
+    this.hl.innerHTML = highlight(this.ta.value, this.errLine)
+    this.hl.scrollTop = this.ta.scrollTop
+    this.hl.scrollLeft = this.ta.scrollLeft
     const n = Math.max(1, this.ta.value.split('\n').length)
     if (n !== this.lineCount || this.errLine !== this.drawnErr || this.gutter.childElementCount === 0) {
       this.lineCount = n
@@ -312,6 +381,7 @@ export class CodePanel {
       const [text, cls] = STATE_TEXT[info.state] ?? [info.state.toUpperCase(), 'warn']
       this.state.textContent = text
       this.state.className = `cp-state ${cls}`
+      this.info.textContent = `Arduino Uno on ${p.id}`
     }
     if (info.error !== this.shownError) {
       this.shownError = info.error
