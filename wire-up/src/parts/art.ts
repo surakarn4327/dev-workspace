@@ -1966,6 +1966,8 @@ export const LCD_H = 142
 export const LCD_BEZEL = { x: 12, y: 27, w: 289, h: 96 }
 export const LCD_SCREEN = { x: 23, y: 46, w: 266, h: 58 }
 export const LCD_PAD0 = { x: 26, y: 8 }
+/** The white status lamp against the frame's right side, centred on the frame's height. */
+export const LCD_LAMP = { x: 301, y: 49, w: 10, h: 52 }
 
 /**
  * A 1602 LCD module seen from the front, upright (references: the QAPASS 1602 I2C module photo the user sent 2026-10-14, the front and
@@ -1990,14 +1992,8 @@ export function lcd1602Sprite(): Sprite {
     for (let k = 0; k < 16; k++) {
       const x = LCD_PAD0.x + 10 * k - 3
       const y = LCD_PAD0.y - 5
-      put(g, shadedBlock(7, 10, 1, () => 's', 'S', 'd', 1), x, y)
+      put(g, shadedBlock(7, 10, 2, () => 's', 'S', 'd', 1), x, y)
     }
-    // the backlight's plastic tab at the right edge, partly under the frame
-    // centred on the frame's height; the two corners at the board's edge are rounded, the two that meet the frame stay square
-    const tab = new PixelGrid(10, 52)
-    tab.rrect(0, 0, 10, 52, 5, 'a')
-    tab.rect(0, 0, 5, 52, 'a')
-    put(g, shadedMask(tab, (y) => (y < 26 ? 't' : 'u'), 'T', 'y', 1), 303, LCD_BEZEL.y + (LCD_BEZEL.h - 52) / 2)
     // the frame: black metal with a lit top and left edge, and the dark recess the glass sits in (its lower and right rim catch the light)
     put(g, shadedBlock(LCD_BEZEL.w, LCD_BEZEL.h, 2, (y) => (y < 4 ? 'm' : 'j'), 'J', 'o', 2), LCD_BEZEL.x, LCD_BEZEL.y)
     g.rect(LCD_SCREEN.x - 2, LCD_SCREEN.y - 2, LCD_SCREEN.w + 4, LCD_SCREEN.h + 4, 'r')
@@ -2008,6 +2004,20 @@ export function lcd1602Sprite(): Sprite {
         k: '#239b4b', n: '#27a553', p: '#1f8c43', l: '#4cc07a', q: '#16743a', f: '#d9b44a', s: '#c4c9d1', S: '#eef1f5', d: '#7d838f', o: '#14161a',
         j: '#1b1b21', m: '#2a2a32', J: '#3c3c46', r: '#0a0a0f', R: '#30303b', t: '#e6e8ec', u: '#c9ccd3', T: '#f8f9fb', y: '#8d929c',
       },
+      '#06130b',
+    )
+  })
+}
+
+/** The white status lamp beside the frame (10 x 52): the two corners at the board's edge are rounded, the two against the frame square. Lit it is bright white, dark a pale grey. */
+export function lcdLampSprite(on: boolean): Sprite {
+  return sprite(`lcd-lamp-${on ? 'on' : 'off'}`, () => {
+    const mask = new PixelGrid(LCD_LAMP.w, LCD_LAMP.h)
+    mask.rrect(0, 0, LCD_LAMP.w, LCD_LAMP.h, 5, 'a')
+    mask.rect(0, 0, 5, LCD_LAMP.h, 'a')
+    const g = shadedMask(mask, (y) => (y < LCD_LAMP.h / 2 ? 't' : 'u'), 'T', 'y', 1)
+    return g.build(
+      on ? { t: '#ffffff', u: '#f1f4fa', T: '#ffffff', y: '#cfd5df' } : { t: '#b9bdc6', u: '#a4a8b2', T: '#d5d8de', y: '#7e838d' },
       '#06130b',
     )
   })

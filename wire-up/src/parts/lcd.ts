@@ -4,7 +4,7 @@ import { scene } from '../render/scene.ts'
 import { Hd44780Backpack, lcdFromLive } from '../mcu/hd44780.ts'
 import type { LcdSnapshot } from '../mcu/hd44780.ts'
 import { eng, LCD1602, LED_COLORS, LED_N, ledIs, MCU } from '../sim/models.ts'
-import { LCD_BEZEL, LCD_H, LCD_PAD0, LCD_SCREEN, LCD_W, lcd1602Sprite } from './art.ts'
+import { LCD_BEZEL, LCD_H, LCD_LAMP, LCD_PAD0, LCD_SCREEN, LCD_W, lcd1602Sprite, lcdLampSprite } from './art.ts'
 import { eid, num, stress } from './common.ts'
 import { glyphRows } from './lcdfont.ts'
 import type { PartDef } from './types.ts'
@@ -269,6 +269,10 @@ export const lcd1602i2c: PartDef = {
       const board = lcd1602Sprite()
       drawSprite(c, board, 0, 0)
       drawGlass(c, snap, powered, num(p, 'contrast', 50), time)
+      // the white status lamp: on while the module draws current (the supply is wired and the right way round)
+      const lampOn = live.up === undefined ? true : (live.i ?? 0) >= 0.0005
+      drawSprite(c, lcdLampSprite(lampOn), LCD_LAMP.x * PX, LCD_LAMP.y * PX)
+      if (lampOn) radialGlow(c, (LCD_LAMP.x + LCD_LAMP.w / 2) * PX, (LCD_LAMP.y + LCD_LAMP.h / 2) * PX, 44, '#ffffff', 0.5)
       // the names printed under the pads of the display header, and the numbers of its first and last pin
       HEADER_NAMES.forEach((name, k) => bold(c, name, (LCD_PAD0.x + 10 * k) * PX, (LCD_PAD0.y + 7) * PX))
       bold(c, '1', (LCD_PAD0.x - 9) * PX, (LCD_PAD0.y - 5) * PX)
