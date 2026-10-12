@@ -1454,7 +1454,7 @@ const UNO_PALETTE: Record<string, string> = {
   // steel (warm, like the photo), black plastic, gold, tan and cream parts
   m: '#e9e2d2', h: '#cdc5b3', d: '#8f8878', n: '#a8a190', o: '#0c0c10', y: '#3a3a44', j: '#1b1b20', J: '#34343c',
   g: '#d9b44a', G: '#f4d878', Y: '#f0cf48', Z: '#bd9a1f', V: '#fbe58a', A: '#efe3c0', B: '#e0b860', C: '#c98a30',
-  u: '#202024', U: '#c8a96c', W: '#a08650', s: '#e4dece', r: '#9c3d2b', F: '#35343a', H: '#2d2c31', I: '#262529', P: '#4a494f', K: '#6b5a48', S: '#f2f2ee', T: '#a9a9a4',
+  u: '#202024', U: '#c8a96c', W: '#a08650', s: '#e4dece', r: '#9c3d2b', E: '#7d838f', N: '#c9ced6', X: '#f4f7fb', F: '#35343a', H: '#2d2c31', I: '#262529', P: '#4a494f', K: '#6b5a48', S: '#f2f2ee', T: '#a9a9a4',
 }
 
 /** A filled ellipse centred (cx, cy) with radii (rx, ry). */
@@ -1468,15 +1468,14 @@ function ellipse(g: PixelGrid, cx: number, cy: number, rx: number, ry: number, c
   }
 }
 
-/** A gold square post on black plastic, the way the relay header's posts are made: dark shade, mid gold, lit corner, a dark hole in the middle. */
+/** A steel square post on black plastic, made like the relay header's posts: dark shade, mid steel, lit corner. */
 function goldPost(g: PixelGrid, x: number, y: number): void {
-  g.rect(x, y, 4, 4, 'Z')
-  g.rect(x, y, 3, 3, 'g')
-  g.set(x, y, 'G')
-  g.set(x + 1, y + 1, 'o')
+  g.rect(x, y, 4, 4, 'E')
+  g.rect(x, y, 3, 3, 'N')
+  g.set(x, y, 'X')
 }
 
-/** A male 2 x 3 (or 3 x 2) header: one black rounded block per row of two (or column of two), a white silkscreen outline round the lot and a dot at pin 1. */
+/** A male 2 x 3 (or 3 x 2) header: one black rounded block per row of two (or column of two), steel posts, a white silkscreen outline round the lot and a dot at pin 1. */
 function maleHeader(g: PixelGrid, x: number, y: number, cols: number, rows: number): void {
   const w = cols * 10
   const h = rows * 10
