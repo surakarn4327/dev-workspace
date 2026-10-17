@@ -4,11 +4,14 @@ TradingView Pine Script indicator ที่หา entry signal ตามเท�
 
 ## เริ่มใช้งาน
 
-ไม่มี dev server — เปิด TradingView, สร้าง Pine Script indicator ใหม่, วาง `src/smart-indicator.pine` ลงใน Pine Editor แล้ว Add to Chart
+ไม่มี dev server — เปิด TradingView, สร้าง Pine Script indicator ใหม่, วาง `src/smart-indicator.pine` (และ/หรือ `src/msnr.pine` เป็น indicator อีกตัว) ลงใน Pine Editor แล้ว Add to Chart
 
 ## โครงสร้าง
 
 - `src/smart-indicator.pine` — indicator หลัก (CRT sweep engine + FVG/iFVG engine + Demand/Supply zone + dashboard สถิติ, ทั้งหมดอยู่ในไฟล์เดียว)
+- `src/msnr.pine` — indicator แยก: MSNR (Malaysian Support & Resistance) เส้น A/V/Gap + fresh/unfresh + SBR/RBS + แท่งยืนยัน (เพิ่มลง TradingView เป็นอีกตัว ใส่กราฟคู่กันได้)
+- `msnr_technique.md` — กฎ MSNR ที่ implement จริง + preset
+- `msnr_research.md` — บันทึกค้นคว้า MSNR จากแหล่งสาธารณะ (เวอร์ชันที่แหล่งขัดกัน)
 - `indicator_style.md` — กฎหน้าตั้งค่า (input/group/UI), ค่า default ที่ล็อกไว้, ประวัติการตัดสินใจ/สิ่งที่เคยลองแล้วยกเลิก
 - `crt_technique.md` — กฎเทคนิค CRT (sweep/pending/disqualify/state machine เต็มๆ)
 - `fvg_technique.md` — กฎ/นิยาม FVG/iFVG

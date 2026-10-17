@@ -1,0 +1,314 @@
+//@version=5
+indicator("MSNR Levels", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500, max_bars_back=5000)
+
+// MSNR (Malaysian Support & Resistance) — phase 1: A/V/Gap levels, fresh/unfresh, SBR/RBS flip, confirmation candles
+// Rules and preset table: msnr_technique.md (research notes: msnr_research.md)
+
+// === หน้าตั้งค่า (ภาษาไทย) — เปิด/ปิด อยู่บนสุดเสมอ (indicator_style.md กฎข้อ 6) ===
+grpMaster = "เปิด/ปิด"
+enableMsnr = input.bool(true, "MSNR", inline="master", tooltip="เส้น A/V/Gap ทั้งหมด — ปิด = ไม่คำนวณอะไรเลย", group=grpMaster)
+enableConfirm = input.bool(true, "แท่งยืนยัน", inline="master", tooltip="ลูกศร Engulfing/Hammer/Pinbar ตอนราคาแตะเส้น — ต้องเปิด MSNR ด้วยถึงจะขึ้น", group=grpMaster)
+
+grpMain = "ตั้งค่า MSNR"
+preset = input.string("มาตรฐาน", "แบบ", options=["มาตรฐาน", "Alchemist", "แถบ", "เข้มงวด", "ตั้งเอง"], tooltip="มาตรฐาน = แบบที่แหล่งส่วนใหญ่ใช้ (ยอด/ก้นราคาปิด)\nAlchemist = ทุกคู่แท่งเขียว-แดง/แดง-เขียว ได้ 1 เส้น (เส้นเยอะ ควรใช้ H1 ขึ้นไป)\nแถบ = เส้นเป็นแถบตั้งแต่ราคาปิดถึงราคาเปิดแท่งถัดไป + กฎแตะแรกด้วยตัวเทียน\nเข้มงวด = เหมือนมาตรฐาน แต่เส้นที่ใช้แล้วหายทันที + กฎแตะแรกด้วยตัวเทียน\nตั้งเอง = ใช้ค่าในกลุ่ม 'แบบตั้งเอง' ด้านล่าง", group=grpMain)
+calcTf = input.timeframe("", "ไทม์เฟรมคำนวณเส้น", tooltip="ว่าง = ไทม์เฟรมชาร์ต ถ้าตั้งเล็กกว่าชาร์ต จะใช้ไทม์เฟรมชาร์ตแทน — เส้นอัปเดตตอนแท่งของไทม์เฟรมนี้ปิดเท่านั้น (ไม่ repaint)", group=grpMain)
+pivotLen = input.int(3, "แท่งยืนยันยอด/ก้น", minval=1, maxval=20, tooltip="ยอด (A) ต้องมีราคาปิดสูงกว่าแท่งซ้ายและขวาอย่างละกี่แท่ง (ก้น V กลับกัน) — ใช้กับแบบ มาตรฐาน/แถบ/เข้มงวด และ 'ตั้งเอง' ที่เลือกยอด/ก้น", group=grpMain)
+showGap = input.bool(true, "แสดงเส้น Gap", tooltip="เส้นจากแท่งสีเดียวกัน 2 แท่งติดกัน (เขียว-เขียว = แนวรับ, แดง-แดง = แนวต้าน)", group=grpMain)
+showUnfresh = input.bool(true, "แสดงเส้นที่ใช้แล้ว", tooltip="เส้นที่ถูกแตะแล้ว (unfresh) แสดงเป็นเส้นประ — ปิด = ซ่อน เหลือแต่เส้นทึบ (fresh)", group=grpMain)
+showLabels = input.bool(true, "แสดงชื่อเส้น", tooltip="A / V / G / SBR / RBS ที่หัวเส้น — ✘ = ห้ามเทรด (แตะครั้งแรกด้วยตัวเทียน)", group=grpMain)
+nearCount = input.int(10, "จำนวนเส้นเหนือ/ใต้ราคา", minval=0, tooltip="แสดงเฉพาะเส้นที่ใกล้ราคาปัจจุบันที่สุด ฝั่งละกี่เส้น — 0 = แสดงทั้งหมด", group=grpMain)
+maxKeep = input.int(150, "เก็บเส้นสูงสุด", minval=10, maxval=400, tooltip="เกินจำนวนนี้ เส้นเก่าสุดถูกลบทิ้ง (TradingView จำกัด 500 ชิ้นต่อ indicator)", group=grpMain)
+resColor = input.color(color.red, "สีแนวต้าน", inline="lvcolor", group=grpMain)
+supColor = input.color(color.green, "สีแนวรับ", inline="lvcolor", group=grpMain)
+noTradeColor = input.color(color.gray, "สีห้ามเทรด", inline="lvcolor", group=grpMain)
+lineWidth = input.int(1, "ความหนา", minval=1, maxval=5, tooltip="SBR/RBS (เส้นที่กลับหน้าที่แล้ว) หนากว่านี้ 1 ขั้นเสมอ", group=grpMain)
+
+grpCustom = "ตั้งค่า MSNR — แบบตั้งเอง"
+cAvMode = input.string("ยอด/ก้นราคาปิด", "วิธีหา A/V", options=["ยอด/ก้นราคาปิด", "คู่แท่ง", "แถบปิด-เปิด"], tooltip="มีผลเฉพาะแบบ 'ตั้งเอง'\nยอด/ก้นราคาปิด = swing ของราคาปิด\nคู่แท่ง = เขียวต่อแดง = A, แดงต่อเขียว = V (ราคาปิดแท่งแรก)\nแถบปิด-เปิด = ยอด/ก้นราคาปิด แต่วาดเป็นแถบถึงราคาเปิดแท่งถัดไป", group=grpCustom)
+cGapReal = input.bool(true, "Gap ต้องมีช่องว่างจริง", tooltip="มีผลเฉพาะแบบ 'ตั้งเอง' — เปิด = ราคาเปิดแท่งสองต้องกระโดดพ้นราคาปิดแท่งแรก, ปิด = นับทุกคู่สีเดียวกัน", group=grpCustom)
+cGapPrice = input.string("ราคาปิดแท่งแรก", "ราคาเส้น Gap", options=["ราคาปิดแท่งแรก", "ราคาเปิดแท่งสอง", "กึ่งกลาง", "ทั้งแถบ"], tooltip="มีผลเฉพาะแบบ 'ตั้งเอง'", group=grpCustom)
+cUnfresh = input.string("ไส้แตะ", "เส้นใช้แล้วเมื่อ", options=["ไส้แตะ", "ตัวเทียนแตะ", "แตะครบ N ครั้ง"], tooltip="มีผลเฉพาะแบบ 'ตั้งเอง' — เส้นใช้แล้ว (unfresh) เปลี่ยนเป็นเส้นประ", group=grpCustom)
+cUnfreshN = input.int(2, "N ครั้ง (แตะ)", minval=1, tooltip="ใช้กับ 'แตะครบ N ครั้ง'", group=grpCustom)
+cUsed = input.string("เก็บเป็นเส้นประ", "หลังเส้นใช้แล้ว", options=["เก็บเป็นเส้นประ", "ลบทิ้ง", "ลบเมื่อทะลุเกิน N ครั้ง"], tooltip="มีผลเฉพาะแบบ 'ตั้งเอง'", group=grpCustom)
+cMaxBreaks = input.int(3, "N ครั้ง (ทะลุ)", minval=1, tooltip="ใช้กับ 'ลบเมื่อทะลุเกิน N ครั้ง' — นับเฉพาะตัวเทียนปิดทะลุ", group=grpCustom)
+cFirstTouch = input.bool(false, "แตะครั้งแรกด้วยตัวเทียน = ห้ามเทรด", tooltip="มีผลเฉพาะแบบ 'ตั้งเอง' — เส้นที่ถูกตัวเทียน (ไม่ใช่แค่ไส้) แตะเป็นครั้งแรก กลายเป็นสีเทา + ✘ และไม่ขึ้นแท่งยืนยัน", group=grpCustom)
+
+grpConfirm = "ตั้งค่าแท่งยืนยัน"
+useEng = input.bool(true, "Engulfing", inline="cf1", tooltip="แท่งกลืนกิน — ตัวเทียนครอบตัวเทียนแท่งก่อนหน้าทั้งหมด สีตรงข้าม", group=grpConfirm)
+usePin = input.bool(true, "Pinbar", inline="cf1", tooltip="ไส้ยาว ≥ 2/3 ของแท่ง แทงเข้าเส้นแล้วตัวเทียนอยู่ฝั่งเดิมของเส้นทั้งตัว", group=grpConfirm)
+useHam = input.bool(true, "Hammer", inline="cf2", tooltip="ค้อน — ไส้ล่างยาว ไส้บนสั้น (ที่แนวต้านคือ Hanging man)", group=grpConfirm)
+useInvHam = input.bool(true, "Inverted Hammer", inline="cf2", tooltip="ค้อนกลับหัว — ไส้บนยาว ไส้ล่างสั้น (ที่แนวต้านคือ Shooting star)", group=grpConfirm)
+wickRatio = input.float(2.0, "ไส้ยาวกว่าตัวเทียน (เท่า)", minval=1.0, step=0.5, tooltip="ใช้กับ Hammer / Inverted Hammer", group=grpConfirm)
+confirmFreshOnly = input.bool(true, "เฉพาะเส้น fresh", tooltip="ปิด = เส้นที่ใช้แล้วก็ขึ้นแท่งยืนยันได้ (เส้นห้ามเทรดไม่ขึ้นเสมอ) — แต่ละเส้นขึ้นได้ครั้งเดียวจนกว่าจะถูกทะลุแล้วกลับหน้าที่", group=grpConfirm)
+bullSigColor = input.color(color.teal, "สีซื้อ", inline="sigcolor", group=grpConfirm)
+bearSigColor = input.color(color.orange, "สีขาย", inline="sigcolor", group=grpConfirm)
+
+// === Resolve preset -> rule switches ===
+isAlc = preset == "Alchemist"
+isBand = preset == "แถบ"
+isStrict = preset == "เข้มงวด"
+isCustom = preset == "ตั้งเอง"
+
+// 0 = pivot of closes, 1 = candle pair, 2 = pivot band (close -> next open)
+avMode = isCustom ? (cAvMode == "คู่แท่ง" ? 1 : cAvMode == "แถบปิด-เปิด" ? 2 : 0) : isAlc ? 1 : isBand ? 2 : 0
+gapReal = isCustom ? cGapReal : not isAlc
+// 0 = first close, 1 = second open, 2 = midpoint, 3 = band
+gapPrice = isCustom ? (cGapPrice == "ราคาเปิดแท่งสอง" ? 1 : cGapPrice == "กึ่งกลาง" ? 2 : cGapPrice == "ทั้งแถบ" ? 3 : 0) : isBand ? 3 : 0
+// 0 = any wick touch, 1 = body touch, 2 = N touches
+unfreshMode = isCustom ? (cUnfresh == "ตัวเทียนแตะ" ? 1 : cUnfresh == "แตะครบ N ครั้ง" ? 2 : 0) : 0
+// 0 = keep dashed, 1 = delete when used, 2 = delete after N breaks
+usedMode = isCustom ? (cUsed == "ลบทิ้ง" ? 1 : cUsed == "ลบเมื่อทะลุเกิน N ครั้ง" ? 2 : 0) : isStrict ? 1 : 0
+firstTouchRule = isCustom ? cFirstTouch : isBand or isStrict
+
+effTf = calcTf == "" or timeframe.in_seconds(calcTf) < timeframe.in_seconds(timeframe.period) ? timeframe.period : calcTf
+
+// Closed bars of the calculation timeframe only ([1] + lookahead_on = no repaint)
+[hO, hH, hL, hC, hT] = request.security(syminfo.tickerid, effTf, [open[1], high[1], low[1], close[1], time[1]], lookahead=barmerge.lookahead_on)
+newHtfBar = not na(hT) and hT != nz(hT[1])
+
+// === Level model ===
+type Level
+    float top
+    float bot
+    int dir              // 1 = support, -1 = resistance (current role, flips on break)
+    string kind          // "A", "V", "G", "SBR", "RBS"
+    int bornTime
+    bool fresh = true
+    bool noTrade = false
+    bool signaled = false
+    int touches = 0
+    int breaks = 0
+    line ln
+    box bx
+    label lb
+
+var array<Level> levels = array.new<Level>()
+var array<float> aO = array.new_float()
+var array<float> aH = array.new_float()
+var array<float> aL = array.new_float()
+var array<float> aC = array.new_float()
+var array<int> aT = array.new_int()
+
+method banded(Level this) =>
+    this.top != this.bot
+
+method destroy(Level this) =>
+    line.delete(this.ln)
+    box.delete(this.bx)
+    label.delete(this.lb)
+
+// Apply one closed bar to a level. Returns true when the level must be removed.
+method step(Level this, float o, float h, float l, float c) =>
+    bool remove = false
+    bool broke = this.dir == -1 ? c > this.top : c < this.bot
+    if broke
+        this.breaks += 1
+        this.dir := -this.dir
+        this.kind := this.dir == 1 ? "RBS" : "SBR"
+        this.fresh := true
+        this.noTrade := false
+        this.signaled := false
+        this.touches := 0
+        if usedMode == 2 and this.breaks > cMaxBreaks
+            remove := true
+    else
+        bool wickTouch = this.dir == -1 ? h >= this.bot : l <= this.top
+        bool bodyTouch = this.dir == -1 ? math.max(o, c) >= this.bot : math.min(o, c) <= this.top
+        if wickTouch
+            if firstTouchRule and this.fresh and this.touches == 0 and bodyTouch
+                this.noTrade := true
+            this.touches += 1
+            bool used = unfreshMode == 0 ? true : unfreshMode == 1 ? bodyTouch : this.touches >= cUnfreshN
+            if used and this.fresh
+                this.fresh := false
+                if usedMode == 1
+                    remove := true
+    remove
+
+method render(Level this, bool visible) =>
+    color baseCol = this.noTrade ? noTradeColor : this.dir == 1 ? supColor : resColor
+    color col = visible ? baseCol : color.new(baseCol, 100)
+    string st = this.fresh ? line.style_solid : line.style_dashed
+    int w = lineWidth + (this.kind == "SBR" or this.kind == "RBS" ? 1 : 0)
+    if this.banded()
+        box.set_border_color(this.bx, col)
+        box.set_border_style(this.bx, st)
+        box.set_border_width(this.bx, w)
+        box.set_bgcolor(this.bx, color.new(baseCol, visible ? 90 : 100))
+    else
+        line.set_color(this.ln, col)
+        line.set_style(this.ln, st)
+        line.set_width(this.ln, w)
+    if not na(this.lb)
+        // style_label_down = text above the anchor, style_label_up = text below (bugs.md: names are inverted)
+        label.set_xy(this.lb, this.bornTime, this.dir == -1 ? this.top : this.bot)
+        label.set_style(this.lb, this.dir == -1 ? label.style_label_down : label.style_label_up)
+        label.set_text(this.lb, this.kind + (this.noTrade ? " ✘" : ""))
+        label.set_textcolor(this.lb, col)
+
+newLevel(float top, float bot, int dir, string kind, int bornTime) =>
+    Level lv = Level.new(top, bot, dir, kind, bornTime)
+    if top != bot
+        lv.bx := box.new(left=bornTime, top=top, right=time, bottom=bot, xloc=xloc.bar_time, extend=extend.right)
+    else
+        lv.ln := line.new(bornTime, top, time, top, xloc=xloc.bar_time, extend=extend.right)
+    if showLabels
+        lv.lb := label.new(bornTime, top, kind, xloc=xloc.bar_time, color=color.new(color.white, 100), size=size.tiny)
+    array.push(levels, lv)
+    lv
+
+// Replay bars [fromIdx, toIdx] of the stored history on a level created late (pivot levels are
+// confirmed pivotLen bars after they form). Returns true when the level was removed.
+replay(Level lv, int fromIdx, int toIdx) =>
+    bool removed = false
+    if fromIdx <= toIdx
+        for j = fromIdx to toIdx
+            if lv.step(array.get(aO, j), array.get(aH, j), array.get(aL, j), array.get(aC, j))
+                removed := true
+                break
+    if removed
+        lv.destroy()
+        array.pop(levels)
+    removed
+
+isPivotHigh(int p, int len) =>
+    float v = array.get(aC, p)
+    bool ok = true
+    for j = 1 to len
+        if array.get(aC, p - j) >= v or array.get(aC, p + j) > v
+            ok := false
+            break
+    ok
+
+isPivotLow(int p, int len) =>
+    float v = array.get(aC, p)
+    bool ok = true
+    for j = 1 to len
+        if array.get(aC, p - j) <= v or array.get(aC, p + j) < v
+            ok := false
+            break
+    ok
+
+// === Engine: runs once per closed bar of the calculation timeframe ===
+if enableMsnr and newHtfBar and not na(hO)
+    array.push(aO, hO)
+    array.push(aH, hH)
+    array.push(aL, hL)
+    array.push(aC, hC)
+    array.push(aT, hT)
+    while array.size(aC) > 2 * pivotLen + 10
+        array.shift(aO)
+        array.shift(aH)
+        array.shift(aL)
+        array.shift(aC)
+        array.shift(aT)
+
+    // 1) Update existing levels with the bar that just closed (before creating new ones, so a level
+    //    born from this same bar is never tested against its own formation candles)
+    if array.size(levels) > 0
+        for i = array.size(levels) - 1 to 0
+            Level lv = array.get(levels, i)
+            if lv.step(hO, hH, hL, hC)
+                lv.destroy()
+                array.remove(levels, i)
+
+    // 2) Create new levels — testing starts after the formation candles (pair: next bar, pivot: replayed)
+    int n = array.size(aC)
+    int k = n - 1
+    if avMode == 1
+        if n >= 2
+            float o1 = array.get(aO, k - 1)
+            float c1 = array.get(aC, k - 1)
+            float o2 = array.get(aO, k)
+            float c2 = array.get(aC, k)
+            if c1 > o1 and c2 < o2
+                newLevel(c1, c1, -1, "A", array.get(aT, k - 1))
+            if c1 < o1 and c2 > o2
+                newLevel(c1, c1, 1, "V", array.get(aT, k - 1))
+    else if n >= 2 * pivotLen + 1
+        int p = k - pivotLen
+        float cp = array.get(aC, p)
+        float oNext = array.get(aO, p + 1)
+        float bTop = avMode == 2 ? math.max(cp, oNext) : cp
+        float bBot = avMode == 2 ? math.min(cp, oNext) : cp
+        if isPivotHigh(p, pivotLen)
+            replay(newLevel(bTop, bBot, -1, "A", array.get(aT, p)), p + 2, k)
+        if isPivotLow(p, pivotLen)
+            replay(newLevel(bTop, bBot, 1, "V", array.get(aT, p)), p + 2, k)
+
+    if showGap and n >= 2
+        float go1 = array.get(aO, k - 1)
+        float gc1 = array.get(aC, k - 1)
+        float go2 = array.get(aO, k)
+        float gc2 = array.get(aC, k)
+        bool bull = gc1 > go1 and gc2 > go2
+        bool bear = gc1 < go1 and gc2 < go2
+        bool realGap = bull ? go2 > gc1 : go2 < gc1
+        if (bull or bear) and (not gapReal or realGap)
+            float gTop = gapPrice == 0 ? gc1 : gapPrice == 1 ? go2 : gapPrice == 2 ? (gc1 + go2) / 2 : math.max(gc1, go2)
+            float gBot = gapPrice == 0 ? gc1 : gapPrice == 1 ? go2 : gapPrice == 2 ? (gc1 + go2) / 2 : math.min(gc1, go2)
+            newLevel(gTop, gBot, bull ? 1 : -1, "G", array.get(aT, k - 1))
+
+    while array.size(levels) > maxKeep
+        array.shift(levels).destroy()
+
+// === Confirmation candles (chart timeframe, closed bars only) ===
+float rng = high - low
+float body = math.abs(close - open)
+float upWick = high - math.max(open, close)
+float dnWick = math.min(open, close) - low
+bool bullEng = useEng and close > open and close[1] < open[1] and close >= open[1] and open <= close[1]
+bool bearEng = useEng and close < open and close[1] > open[1] and close <= open[1] and open >= close[1]
+bool hamShape = useHam and rng > 0 and dnWick >= wickRatio * body and dnWick >= 0.5 * rng and upWick <= 0.25 * rng
+bool invShape = useInvHam and rng > 0 and upWick >= wickRatio * body and upWick >= 0.5 * rng and dnWick <= 0.25 * rng
+
+string bullType = ""
+string bearType = ""
+if enableMsnr and enableConfirm and barstate.isconfirmed and array.size(levels) > 0
+    for lv in levels
+        // First-touch rule also applies here: a body reaching an untouched level is no trade, not a signal
+        bool firstBodyTouch = firstTouchRule and lv.fresh and lv.touches == 0 and (lv.dir == 1 ? math.min(open, close) <= lv.top : math.max(open, close) >= lv.bot)
+        if (lv.fresh or not confirmFreshOnly) and not lv.noTrade and not lv.signaled and not firstBodyTouch
+            if lv.dir == 1 and low <= lv.top and close >= lv.bot
+                bool pin = usePin and rng > 0 and dnWick >= rng * 2 / 3 and math.min(open, close) > lv.top
+                string t = bullEng ? "ENG" : pin ? "PIN" : hamShape ? "HAM" : invShape ? "IHAM" : ""
+                if t != ""
+                    lv.signaled := true
+                    if bullType == ""
+                        bullType := t
+            if lv.dir == -1 and high >= lv.bot and close <= lv.top
+                bool pin = usePin and rng > 0 and upWick >= rng * 2 / 3 and math.max(open, close) < lv.bot
+                string t = bearEng ? "ENG" : pin ? "PIN" : invShape ? "IHAM" : hamShape ? "HAM" : ""
+                if t != ""
+                    lv.signaled := true
+                    if bearType == ""
+                        bearType := t
+
+plotshape(bullType == "ENG", "ซื้อ Engulfing", shape.triangleup, location.belowbar, bullSigColor, text="ENG", textcolor=bullSigColor, size=size.tiny)
+plotshape(bullType == "PIN", "ซื้อ Pinbar", shape.triangleup, location.belowbar, bullSigColor, text="PIN", textcolor=bullSigColor, size=size.tiny)
+plotshape(bullType == "HAM", "ซื้อ Hammer", shape.triangleup, location.belowbar, bullSigColor, text="HAM", textcolor=bullSigColor, size=size.tiny)
+plotshape(bullType == "IHAM", "ซื้อ Inverted Hammer", shape.triangleup, location.belowbar, bullSigColor, text="IHAM", textcolor=bullSigColor, size=size.tiny)
+plotshape(bearType == "ENG", "ขาย Engulfing", shape.triangledown, location.abovebar, bearSigColor, text="ENG", textcolor=bearSigColor, size=size.tiny)
+plotshape(bearType == "PIN", "ขาย Pinbar", shape.triangledown, location.abovebar, bearSigColor, text="PIN", textcolor=bearSigColor, size=size.tiny)
+plotshape(bearType == "HAM", "ขาย Hanging man", shape.triangledown, location.abovebar, bearSigColor, text="HAM", textcolor=bearSigColor, size=size.tiny)
+plotshape(bearType == "IHAM", "ขาย Shooting star", shape.triangledown, location.abovebar, bearSigColor, text="IHAM", textcolor=bearSigColor, size=size.tiny)
+alertcondition(bullType != "", "MSNR ยืนยันซื้อ", "MSNR: แท่งยืนยันซื้อที่แนวรับ")
+alertcondition(bearType != "", "MSNR ยืนยันขาย", "MSNR: แท่งยืนยันขายที่แนวต้าน")
+
+// === Final styling + nearest-N filter (drawings only show their last state, so style once on the last bar) ===
+if enableMsnr and barstate.islast and array.size(levels) > 0
+    array<float> distUp = array.new_float()
+    array<float> distDn = array.new_float()
+    for lv in levels
+        if showUnfresh or lv.fresh
+            if lv.bot > close
+                array.push(distUp, lv.bot - close)
+            else if lv.top < close
+                array.push(distDn, close - lv.top)
+    array.sort(distUp)
+    array.sort(distDn)
+    float limUp = nearCount > 0 and array.size(distUp) > nearCount ? array.get(distUp, nearCount - 1) : na
+    float limDn = nearCount > 0 and array.size(distDn) > nearCount ? array.get(distDn, nearCount - 1) : na
+    for lv in levels
+        bool near = lv.bot > close ? (na(limUp) or lv.bot - close <= limUp) : lv.top < close ? (na(limDn) or close - lv.top <= limDn) : true
+        lv.render((showUnfresh or lv.fresh) and near)

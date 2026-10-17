@@ -25,6 +25,8 @@ TradingView Pine Script indicator ที่หา entry signal ตามเท�
 - `crt_technique.md` — กฎเทคนิค CRT (sweep/pending/disqualify)
 - `fvg_technique.md` — กฎ/นิยาม FVG/iFVG
 - `demand_supply_zone.md` — กฎ/นิยาม Demand/Supply zone
+- `msnr_technique.md` — กฎ MSNR (โค้ดแยกไฟล์ `src/msnr.pine` เป็น indicator อีกตัว เพราะโควตา object 500 ของไฟล์หลักเต็ม)
+- `msnr_research.md` — บันทึกค้นคว้า MSNR (ที่มาของแต่ละกฎ/เวอร์ชันที่ขัดกัน)
 - `bugs.md` — บั๊กที่เจอ+แก้จริงมาก่อน (เปิดดูก่อนแก้จุดที่เคยมีปัญหาเสมอ)
 
 ## กฎเฉพาะของโปรเจกต์นี้
