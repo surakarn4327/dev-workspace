@@ -79,6 +79,8 @@ export interface PartDef {
   /** Same as `tipPastPin` for the plain vector look (pixel look off). Defaults to `tipPastPin`. */
   tipPastPinVector?: number
   defaults(): Params
+  /** Settings that differ from `defaults` in the toolbox picture only (a board is shown without its USB cable so the board itself is easy to see). */
+  iconParams?: Params
   /** Pin positions in grid units, local, before rotation. For freeLeads: default tip offsets. */
   pins(p: PartInstance): Vec[]
   /** Local px anchors the flexible leads are drawn from. */

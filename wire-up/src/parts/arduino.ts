@@ -148,6 +148,7 @@ export const arduinoUno: PartDef = {
   },
   bounds: (p) => (plugged(p) ? { x: PLUG_AT.x - 4, y: 0, w: 540 - PLUG_AT.x + 4, h: 420 } : { x: -54, y: 0, w: 594, h: 420 }),
   hitAt: onBoard,
+  iconParams: { usb: false }, // the toolbox shows the bare board, no USB cable
   sourceNegPin: (p) => (plugged(p) && !p.state.failed ? GND_TOP : null),
   build(p, ctx) {
     if (p.state.failed) return

@@ -17,6 +17,7 @@ function icon(def: PartDef): HTMLCanvasElement {
   cv.height = H * dpr
   const c = cv.getContext('2d')!
   const part = newPart('icon', def.type, 0, 0)
+  Object.assign(part.params, def.iconParams)
   const b = def.bounds(part)
   const s = Math.min((W - 10) / b.w, (H - 10) / b.h, 0.9)
   c.setTransform(dpr * s, 0, 0, dpr * s, dpr * (W / 2 - (b.x + b.w / 2) * s), dpr * (H / 2 - (b.y + b.h / 2) * s))

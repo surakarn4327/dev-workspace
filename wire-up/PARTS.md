@@ -49,7 +49,7 @@
 |---|---|
 | `src/parts/art.ts` | สไปรต์พิกเซล (`PixelGrid` + `sprite(key, …)` + `export function xxxSprite`) |
 | `src/parts/<กลุ่ม>.ts` | `PartDef`: type (kebab-case), name, category, blurb, pins, bounds, build, evaluate, draw (มี branch `scene.pixel` + เวกเตอร์สำรอง), fields, summary, ป้ายขา (`pinLabelPlace`/`tipPastPin`) |
-| `src/parts/index.ts` | ใส่ใน `ALL_PARTS` (ลำดับ = ลำดับใน toolbox); ชั้นการวาดไม่ต้องตั้ง (เรียงตามลำดับเกิดอัตโนมัติ) |
+| `src/parts/index.ts` | ใส่ใน `ALL_PARTS` (ลำดับ = ลำดับใน toolbox); ชั้นการวาดไม่ต้องตั้ง (เรียงตามลำดับเกิดอัตโนมัติ); **บอร์ดทุกชนิด (Arduino, ESP32 ฯลฯ) ใส่ `iconParams: { usb: false }` ให้รูปใน toolbox เป็นตัวบอร์ดเปล่าไม่มีสาย USB (ผู้ใช้สั่ง 2026-10-14)** |
 | (สายทับ/ใต้ชิ้นส่วน) | **ไม่ต้องแตะอะไร** ทุกอย่างเรียงตามลำดับเกิด (ใหม่กว่าอยู่เหนือ) ดู CLAUDE.md "ลำดับชั้นการวาด = ลำดับเกิด" |
 | `src/board/world.ts` | ชิ้นที่ขายื่นลงและปรับความยาวได้ → เพิ่มใน `HANGING_LEG_PARTS` (และใส่ `LEG_FIELD`) |
 | `src/board/obstacles.ts` `leadDirs` | ถ้าชิ้นมีกฎทิศสายออกจากขา (แบต=บน, สวิตช์=ข้าง...) |

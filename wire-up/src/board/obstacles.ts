@@ -63,6 +63,7 @@ interface LeadDir extends Vec {
  *   batteries (types 'battery*')    -> up
  *   74HC chips (types 'ic-*')       -> out of the package: top row up, bottom row down
  *   relay module (type 'relay-module') -> screw terminals (NC/COM/NO) up, 3 grid straight; header pins down (the printed side), 2 grid straight
+ *   LCD module (type 'lcd1602-i2c')    -> its four pins out of the left edge, 1 grid straight
  *   Arduino Uno (type 'arduino-uno')   -> the top header's pins up, the bottom header's pins down, 2 grid straight (out of the sockets)
  *   switches (category 'switch')    -> out to the side (left leg left, right leg right), except the push button (type 'button'), which keeps free routing
  */
@@ -79,8 +80,8 @@ function leadDirs(p: PartInstance): LeadDir[] | null {
     const header = (total - 2) / 4 + 2
     return def.pins(p).map((_, i) => (i < header ? { ...down, len: 2 } : { ...up, len: 3 }))
   }
-  // the LCD module's four pins come out of its left edge
-  if (p.type === 'lcd1602-i2c') return def.pins(p).map(() => ({ ...left, len: 2 }))
+  // the LCD module's four pins come out of its left edge, 1 grid straight (it was 2: too much room before the first bend)
+  if (p.type === 'lcd1602-i2c') return def.pins(p).map(() => ({ ...left, len: 1 }))
   if (p.type === 'arduino-uno') return def.pins(p).map((v) => (v.y < 10 ? { ...up, len: 2 } : { ...down, len: 2 }))
   if (p.type.startsWith('battery')) return def.pins(p).map(() => up)
   if (p.type.startsWith('ic-') || p.type.startsWith('seg7')) return def.pins(p).map((v) => (v.y === 0 ? up : down))

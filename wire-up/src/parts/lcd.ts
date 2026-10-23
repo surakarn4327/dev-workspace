@@ -30,17 +30,21 @@ const HEADER_NAMES = ['VSS', 'VDD', 'V0', 'RS', 'RW', 'E', 'D0', 'D1', 'D2', 'D3
 /** White lettering on the board, as on the Uno: bold web sans-serif, which reads at every zoom. */
 const INK = '#eef4ff'
 
-/** Dots: 5 x 8 to a character, drawn 2 art pixels each on a pitch of 3; 16 art pixels from one character to the next. */
+/**
+ * Dots: 5 x 8 to a character, drawn 2 art pixels each on a pitch of 3; 16 art pixels from one character to the next (a gap of 2).
+ * The rows are 25 apart: a character is 23 tall, so 2 between the rows (the real 1602 has 0.4 mm there, about 2.5 art pixels:
+ * character 5.55 mm on a row pitch of 5.95 mm). The two rows take 23 + 2 + 23 = 48 of the glass' 58, so the text sits 5 from the top (and 5 above the bottom).
+ */
 const CHAR_PITCH = 16
-const ROW_PITCH = 28
+const ROW_PITCH = 25
 const TEXT_X = 5
-const TEXT_Y = 3
+const TEXT_Y = 5
 
 /** The sketch the code window's "LCD example" button puts in: the usual first program of a 1602 I2C module. */
 export const LCD_SKETCH = `#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
-// the module answers at 0x27 (0x3F on some boards): set the same address on the part
+// the module answers at 0x27
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 void setup() {
@@ -64,6 +68,9 @@ interface GlassLook {
   grid: string
   lit: string
 }
+
+/** How strong the grid of off dots is at a good contrast (1 = the first look; the user asked for half, 2026-10-14). */
+const GRID_STRENGTH = 0.5
 
 const BACKLIT: GlassLook = { bg: '#5a50f0', grid: '#4f46da', lit: '#f6f8ff' }
 const DARK: GlassLook = { bg: '#1b2262', grid: '#1f276b', lit: '#4a56b0' }
@@ -161,8 +168,8 @@ function drawGlass(c: CanvasRenderingContext2D, s: LcdSnapshot, powered: boolean
   const at = (bmp: HTMLCanvasElement): void => c.drawImage(bmp, LCD_SCREEN.x * PX, LCD_SCREEN.y * PX, LCD_SCREEN.w * PX, LCD_SCREEN.h * PX)
   at(glassBitmap(look.bg))
   if (powered && s.on) {
-    // the dots that are off: a faint grid at a good contrast, as dark as the characters when the contrast is far too high
-    c.globalAlpha = Math.max(k.grid, k.wash)
+    // the dots that are off: a grid at half its old strength (full strength was busy to look at), as dark as the characters when the contrast is far too high
+    c.globalAlpha = Math.max(k.grid * GRID_STRENGTH, k.wash)
     at(dotsBitmap(k.wash > 0 ? mix(look.grid, look.lit, k.wash) : look.grid))
     c.globalAlpha = 1
   }
@@ -206,7 +213,7 @@ export const lcd1602i2c: PartDef = {
   name: 'LCD 1602 (I2C)',
   category: 'logic',
   blurb:
-    'A 16 x 2 character LCD with an I2C backpack (PCF8574): four pins GND, VCC, SDA, SCL on the left, top to bottom. Give it 5 V and connect SDA and SCL to the Uno\'s A4 and A5 (the board also has them as SDA / SCL beside AREF). Use the library LiquidCrystal_I2C with the address set here (0x27, or 0x3F on some boards); call lcd.init() and lcd.backlight() - without them the screen stays dark or shows a row of blocks. If you cannot see the text, turn the contrast (the blue screw on the backpack). It takes about 25 mA with the backlight on.',
+    'A 16 x 2 character LCD with an I2C backpack (PCF8574): four pins GND, VCC, SDA, SCL on the left, top to bottom. Give it 5 V and connect SDA and SCL to the Uno\'s A4 and A5 (the board also has them as SDA / SCL beside AREF). Use the library LiquidCrystal_I2C with the address 0x27; call lcd.init() and lcd.backlight() - without them the screen stays dark or shows a row of blocks. If you cannot see the text, turn the contrast (the blue screw on the backpack). It takes about 25 mA with the backlight on.',
   pinLabels: ['GND', 'VCC', 'SDA', 'SCL'],
   // the pins come out of the left edge: the label sits at the tip, past the end of the leg
   pinLabelPlace: 'lead',
@@ -262,8 +269,6 @@ export const lcd1602i2c: PartDef = {
     if (scene.pixel) {
       const powered = live.up === undefined ? true : live.up > 0.5
       const snap = live.up === undefined ? demoSnapshot() : lcdFromLive(live)
-      // a lit screen gives off light: a soft blue glow that reaches a little past the board (under it, so it only shows round the edges)
-      if (powered && snap.backlight) radialGlow(c, ((LCD_SCREEN.x + LCD_SCREEN.w / 2) * PX), ((LCD_SCREEN.y + LCD_SCREEN.h / 2) * PX), 330, '#6a60ff', 0.22)
       // the four legs of the backpack, under the board; their tips are the pins
       for (let i = 0; i < 4; i++) pxLegH(c, (PIN_Y0 + i) * 20, PIN_X * 20, 8)
       const board = lcd1602Sprite()
@@ -294,16 +299,7 @@ export const lcd1602i2c: PartDef = {
     if (scene.labeled.has(p.id)) drawLabelAbove(c, 'LCD 1602 (I2C)', (LCD_W * PX) / 2, 0)
   },
   fields: () => [
-    {
-      kind: 'select',
-      key: 'addr',
-      label: 'I2C address',
-      options: [
-        { value: 0x27, label: '0x27 (PCF8574T)' },
-        { value: 0x3f, label: '0x3F (PCF8574AT)' },
-      ],
-    },
     { kind: 'range', key: 'contrast', label: 'Contrast (blue screw)', min: 0, max: 100, step: 1 },
   ],
-  summary: (p) => `I2C address 0x${num(p, 'addr', 0x27).toString(16).toUpperCase()}, contrast ${Math.round(num(p, 'contrast', 50))}${p.state.failed ? ', burnt' : ''}`,
+  summary: (p) => `I2C address 0x27, contrast ${Math.round(num(p, 'contrast', 50))}${p.state.failed ? ', burnt' : ''}`,
 }
