@@ -1,0 +1,736 @@
+//@version=5
+// Strategy Tester copy of msnr.pine — same rules, orders placed where the indicator draws its entry boxes.
+// Keep in sync with msnr.pine: only the strategy() header and the order block below differ.
+strategy("MSNR Strategy", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500, max_bars_back=5000, initial_capital=10000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_contract, commission_value=0.2, pyramiding=0)
+
+// MSNR (Malaysian Support & Resistance) — phase 1: A/V/Gap levels, fresh/unfresh, SBR/RBS flip, confirmation candles
+// phase 2: storyline (rejection+breakout or BOS/CHoCH) + roadblocks
+// phase 3: miss, decision levels, entry/SL/TP with result tracking, 3rd-touch trendlines, liquidity lines
+// Rules and preset table: msnr_technique.md (research notes: msnr_research.md)
+
+// === หน้าตั้งค่า (ภาษาไทย) — เปิด/ปิด อยู่บนสุดเสมอ (indicator_style.md กฎข้อ 6) ===
+grpMaster = "เปิด/ปิด"
+enableMsnr = input.bool(true, "MSNR", inline="master", tooltip="เส้น A/V/Gap ทั้งหมด — ปิด = ไม่คำนวณอะไรเลย", group=grpMaster)
+enableConfirm = input.bool(true, "แท่งยืนยัน", inline="master", tooltip="ลูกศร Engulfing/Hammer/Pinbar ตอนราคาแตะเส้น — ต้องเปิด MSNR ด้วยถึงจะขึ้น", group=grpMaster)
+enableStory = input.bool(true, "Storyline", inline="master", tooltip="ทิศตลาดจาก TF ใหญ่ + Roadblock + กรองแท่งยืนยันตามทิศ", group=grpMaster)
+enableTrade = input.bool(true, "จุดเข้า", inline="master", tooltip="กล่อง Entry/SL/TP ที่แท่งยืนยัน + ติดตามผลชน TP/SL — ต้องเปิดแท่งยืนยันด้วย", group=grpMaster)
+
+grpMain = "ตั้งค่า MSNR"
+preset = input.string("มาตรฐาน", "แบบ", options=["มาตรฐาน", "Alchemist", "แถบ", "เข้มงวด", "ตั้งเอง"], tooltip="มาตรฐาน = แบบที่แหล่งส่วนใหญ่ใช้ (ยอด/ก้นราคาปิด)\nAlchemist = ทุกคู่แท่งเขียว-แดง/แดง-เขียว ได้ 1 เส้น (เส้นเยอะ ควรใช้ H1 ขึ้นไป)\nแถบ = เส้นเป็นแถบตั้งแต่ราคาปิดถึงราคาเปิดแท่งถัดไป + กฎแตะแรกด้วยตัวเทียน\nเข้มงวด = เหมือนมาตรฐาน แต่เส้นที่ใช้แล้วหายทันที + กฎแตะแรกด้วยตัวเทียน\nตั้งเอง = ใช้ค่าในกลุ่ม 'แบบตั้งเอง' ด้านล่าง", group=grpMain)
+calcTf = input.timeframe("60", "ไทม์เฟรมคำนวณเส้น", tooltip="ค่าเริ่มต้น 60 = 1 ชั่วโมง (ผู้ใช้เลือก) ว่าง = ไทม์เฟรมชาร์ต ถ้าตั้งเล็กกว่าชาร์ต จะใช้ไทม์เฟรมชาร์ตแทน — เส้นอัปเดตตอนแท่งของไทม์เฟรมนี้ปิดเท่านั้น (ไม่ repaint)", group=grpMain)
+pivotLen = input.int(3, "แท่งยืนยันยอด/ก้น", minval=1, maxval=20, tooltip="ยอด (A) ต้องมีราคาปิดสูงกว่าแท่งซ้ายและขวาอย่างละกี่แท่ง (ก้น V กลับกัน) — ใช้กับแบบ มาตรฐาน/แถบ/เข้มงวด และ 'ตั้งเอง' ที่เลือกยอด/ก้น", group=grpMain)
+showGap = input.bool(true, "แสดงเส้น Gap", tooltip="เส้นจากแท่งสีเดียวกัน 2 แท่งติดกัน (เขียว-เขียว = แนวรับ, แดง-แดง = แนวต้าน)", group=grpMain)
+showDecision = input.bool(true, "Decision level", tooltip="Gap ที่เกิดขณะราคาแตะเส้นของ TF storyline = จุดตัดสินใจ (ป้าย DL) มักเป็นจุด breakout กลับเทรนด์ — ใช้ซ้ำได้ ไม่กลายเป็นเส้นใช้แล้ว (ต้องเปิด Storyline)", group=grpMain)
+showMiss = input.bool(true, "นับ Miss", inline="miss", tooltip="ราคาวิ่งเข้าหาเส้นแล้วกลับตัวก่อนไส้ถึง (ระยะไม่เกิน N เท่าของ ATR) นับเฉพาะก่อนเส้นถูกแตะครั้งแรก — ป้าย M2 = miss 2 ครั้ง ยิ่งมากยิ่งแข็งแรง", group=grpMain)
+missAtr = input.float(0.5, "ระยะ (เท่า ATR)", minval=0.05, step=0.05, inline="miss", group=grpMain)
+showUnfresh = input.bool(true, "แสดงเส้นที่ใช้แล้ว", tooltip="เส้นที่ถูกแตะแล้ว (unfresh) แสดงเป็นเส้นประ — ปิด = ซ่อน เหลือแต่เส้นทึบ (fresh)", group=grpMain)
+showLabels = input.bool(true, "แสดงชื่อเส้น", tooltip="A / V / G / SBR / RBS ที่หัวเส้น — ✘ = ห้ามเทรด (แตะครั้งแรกด้วยตัวเทียน)", group=grpMain)
+nearCount = input.int(10, "จำนวนเส้นเหนือ/ใต้ราคา", minval=0, tooltip="แสดงเฉพาะเส้นที่ใกล้ราคาปัจจุบันที่สุด ฝั่งละกี่เส้น — 0 = แสดงทั้งหมด", group=grpMain)
+maxKeep = input.int(150, "เก็บเส้นสูงสุด", minval=10, maxval=400, tooltip="เกินจำนวนนี้ เส้นเก่าสุดถูกลบทิ้ง (TradingView จำกัด 500 ชิ้นต่อ indicator)", group=grpMain)
+resColor = input.color(color.red, "สีแนวต้าน", inline="lvcolor", group=grpMain)
+supColor = input.color(color.green, "สีแนวรับ", inline="lvcolor", group=grpMain)
+noTradeColor = input.color(color.gray, "สีห้ามเทรด", inline="lvcolor", group=grpMain)
+lineWidth = input.int(1, "ความหนา", minval=1, maxval=5, tooltip="SBR/RBS (เส้นที่กลับหน้าที่แล้ว) หนากว่านี้ 1 ขั้นเสมอ", group=grpMain)
+
+grpCustom = "ตั้งค่า MSNR — แบบตั้งเอง"
+cAvMode = input.string("ยอด/ก้นราคาปิด", "วิธีหา A/V", options=["ยอด/ก้นราคาปิด", "คู่แท่ง", "แถบปิด-เปิด"], tooltip="มีผลเฉพาะแบบ 'ตั้งเอง'\nยอด/ก้นราคาปิด = swing ของราคาปิด\nคู่แท่ง = เขียวต่อแดง = A, แดงต่อเขียว = V (ราคาปิดแท่งแรก)\nแถบปิด-เปิด = ยอด/ก้นราคาปิด แต่วาดเป็นแถบถึงราคาเปิดแท่งถัดไป", group=grpCustom)
+cGapReal = input.bool(true, "Gap ต้องมีช่องว่างจริง", tooltip="มีผลเฉพาะแบบ 'ตั้งเอง' — เปิด = ราคาเปิดแท่งสองต้องกระโดดพ้นราคาปิดแท่งแรก, ปิด = นับทุกคู่สีเดียวกัน", group=grpCustom)
+cGapPrice = input.string("ราคาปิดแท่งแรก", "ราคาเส้น Gap", options=["ราคาปิดแท่งแรก", "ราคาเปิดแท่งสอง", "กึ่งกลาง", "ทั้งแถบ"], tooltip="มีผลเฉพาะแบบ 'ตั้งเอง'", group=grpCustom)
+cUnfresh = input.string("ไส้แตะ", "เส้นใช้แล้วเมื่อ", options=["ไส้แตะ", "ตัวเทียนแตะ", "แตะครบ N ครั้ง"], tooltip="มีผลเฉพาะแบบ 'ตั้งเอง' — เส้นใช้แล้ว (unfresh) เปลี่ยนเป็นเส้นประ", group=grpCustom)
+cUnfreshN = input.int(2, "N ครั้ง (แตะ)", minval=1, tooltip="ใช้กับ 'แตะครบ N ครั้ง'", group=grpCustom)
+cUsed = input.string("เก็บเป็นเส้นประ", "หลังเส้นใช้แล้ว", options=["เก็บเป็นเส้นประ", "ลบทิ้ง", "ลบเมื่อทะลุเกิน N ครั้ง"], tooltip="มีผลเฉพาะแบบ 'ตั้งเอง'", group=grpCustom)
+cMaxBreaks = input.int(3, "N ครั้ง (ทะลุ)", minval=1, tooltip="ใช้กับ 'ลบเมื่อทะลุเกิน N ครั้ง' — นับเฉพาะตัวเทียนปิดทะลุ", group=grpCustom)
+cFirstTouch = input.bool(false, "แตะครั้งแรกด้วยตัวเทียน = ห้ามเทรด", tooltip="มีผลเฉพาะแบบ 'ตั้งเอง' — เส้นที่ถูกตัวเทียน (ไม่ใช่แค่ไส้) แตะเป็นครั้งแรก กลายเป็นสีเทา + ✘ และไม่ขึ้นแท่งยืนยัน", group=grpCustom)
+
+grpConfirm = "ตั้งค่าแท่งยืนยัน"
+useEng = input.bool(true, "Engulfing", inline="cf1", tooltip="แท่งกลืนกิน — ตัวเทียนครอบตัวเทียนแท่งก่อนหน้าทั้งหมด สีตรงข้าม", group=grpConfirm)
+usePin = input.bool(true, "Pinbar", inline="cf1", tooltip="ไส้ยาว ≥ 2/3 ของแท่ง แทงเข้าเส้นแล้วตัวเทียนอยู่ฝั่งเดิมของเส้นทั้งตัว", group=grpConfirm)
+useHam = input.bool(true, "Hammer", inline="cf2", tooltip="ค้อน — ไส้ล่างยาว ไส้บนสั้น (ที่แนวต้านคือ Hanging man)", group=grpConfirm)
+useInvHam = input.bool(true, "Inverted Hammer", inline="cf2", tooltip="ค้อนกลับหัว — ไส้บนยาว ไส้ล่างสั้น (ที่แนวต้านคือ Shooting star)", group=grpConfirm)
+wickRatio = input.float(2.0, "ไส้ยาวกว่าตัวเทียน (เท่า)", minval=1.0, step=0.5, tooltip="ใช้กับ Hammer / Inverted Hammer", group=grpConfirm)
+minMiss = input.int(0, "ต้องมี Miss อย่างน้อย", minval=0, tooltip="แท่งยืนยันขึ้นเฉพาะเส้นที่มี miss ถึงจำนวนนี้ — 0 = ไม่กรอง", group=grpConfirm)
+confirmFreshOnly = input.bool(true, "เฉพาะเส้น fresh", tooltip="ปิด = เส้นที่ใช้แล้วก็ขึ้นแท่งยืนยันได้ (เส้นห้ามเทรดไม่ขึ้นเสมอ) — แต่ละเส้นขึ้นได้ครั้งเดียวจนกว่าจะถูกทะลุแล้วกลับหน้าที่", group=grpConfirm)
+bullSigColor = input.color(color.teal, "สีซื้อ", inline="sigcolor", group=grpConfirm)
+bearSigColor = input.color(color.orange, "สีขาย", inline="sigcolor", group=grpConfirm)
+
+grpStory = "ตั้งค่า Storyline"
+stTf = input.timeframe("60", "ไทม์เฟรม storyline", tooltip="ค่าเริ่มต้น 60 = 1 ชั่วโมง (ผู้ใช้เลือก) TF ที่ใช้ดูทิศ ควรใหญ่กว่า 'ไทม์เฟรมคำนวณเส้น' 1 ขั้น (เช่น storyline D + เส้น H4 → เส้นสวนทิศบน H4 = roadblock) — ตั้งเล็กกว่าชาร์ต = ใช้ TF ชาร์ตแทน", group=grpStory)
+stMethod = input.string("แตะแล้วตีกลับ + ทะลุ", "วิธีหาทิศ", options=["แตะแล้วตีกลับ + ทะลุ", "ยอด/ก้น (BOS/CHoCH)"], tooltip="แตะแล้วตีกลับ + ทะลุ (สาย Alchemist) = แท่ง storyline แตะยอด/ก้นของ TF ใหญ่ที่ยัง fresh แล้วปิดตีกลับ → รอแท่ง 'ไทม์เฟรมคำนวณเส้น' ปิดทะลุแนวรับ/ต้านที่ใกล้ที่สุดฝั่งตรงข้าม = ยืนยัน\nยอด/ก้น (BOS/CHoCH) = ราคาปิด storyline ทะลุยอดล่าสุด = ขาขึ้น, ทะลุก้นล่าสุด = ขาลง", group=grpStory)
+stPivotLen = input.int(3, "แท่งยืนยันยอด/ก้น (storyline)", minval=1, maxval=20, tooltip="นับเป็นแท่งของไทม์เฟรม storyline", group=grpStory)
+stFilter = input.bool(true, "แท่งยืนยันเฉพาะตามทิศ", tooltip="ขาขึ้น = ขึ้นแค่ลูกศรซื้อ, ขาลง = ขึ้นแค่ลูกศรขาย, ยังไม่ชัด = ไม่ขึ้นเลย (ตำรา: ทิศไม่ชัด = ไม่เทรด)", group=grpStory)
+showRoadblock = input.bool(true, "แสดง Roadblock", inline="rb", tooltip="เส้นสวนทิศ storyline ที่ขวางทางราคา (ขาขึ้น = แนวต้านเหนือราคา, ขาลง = แนวรับใต้ราคา) ราคามักพักตรงนี้ ไม่ใช่จุดกลับตัว — ชื่อเส้นต่อท้าย RB", group=grpStory)
+roadblockColor = input.color(color.purple, "สี", inline="rb", group=grpStory)
+showStoryMarks = input.bool(true, "ป้ายเปลี่ยนทิศ", tooltip="ST▲ / ST▼ ใต้/เหนือแท่งที่ storyline เปลี่ยนทิศ", group=grpStory)
+showStoryTable = input.bool(true, "แสดงตาราง", inline="sttable", tooltip="ทิศ storyline + จุดที่รอปิดทะลุ + ผลจุดเข้า (ชนะ/แพ้)", group=grpStory)
+stTablePos = input.string("ขวาบน", "ตำแหน่ง", options=["ซ้ายบน", "ขวาบน", "ซ้ายล่าง", "ขวาล่าง"], inline="sttable", group=grpStory)
+
+grpTrade = "ตั้งค่าจุดเข้า/SL/TP"
+slMode = input.string("เลยไส้หรือเส้น (ที่ไกลกว่า)", "วาง SL", options=["เลยไส้หรือเส้น (ที่ไกลกว่า)", "เลยเส้น", "เลยไส้แท่งยืนยัน"], tooltip="ตำรา: SL เลยไส้ rejection / เลยขอบโซน (ไส้ทะลุเส้นราคาปิดเป็นเรื่องปกติ)\nเลยไส้หรือเส้น = ใต้จุดต่ำสุดระหว่าง low แท่งยืนยันกับขอบล่างเส้น (ขายกลับกัน) — ค่าเริ่มต้น\nเลยเส้น = ใต้เส้นอย่างเดียว (แคบ โดนไส้กวาดบ่อย)\nเลยไส้แท่งยืนยัน = ใต้ low แท่งยืนยันอย่างเดียว", group=grpTrade)
+slBufferAtr = input.float(0.0, "เผื่อ SL (เท่า ATR)", minval=0, step=0.05, tooltip="ระยะเผื่อเลยจุด SL ออกไป เป็นเท่าของ ATR(14) ของไทม์เฟรมชาร์ต — ตำราไม่ได้กำหนด ค่าเริ่มต้นจึงเป็น 0", group=grpTrade)
+tpMode = input.string("เส้น fresh ถัดไป", "วาง TP", options=["เส้น fresh ถัดไป", "RR คงที่"], tooltip="ตำรา: TP ที่เส้น fresh ถัดไปตามทิศ (แนวต้าน fresh ที่ใกล้ที่สุดเหนือจุดเข้าสำหรับซื้อ) — ไม่มีเส้น fresh = ไม่เข้า\nRR คงที่ = TP = ระยะ SL × ค่า RR (ไม่ใช่ตำรา MSNR ใช้เทียบเท่านั้น)", group=grpTrade)
+tpRR = input.float(2.0, "RR คงที่", minval=0.5, step=0.5, tooltip="ใช้เฉพาะ TP แบบ RR คงที่", group=grpTrade)
+minRR = input.float(2.0, "RR ขั้นต่ำ", minval=0, step=0.5, tooltip="ตำรา: RR อย่างน้อย 1:2 (ดีสุด 1:3–1:4) — RR ต่ำกว่านี้ไม่เข้า, 0 = ไม่กรอง", group=grpTrade)
+tradeKeep = input.int(10, "เก็บจุดเข้าย้อนหลัง", minval=1, maxval=50, tooltip="จำนวนกล่องที่แสดง (ผลชนะ/แพ้ในตารางนับทั้งหมด)", group=grpTrade)
+tradeBars = input.int(20, "ความยาวกล่อง (แท่ง)", minval=2, tooltip="ความยาวกล่องที่วาดเท่านั้น — ติดตามผลต่อจนชน TP หรือ SL เสมอ (ไม่หมดอายุ)", group=grpTrade)
+tpColor = input.color(color.new(color.green, 80), "สี TP", inline="tradecolor", group=grpTrade)
+slColor = input.color(color.new(color.red, 80), "สี SL", inline="tradecolor", group=grpTrade)
+
+grpTl = "ตั้งค่า Trendline"
+showTl = input.bool(true, "แสดง Trendline", inline="tl", tooltip="ลากผ่านก้นราคาปิด 2 จุดล่าสุดที่ยกตัวขึ้น (แนวรับ) / ยอด 2 จุดล่าสุดที่ต่ำลง (แนวต้าน) — แตะครั้งที่ 3 ขึ้นป้าย TL, ตรงกับเส้น MSNR ด้วยขึ้น TL+ (confluence)", group=grpTl)
+tlColor = input.color(color.blue, "สี", inline="tl", group=grpTl)
+
+grpLiq = "ตั้งค่า Liquidity"
+showPd = input.bool(true, "วันก่อน", inline="liq", tooltip="เส้น high/low ของวัน/สัปดาห์/เดือนก่อนหน้า (PDH/PDL, PWH/PWL, PMH/PML) — จุดที่ liquidity มักกองอยู่", group=grpLiq)
+showPw = input.bool(true, "สัปดาห์ก่อน", inline="liq", group=grpLiq)
+showPm = input.bool(false, "เดือนก่อน", inline="liq", group=grpLiq)
+liqColor = input.color(color.new(color.gray, 30), "สี", group=grpLiq)
+
+// === Resolve preset -> rule switches ===
+isAlc = preset == "Alchemist"
+isBand = preset == "แถบ"
+isStrict = preset == "เข้มงวด"
+isCustom = preset == "ตั้งเอง"
+
+// 0 = pivot of closes, 1 = candle pair, 2 = pivot band (close -> next open)
+avMode = isCustom ? (cAvMode == "คู่แท่ง" ? 1 : cAvMode == "แถบปิด-เปิด" ? 2 : 0) : isAlc ? 1 : isBand ? 2 : 0
+gapReal = isCustom ? cGapReal : not isAlc
+// 0 = first close, 1 = second open, 2 = midpoint, 3 = band
+gapPrice = isCustom ? (cGapPrice == "ราคาเปิดแท่งสอง" ? 1 : cGapPrice == "กึ่งกลาง" ? 2 : cGapPrice == "ทั้งแถบ" ? 3 : 0) : isBand ? 3 : 0
+// 0 = any wick touch, 1 = body touch, 2 = N touches
+unfreshMode = isCustom ? (cUnfresh == "ตัวเทียนแตะ" ? 1 : cUnfresh == "แตะครบ N ครั้ง" ? 2 : 0) : 0
+// 0 = keep dashed, 1 = delete when used, 2 = delete after N breaks
+usedMode = isCustom ? (cUsed == "ลบทิ้ง" ? 1 : cUsed == "ลบเมื่อทะลุเกิน N ครั้ง" ? 2 : 0) : isStrict ? 1 : 0
+firstTouchRule = isCustom ? cFirstTouch : isBand or isStrict
+
+effTf = calcTf == "" or timeframe.in_seconds(calcTf) < timeframe.in_seconds(timeframe.period) ? timeframe.period : calcTf
+
+// Closed bars of the calculation timeframe only ([1] + lookahead_on = no repaint)
+[hO, hH, hL, hC, hT, hAtr] = request.security(syminfo.tickerid, effTf, [open[1], high[1], low[1], close[1], time[1], ta.atr(14)[1]], lookahead=barmerge.lookahead_on)
+newHtfBar = not na(hT) and hT != nz(hT[1])
+
+stEff = timeframe.in_seconds(stTf) < timeframe.in_seconds(timeframe.period) ? timeframe.period : stTf
+[sO, sH, sL, sC, sT] = request.security(syminfo.tickerid, stEff, [open[1], high[1], low[1], close[1], time[1]], lookahead=barmerge.lookahead_on)
+newStBar = not na(sT) and sT != nz(sT[1])
+useRejection = stMethod == "แตะแล้วตีกลับ + ทะลุ"
+atrChart = ta.atr(14)
+
+[pdH, pdL, pdT] = request.security(syminfo.tickerid, "D", [high[1], low[1], time], lookahead=barmerge.lookahead_on)
+[pwH, pwL, pwT] = request.security(syminfo.tickerid, "W", [high[1], low[1], time], lookahead=barmerge.lookahead_on)
+[pmH, pmL, pmT] = request.security(syminfo.tickerid, "M", [high[1], low[1], time], lookahead=barmerge.lookahead_on)
+
+// === Level model ===
+type Level
+    float top
+    float bot
+    int dir              // 1 = support, -1 = resistance (current role, flips on break)
+    string kind          // "A", "V", "G", "SBR", "RBS"
+    int bornTime
+    bool fresh = true
+    bool noTrade = false
+    bool signaled = false
+    int touches = 0
+    int breaks = 0
+    int misses = 0
+    bool decision = false   // decision level: never turns unfresh
+    line ln
+    box bx
+    label lb
+
+type Trade
+    int dir
+    float entry
+    float sl
+    float tp
+    int startBar
+    box riskBx
+    box rewardBx
+    label lb
+    int result = 0          // 1 = TP hit, -1 = SL hit, 0 = open
+
+var array<Level> levels = array.new<Level>()
+var array<float> aO = array.new_float()
+var array<float> aH = array.new_float()
+var array<float> aL = array.new_float()
+var array<float> aC = array.new_float()
+var array<int> aT = array.new_int()
+
+// Storyline state (storyline-TF levels are kept without drawings)
+var array<Level> stLevels = array.new<Level>()
+var array<float> sOa = array.new_float()
+var array<float> sHa = array.new_float()
+var array<float> sLa = array.new_float()
+var array<float> sCa = array.new_float()
+var array<int> sTa = array.new_int()
+var int storyDir = 0         // 1 = bullish, -1 = bearish, 0 = unclear
+var int pendDir = 0          // rejection seen, waiting for the lower-TF breakout
+var float pendLevel = na     // storyline level that was rejected
+var float pendBreak = na     // lower-TF price that must be closed through to confirm
+var float swingHi = na
+var float swingLo = na
+int storyFlip = 0
+
+var array<Trade> trades = array.new<Trade>()
+var int winCount = 0
+var int lossCount = 0
+
+// Trendline anchors (pivots of closes on the level timeframe)
+var float tlLo1 = na
+var float tlLo2 = na
+var int tlLoT1 = na
+var int tlLoT2 = na
+var float tlHi1 = na
+var float tlHi2 = na
+var int tlHiT1 = na
+var int tlHiT2 = na
+var line tlSupLine = na
+var line tlResLine = na
+var bool tlSupActive = false
+var bool tlResActive = false
+var bool tlSupTouched = false
+var bool tlResTouched = false
+int tlFlag = 0          // 1 = support 3rd touch, -1 = resistance 3rd touch
+bool tlConf = false     // the touch also sits on an MSNR level
+
+var array<line> liqLines = array.new<line>()
+var array<label> liqLabels = array.new<label>()
+
+method banded(Level this) =>
+    this.top != this.bot
+
+method destroy(Level this) =>
+    line.delete(this.ln)
+    box.delete(this.bx)
+    label.delete(this.lb)
+
+// Apply one closed bar to a level. Returns true when the level must be removed.
+method step(Level this, float o, float h, float l, float c) =>
+    bool remove = false
+    bool broke = this.dir == -1 ? c > this.top : c < this.bot
+    if broke
+        this.breaks += 1
+        this.dir := -this.dir
+        this.kind := this.dir == 1 ? "RBS" : "SBR"
+        this.fresh := true
+        this.noTrade := false
+        this.signaled := false
+        this.touches := 0
+        this.misses := 0
+        if usedMode == 2 and this.breaks > cMaxBreaks
+            remove := true
+    else
+        bool wickTouch = this.dir == -1 ? h >= this.bot : l <= this.top
+        bool bodyTouch = this.dir == -1 ? math.max(o, c) >= this.bot : math.min(o, c) <= this.top
+        if wickTouch
+            if firstTouchRule and this.fresh and this.touches == 0 and bodyTouch
+                this.noTrade := true
+            this.touches += 1
+            bool used = unfreshMode == 0 ? true : unfreshMode == 1 ? bodyTouch : this.touches >= cUnfreshN
+            if used and this.fresh and not this.decision
+                this.fresh := false
+                if usedMode == 1
+                    remove := true
+    remove
+
+method render(Level this, bool visible, bool isRoadblock) =>
+    color baseCol = this.noTrade ? noTradeColor : isRoadblock ? roadblockColor : this.dir == 1 ? supColor : resColor
+    color col = visible ? baseCol : color.new(baseCol, 100)
+    string st = this.fresh ? line.style_solid : line.style_dashed
+    int w = lineWidth + (this.kind == "SBR" or this.kind == "RBS" ? 1 : 0)
+    if this.banded()
+        box.set_border_color(this.bx, col)
+        box.set_border_style(this.bx, st)
+        box.set_border_width(this.bx, w)
+        box.set_bgcolor(this.bx, color.new(baseCol, visible ? 90 : 100))
+    else
+        line.set_color(this.ln, col)
+        line.set_style(this.ln, st)
+        line.set_width(this.ln, w)
+    if not na(this.lb)
+        // style_label_down = text above the anchor, style_label_up = text below (bugs.md: names are inverted)
+        label.set_xy(this.lb, this.bornTime, this.dir == -1 ? this.top : this.bot)
+        label.set_style(this.lb, this.dir == -1 ? label.style_label_down : label.style_label_up)
+        string missText = showMiss and this.misses > 0 ? " M" + str.tostring(this.misses) : ""
+        label.set_text(this.lb, this.kind + (this.decision ? " DL" : "") + missText + (isRoadblock ? " RB" : "") + (this.noTrade ? " ✘" : ""))
+        label.set_textcolor(this.lb, col)
+
+newLevel(float top, float bot, int dir, string kind, int bornTime) =>
+    Level lv = Level.new(top, bot, dir, kind, bornTime)
+    if top != bot
+        lv.bx := box.new(left=bornTime, top=top, right=time, bottom=bot, xloc=xloc.bar_time, extend=extend.right)
+    else
+        lv.ln := line.new(bornTime, top, time, top, xloc=xloc.bar_time, extend=extend.right)
+    if showLabels
+        lv.lb := label.new(bornTime, top, kind, xloc=xloc.bar_time, color=color.new(color.white, 100), size=size.tiny)
+    array.push(levels, lv)
+    lv
+
+// Apply stored bars [fromIdx, toIdx] to a level. Returns true when the level must be removed.
+stepRange(Level lv, array<float> o, array<float> h, array<float> l, array<float> c, int fromIdx, int toIdx) =>
+    bool removed = false
+    if fromIdx <= toIdx
+        for j = fromIdx to toIdx
+            if lv.step(array.get(o, j), array.get(h, j), array.get(l, j), array.get(c, j))
+                removed := true
+                break
+    removed
+
+// Pivot levels are confirmed pivotLen bars after they form, so replay the bars in between right away.
+replay(Level lv, int fromIdx, int toIdx) =>
+    bool removed = stepRange(lv, aO, aH, aL, aC, fromIdx, toIdx)
+    if removed
+        lv.destroy()
+        array.pop(levels)
+    removed
+
+isPivotHigh(array<float> src, int p, int len) =>
+    float v = array.get(src, p)
+    bool ok = true
+    for j = 1 to len
+        if array.get(src, p - j) >= v or array.get(src, p + j) > v
+            ok := false
+            break
+    ok
+
+isPivotLow(array<float> src, int p, int len) =>
+    float v = array.get(src, p)
+    bool ok = true
+    for j = 1 to len
+        if array.get(src, p - j) <= v or array.get(src, p + j) < v
+            ok := false
+            break
+    ok
+
+// Nearest chart-level price: dir 1 = highest support below price, dir -1 = lowest resistance above price
+nearestLevel(int dir, float price, bool freshOnly) =>
+    float best = na
+    for lv in levels
+        if not freshOnly or lv.fresh
+            if dir == 1 and lv.dir == 1 and lv.top < price and (na(best) or lv.top > best)
+                best := lv.top
+            if dir == -1 and lv.dir == -1 and lv.bot > price and (na(best) or lv.bot < best)
+                best := lv.bot
+    best
+
+// Price of the line through (t1, p1)-(t2, p2) at time t
+tlValue(float p1, int t1, float p2, int t2, int t) =>
+    p1 + (p2 - p1) * float(t - t1) / float(t2 - t1)
+
+// True when any storyline-TF level price sits inside [lo, hi]
+touchesStoryLevel(float lo, float hi) =>
+    bool hit = false
+    for st in stLevels
+        float price = st.dir == -1 ? st.bot : st.top
+        if price >= lo and price <= hi
+            hit := true
+            break
+    hit
+
+// === Storyline engine: runs once per closed bar of the storyline timeframe ===
+if enableStory and newStBar and not na(sO)
+    array.push(sOa, sO)
+    array.push(sHa, sH)
+    array.push(sLa, sL)
+    array.push(sCa, sC)
+    array.push(sTa, sT)
+    while array.size(sCa) > 2 * stPivotLen + 10
+        array.shift(sOa)
+        array.shift(sHa)
+        array.shift(sLa)
+        array.shift(sCa)
+        array.shift(sTa)
+    int sn = array.size(sCa)
+    int sk = sn - 1
+    int sp = sk - stPivotLen
+    bool enoughSt = sn >= 2 * stPivotLen + 1
+
+    if useRejection
+        // Rejection = touched a fresh storyline level and closed back on its original side
+        int rejDir = 0
+        float rejLevel = na
+        for lv in stLevels
+            if lv.fresh and lv.dir == -1 and sH >= lv.bot and sC < lv.bot
+                rejDir := -1
+                rejLevel := lv.bot
+            if lv.fresh and lv.dir == 1 and sL <= lv.top and sC > lv.top
+                rejDir := 1
+                rejLevel := lv.top
+        // A storyline close back through the rejected level cancels the wait
+        if (pendDir == -1 and sC > pendLevel) or (pendDir == 1 and sC < pendLevel)
+            pendDir := 0
+        if rejDir != 0 and rejDir != storyDir
+            pendDir := rejDir
+            pendLevel := rejLevel
+            float nb = nearestLevel(-rejDir, sC, false)
+            pendBreak := na(nb) ? (rejDir == -1 ? math.min(sO, sC) : math.max(sO, sC)) : nb
+
+    // Storyline-TF levels (used by rejection storylines and decision levels)
+    if array.size(stLevels) > 0
+        for i = array.size(stLevels) - 1 to 0
+            if array.get(stLevels, i).step(sO, sH, sL, sC)
+                array.remove(stLevels, i)
+    if enoughSt
+        float scp = array.get(sCa, sp)
+        if isPivotHigh(sCa, sp, stPivotLen)
+            Level nl = Level.new(scp, scp, -1, "A", array.get(sTa, sp))
+            if not stepRange(nl, sOa, sHa, sLa, sCa, sp + 2, sk)
+                array.push(stLevels, nl)
+        if isPivotLow(sCa, sp, stPivotLen)
+            Level nl = Level.new(scp, scp, 1, "V", array.get(sTa, sp))
+            if not stepRange(nl, sOa, sHa, sLa, sCa, sp + 2, sk)
+                array.push(stLevels, nl)
+    while array.size(stLevels) > 50
+        array.shift(stLevels)
+    if not useRejection
+        // BOS/CHoCH on storyline closes: close beyond the last swing high = bullish, last swing low = bearish
+        if not na(swingHi) and sC > swingHi
+            if storyDir != 1
+                storyFlip := 1
+            storyDir := 1
+            swingHi := na
+        if not na(swingLo) and sC < swingLo
+            if storyDir != -1
+                storyFlip := -1
+            storyDir := -1
+            swingLo := na
+        if enoughSt
+            if isPivotHigh(sCa, sp, stPivotLen)
+                swingHi := array.get(sCa, sp)
+            if isPivotLow(sCa, sp, stPivotLen)
+                swingLo := array.get(sCa, sp)
+
+// === Engine: runs once per closed bar of the calculation timeframe ===
+if enableMsnr and newHtfBar and not na(hO)
+    array.push(aO, hO)
+    array.push(aH, hH)
+    array.push(aL, hL)
+    array.push(aC, hC)
+    array.push(aT, hT)
+    while array.size(aC) > 2 * pivotLen + 10
+        array.shift(aO)
+        array.shift(aH)
+        array.shift(aL)
+        array.shift(aC)
+        array.shift(aT)
+
+    // 1) Update existing levels with the bar that just closed (before creating new ones, so a level
+    //    born from this same bar is never tested against its own formation candles)
+    if array.size(levels) > 0
+        for i = array.size(levels) - 1 to 0
+            Level lv = array.get(levels, i)
+            if lv.step(hO, hH, hL, hC)
+                lv.destroy()
+                array.remove(levels, i)
+
+    // 2) Create new levels — testing starts after the formation candles (pair: next bar, pivot: replayed)
+    int n = array.size(aC)
+    int k = n - 1
+
+    // Miss: the previous bar was a swing toward an untouched level that turned back before its wick got there
+    if showMiss and n >= 3 and not na(hAtr)
+        float mh1 = array.get(aH, k - 1)
+        float ml1 = array.get(aL, k - 1)
+        bool swingUp = mh1 > array.get(aH, k - 2) and mh1 >= array.get(aH, k)
+        bool swingDn = ml1 < array.get(aL, k - 2) and ml1 <= array.get(aL, k)
+        int tMiss = array.get(aT, k - 2)
+        for lv in levels
+            if lv.fresh and lv.touches == 0 and lv.bornTime < tMiss
+                if lv.dir == -1 and swingUp and mh1 < lv.bot and lv.bot - mh1 <= missAtr * hAtr
+                    lv.misses += 1
+                if lv.dir == 1 and swingDn and ml1 > lv.top and ml1 - lv.top <= missAtr * hAtr
+                    lv.misses += 1
+    if avMode == 1
+        if n >= 2
+            float o1 = array.get(aO, k - 1)
+            float c1 = array.get(aC, k - 1)
+            float o2 = array.get(aO, k)
+            float c2 = array.get(aC, k)
+            if c1 > o1 and c2 < o2
+                newLevel(c1, c1, -1, "A", array.get(aT, k - 1))
+            if c1 < o1 and c2 > o2
+                newLevel(c1, c1, 1, "V", array.get(aT, k - 1))
+    else if n >= 2 * pivotLen + 1
+        int p = k - pivotLen
+        float cp = array.get(aC, p)
+        float oNext = array.get(aO, p + 1)
+        float bTop = avMode == 2 ? math.max(cp, oNext) : cp
+        float bBot = avMode == 2 ? math.min(cp, oNext) : cp
+        if isPivotHigh(aC, p, pivotLen)
+            replay(newLevel(bTop, bBot, -1, "A", array.get(aT, p)), p + 2, k)
+        if isPivotLow(aC, p, pivotLen)
+            replay(newLevel(bTop, bBot, 1, "V", array.get(aT, p)), p + 2, k)
+
+    if showGap and n >= 2
+        float go1 = array.get(aO, k - 1)
+        float gc1 = array.get(aC, k - 1)
+        float go2 = array.get(aO, k)
+        float gc2 = array.get(aC, k)
+        bool bull = gc1 > go1 and gc2 > go2
+        bool bear = gc1 < go1 and gc2 < go2
+        bool realGap = bull ? go2 > gc1 : go2 < gc1
+        if (bull or bear) and (not gapReal or realGap)
+            float gTop = gapPrice == 0 ? gc1 : gapPrice == 1 ? go2 : gapPrice == 2 ? (gc1 + go2) / 2 : math.max(gc1, go2)
+            float gBot = gapPrice == 0 ? gc1 : gapPrice == 1 ? go2 : gapPrice == 2 ? (gc1 + go2) / 2 : math.min(gc1, go2)
+            Level gl = newLevel(gTop, gBot, bull ? 1 : -1, "G", array.get(aT, k - 1))
+            // Decision level: the gap formed while price was touching a storyline-TF level
+            if showDecision and enableStory
+                float gLo = math.min(array.get(aL, k - 1), array.get(aL, k))
+                float gHi = math.max(array.get(aH, k - 1), array.get(aH, k))
+                gl.decision := touchesStoryLevel(gLo, gHi)
+
+    while array.size(levels) > maxKeep
+        array.shift(levels).destroy()
+
+    // Trendlines: through the last two rising close-lows (support) / falling close-highs (resistance)
+    if showTl
+        // Test active lines on this closed bar first (3rd touch or break)
+        if tlSupActive and hT > tlLoT2
+            float v = tlValue(tlLo1, tlLoT1, tlLo2, tlLoT2, hT)
+            if hC < v
+                tlSupActive := false
+                line.set_extend(tlSupLine, extend.none)
+                line.set_xy2(tlSupLine, hT, v)
+            else if hL <= v and not tlSupTouched
+                tlSupTouched := true
+                tlFlag := 1
+                for lv in levels
+                    if lv.dir == 1 and hL <= lv.top and hC >= lv.bot
+                        tlConf := true
+        if tlResActive and hT > tlHiT2
+            float v = tlValue(tlHi1, tlHiT1, tlHi2, tlHiT2, hT)
+            if hC > v
+                tlResActive := false
+                line.set_extend(tlResLine, extend.none)
+                line.set_xy2(tlResLine, hT, v)
+            else if hH >= v and not tlResTouched
+                tlResTouched := true
+                tlFlag := -1
+                for lv in levels
+                    if lv.dir == -1 and hH >= lv.bot and hC <= lv.top
+                        tlConf := true
+        // New pivots shift the anchors and redraw
+        if n >= 2 * pivotLen + 1
+            int tp = k - pivotLen
+            float tc = array.get(aC, tp)
+            int tt = array.get(aT, tp)
+            if isPivotLow(aC, tp, pivotLen)
+                tlLo1 := tlLo2
+                tlLoT1 := tlLoT2
+                tlLo2 := tc
+                tlLoT2 := tt
+                line.delete(tlSupLine)
+                tlSupActive := not na(tlLo1) and tlLo2 > tlLo1
+                tlSupTouched := false
+                if tlSupActive
+                    tlSupLine := line.new(tlLoT1, tlLo1, tlLoT2, tlLo2, xloc=xloc.bar_time, extend=extend.right, color=tlColor, width=1)
+                    // Replay the bars between the pivot and its confirmation (break ends the line, touch uses up the 3rd touch)
+                    for j = tp + 1 to k
+                        float rv = tlValue(tlLo1, tlLoT1, tlLo2, tlLoT2, array.get(aT, j))
+                        if array.get(aC, j) < rv
+                            tlSupActive := false
+                            line.set_extend(tlSupLine, extend.none)
+                            line.set_xy2(tlSupLine, array.get(aT, j), rv)
+                            break
+                        if j > tp + 1 and array.get(aL, j) <= rv
+                            tlSupTouched := true
+            if isPivotHigh(aC, tp, pivotLen)
+                tlHi1 := tlHi2
+                tlHiT1 := tlHiT2
+                tlHi2 := tc
+                tlHiT2 := tt
+                line.delete(tlResLine)
+                tlResActive := not na(tlHi1) and tlHi2 < tlHi1
+                tlResTouched := false
+                if tlResActive
+                    tlResLine := line.new(tlHiT1, tlHi1, tlHiT2, tlHi2, xloc=xloc.bar_time, extend=extend.right, color=tlColor, width=1)
+                    for j = tp + 1 to k
+                        float rv = tlValue(tlHi1, tlHiT1, tlHi2, tlHiT2, array.get(aT, j))
+                        if array.get(aC, j) > rv
+                            tlResActive := false
+                            line.set_extend(tlResLine, extend.none)
+                            line.set_xy2(tlResLine, array.get(aT, j), rv)
+                            break
+                        if j > tp + 1 and array.get(aH, j) >= rv
+                            tlResTouched := true
+
+// Rejection storyline is confirmed by a close of the level timeframe through the nearest opposite level
+if enableStory and useRejection and pendDir != 0 and newHtfBar and not na(hC)
+    if (pendDir == -1 and hC < pendBreak) or (pendDir == 1 and hC > pendBreak)
+        storyFlip := pendDir
+        storyDir := pendDir
+        pendDir := 0
+
+// === Confirmation candles (chart timeframe, closed bars only) ===
+float rng = high - low
+float body = math.abs(close - open)
+float upWick = high - math.max(open, close)
+float dnWick = math.min(open, close) - low
+bool bullEng = useEng and close > open and close[1] < open[1] and close >= open[1] and open <= close[1]
+bool bearEng = useEng and close < open and close[1] > open[1] and close <= open[1] and open >= close[1]
+bool hamShape = useHam and rng > 0 and dnWick >= wickRatio * body and dnWick >= 0.5 * rng and upWick <= 0.25 * rng
+bool invShape = useInvHam and rng > 0 and upWick >= wickRatio * body and upWick >= 0.5 * rng and dnWick <= 0.25 * rng
+
+string bullType = ""
+string bearType = ""
+Level bullLv = na
+Level bearLv = na
+// Storyline filter: bullish story = buy arrows only, bearish = sell only, unclear = none
+bool allowBull = not (enableStory and stFilter) or storyDir == 1
+bool allowBear = not (enableStory and stFilter) or storyDir == -1
+if enableMsnr and enableConfirm and barstate.isconfirmed and array.size(levels) > 0
+    for lv in levels
+        // First-touch rule also applies here: a body reaching an untouched level is no trade, not a signal
+        bool firstBodyTouch = firstTouchRule and lv.fresh and lv.touches == 0 and (lv.dir == 1 ? math.min(open, close) <= lv.top : math.max(open, close) >= lv.bot)
+        if (lv.fresh or not confirmFreshOnly) and not lv.noTrade and not lv.signaled and not firstBodyTouch and lv.misses >= minMiss
+            if allowBull and lv.dir == 1 and low <= lv.top and close >= lv.bot
+                bool pin = usePin and rng > 0 and dnWick >= rng * 2 / 3 and math.min(open, close) > lv.top
+                string t = bullEng ? "ENG" : pin ? "PIN" : hamShape ? "HAM" : invShape ? "IHAM" : ""
+                if t != ""
+                    lv.signaled := true
+                    if bullType == ""
+                        bullType := t
+                        bullLv := lv
+            if allowBear and lv.dir == -1 and high >= lv.bot and close <= lv.top
+                bool pin = usePin and rng > 0 and upWick >= rng * 2 / 3 and math.max(open, close) < lv.bot
+                string t = bearEng ? "ENG" : pin ? "PIN" : invShape ? "IHAM" : hamShape ? "HAM" : ""
+                if t != ""
+                    lv.signaled := true
+                    if bearType == ""
+                        bearType := t
+                        bearLv := lv
+
+// === Entry / SL / TP (chart timeframe) ===
+if enableMsnr and enableConfirm and enableTrade and barstate.isconfirmed
+    // Resolve open trades first (both hit in one bar = SL, conservative)
+    for tr in trades
+        if tr.result == 0 and tr.startBar < bar_index
+            bool hitSl = tr.dir == 1 ? low <= tr.sl : high >= tr.sl
+            bool hitTp = tr.dir == 1 ? high >= tr.tp : low <= tr.tp
+            if hitSl or hitTp
+                tr.result := hitSl ? -1 : 1
+                if hitSl
+                    lossCount += 1
+                else
+                    winCount += 1
+                if bar_index <= tr.startBar + tradeBars
+                    box.set_right(tr.riskBx, bar_index)
+                    box.set_right(tr.rewardBx, bar_index)
+                label.set_text(tr.lb, label.get_text(tr.lb) + (hitSl ? " ✘" : " ✔"))
+    bool orderPlaced = false
+    for side = 0 to 1
+        Level sigLv = side == 0 ? bullLv : bearLv
+        if not na(sigLv)
+            int d = side == 0 ? 1 : -1
+            float buffer = slBufferAtr * nz(atrChart)
+            float entry = close
+            float lineSl = d == 1 ? sigLv.bot : sigLv.top
+            float wickSl = d == 1 ? low : high
+            float slBase = slMode == "เลยเส้น" ? lineSl : slMode == "เลยไส้แท่งยืนยัน" ? wickSl : (d == 1 ? math.min(lineSl, wickSl) : math.max(lineSl, wickSl))
+            float sl = slBase - d * buffer
+            float risk = math.abs(entry - sl)
+            // TP: next fresh level in the trade direction; none = no trade (the sources give no fallback)
+            float tp = tpMode == "RR คงที่" ? entry + d * tpRR * risk : nearestLevel(-d, entry, true)
+            float rr = risk > 0 and not na(tp) ? math.abs(tp - entry) / risk : 0.0
+            if risk > 0 and not na(tp) and (minRR <= 0 or rr >= minRR)
+                Trade tr = Trade.new(d, entry, sl, tp, bar_index)
+                tr.riskBx := box.new(bar_index, math.max(entry, sl), bar_index + tradeBars, math.min(entry, sl), border_color=color.new(slColor, 100), bgcolor=slColor)
+                tr.rewardBx := box.new(bar_index, math.max(entry, tp), bar_index + tradeBars, math.min(entry, tp), border_color=color.new(tpColor, 100), bgcolor=tpColor)
+                string txt = "ET : " + str.tostring(entry, format.mintick) + " SL : " + str.tostring(sl, format.mintick) + " TP : " + str.tostring(tp, format.mintick) + " RR : " + str.tostring(rr, "#.#")
+                tr.lb := label.new(bar_index + tradeBars, entry, txt, color=color.new(color.white, 100), style=label.style_label_left, textcolor=chart.fg_color, size=size.tiny)
+                array.push(trades, tr)
+                // One position at a time: market entry on the next bar open, exit only at SL or TP
+                if strategy.position_size == 0 and not orderPlaced
+                    orderPlaced := true
+                    string oid = d == 1 ? "Buy" : "Sell"
+                    strategy.entry(oid, d == 1 ? strategy.long : strategy.short)
+                    strategy.exit(oid + " X", oid, stop=sl, limit=tp)
+    // Drop the oldest resolved trades beyond tradeKeep (open trades stay so their result is still counted)
+    int extra = array.size(trades) - tradeKeep
+    if extra > 0
+        for i = array.size(trades) - 1 to 0
+            if extra > 0 and array.get(trades, i).result != 0 and i < array.size(trades) - tradeKeep
+                Trade old = array.remove(trades, i)
+                box.delete(old.riskBx)
+                box.delete(old.rewardBx)
+                label.delete(old.lb)
+                extra -= 1
+
+plotshape(bullType == "ENG", "ซื้อ Engulfing", shape.triangleup, location.belowbar, bullSigColor, text="ENG", textcolor=bullSigColor, size=size.tiny)
+plotshape(bullType == "PIN", "ซื้อ Pinbar", shape.triangleup, location.belowbar, bullSigColor, text="PIN", textcolor=bullSigColor, size=size.tiny)
+plotshape(bullType == "HAM", "ซื้อ Hammer", shape.triangleup, location.belowbar, bullSigColor, text="HAM", textcolor=bullSigColor, size=size.tiny)
+plotshape(bullType == "IHAM", "ซื้อ Inverted Hammer", shape.triangleup, location.belowbar, bullSigColor, text="IHAM", textcolor=bullSigColor, size=size.tiny)
+plotshape(bearType == "ENG", "ขาย Engulfing", shape.triangledown, location.abovebar, bearSigColor, text="ENG", textcolor=bearSigColor, size=size.tiny)
+plotshape(bearType == "PIN", "ขาย Pinbar", shape.triangledown, location.abovebar, bearSigColor, text="PIN", textcolor=bearSigColor, size=size.tiny)
+plotshape(bearType == "HAM", "ขาย Hanging man", shape.triangledown, location.abovebar, bearSigColor, text="HAM", textcolor=bearSigColor, size=size.tiny)
+plotshape(bearType == "IHAM", "ขาย Shooting star", shape.triangledown, location.abovebar, bearSigColor, text="IHAM", textcolor=bearSigColor, size=size.tiny)
+alertcondition(bullType != "", "MSNR ยืนยันซื้อ", "MSNR: แท่งยืนยันซื้อที่แนวรับ")
+alertcondition(bearType != "", "MSNR ยืนยันขาย", "MSNR: แท่งยืนยันขายที่แนวต้าน")
+
+plotshape(enableStory and showStoryMarks and storyFlip == 1, "Storyline ขาขึ้น", shape.labelup, location.belowbar, bullSigColor, text="ST▲", textcolor=color.white, size=size.tiny)
+plotshape(enableStory and showStoryMarks and storyFlip == -1, "Storyline ขาลง", shape.labeldown, location.abovebar, bearSigColor, text="ST▼", textcolor=color.white, size=size.tiny)
+alertcondition(storyFlip != 0, "MSNR storyline เปลี่ยนทิศ", "MSNR: storyline เปลี่ยนทิศ")
+
+plotshape(showTl and tlFlag == 1 and not tlConf, "Trendline แตะครั้งที่ 3 (รับ)", shape.circle, location.belowbar, tlColor, text="TL", textcolor=tlColor, size=size.tiny)
+plotshape(showTl and tlFlag == 1 and tlConf, "Trendline + เส้น MSNR (รับ)", shape.circle, location.belowbar, tlColor, text="TL+", textcolor=tlColor, size=size.tiny)
+plotshape(showTl and tlFlag == -1 and not tlConf, "Trendline แตะครั้งที่ 3 (ต้าน)", shape.circle, location.abovebar, tlColor, text="TL", textcolor=tlColor, size=size.tiny)
+plotshape(showTl and tlFlag == -1 and tlConf, "Trendline + เส้น MSNR (ต้าน)", shape.circle, location.abovebar, tlColor, text="TL+", textcolor=tlColor, size=size.tiny)
+alertcondition(tlFlag != 0, "MSNR trendline แตะครั้งที่ 3", "MSNR: trendline แตะครั้งที่ 3")
+
+// === Storyline table ===
+stTablePosEnum = stTablePos == "ซ้ายบน" ? position.top_left : stTablePos == "ซ้ายล่าง" ? position.bottom_left : stTablePos == "ขวาล่าง" ? position.bottom_right : position.top_right
+var table stTable = table.new(stTablePosEnum, 2, 3, border_width=1)
+if showStoryTable and barstate.islast and enableTrade and enableConfirm
+    int total = winCount + lossCount
+    string res = "✔ " + str.tostring(winCount) + "  ✘ " + str.tostring(lossCount) + (total > 0 ? "  (" + str.tostring(100.0 * winCount / total, "#") + "%)" : "")
+    table.cell(stTable, 0, 2, "ผลจุดเข้า", text_color=chart.fg_color, text_size=size.small, bgcolor=color.new(color.gray, 85))
+    table.cell(stTable, 1, 2, res, text_color=chart.fg_color, text_size=size.small)
+if enableStory and showStoryTable and barstate.islast
+    color dirBg = storyDir == 1 ? color.new(bullSigColor, 70) : storyDir == -1 ? color.new(bearSigColor, 70) : color.new(color.gray, 80)
+    string dirText = storyDir == 1 ? "ขาขึ้น ▲" : storyDir == -1 ? "ขาลง ▼" : "ยังไม่ชัด"
+    table.cell(stTable, 0, 0, "Storyline " + stEff, text_color=chart.fg_color, text_size=size.small, bgcolor=color.new(color.gray, 85))
+    table.cell(stTable, 1, 0, dirText, text_color=chart.fg_color, text_size=size.small, bgcolor=dirBg)
+    bool showPend = useRejection and pendDir != 0
+    string pendText = showPend ? "รอยืนยัน" + (pendDir == 1 ? "ขาขึ้น" : "ขาลง") : ""
+    string pendNeed = showPend ? "ปิด" + (pendDir == 1 ? "เหนือ " : "ต่ำกว่า ") + str.tostring(pendBreak, format.mintick) : ""
+    table.cell(stTable, 0, 1, pendText, text_color=chart.fg_color, text_size=size.small)
+    table.cell(stTable, 1, 1, pendNeed, text_color=chart.fg_color, text_size=size.small)
+
+// === Final styling + nearest-N filter (drawings only show their last state, so style once on the last bar) ===
+if enableMsnr and barstate.islast and array.size(levels) > 0
+    array<float> distUp = array.new_float()
+    array<float> distDn = array.new_float()
+    for lv in levels
+        if showUnfresh or lv.fresh
+            if lv.bot > close
+                array.push(distUp, lv.bot - close)
+            else if lv.top < close
+                array.push(distDn, close - lv.top)
+    array.sort(distUp)
+    array.sort(distDn)
+    float limUp = nearCount > 0 and array.size(distUp) > nearCount ? array.get(distUp, nearCount - 1) : na
+    float limDn = nearCount > 0 and array.size(distDn) > nearCount ? array.get(distDn, nearCount - 1) : na
+    for lv in levels
+        bool near = lv.bot > close ? (na(limUp) or lv.bot - close <= limUp) : lv.top < close ? (na(limDn) or close - lv.top <= limDn) : true
+        // Roadblock = level against the storyline that sits in price's path
+        bool isRoadblock = enableStory and showRoadblock and storyDir != 0 and lv.dir == -storyDir and (storyDir == 1 ? lv.bot > close : lv.top < close)
+        lv.render((showUnfresh or lv.fresh) and near, isRoadblock)
+
+// === Liquidity: previous day / week / month high-low (redrawn on the last bar, only the current ones matter) ===
+liqLine(float price, int t, string txt) =>
+    array.push(liqLines, line.new(t, price, time, price, xloc=xloc.bar_time, extend=extend.right, color=liqColor, style=line.style_dotted))
+    array.push(liqLabels, label.new(t, price, txt, xloc=xloc.bar_time, color=color.new(color.white, 100), style=label.style_label_down, textcolor=liqColor, size=size.tiny))
+
+if barstate.islast
+    while array.size(liqLines) > 0
+        line.delete(array.pop(liqLines))
+    while array.size(liqLabels) > 0
+        label.delete(array.pop(liqLabels))
+    int chartSec = timeframe.in_seconds(timeframe.period)
+    if showPd and chartSec < 86400 and not na(pdH)
+        liqLine(pdH, pdT, "PDH")
+        liqLine(pdL, pdT, "PDL")
+    if showPw and chartSec < 604800 and not na(pwH)
+        liqLine(pwH, pwT, "PWH")
+        liqLine(pwL, pwT, "PWL")
+    if showPm and chartSec < 2419200 and not na(pmH)
+        liqLine(pmH, pmT, "PMH")
+        liqLine(pmL, pmT, "PML")

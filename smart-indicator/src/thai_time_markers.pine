@@ -1,0 +1,40 @@
+//@version=6
+indicator("Thai Time Markers", overlay=true, max_lines_count=500)
+
+// --- เส้นเปิด ---
+gOpen    = "เส้นเปิด"
+openOn   = input.bool(true, "แสดงเส้นเปิด", group=gOpen)
+openHour = input.int(0, "ชั่วโมง (ไทย)", minval=0, maxval=23, group=gOpen)
+openMin  = input.int(0, "นาที", minval=0, maxval=59, group=gOpen)
+openCol  = input.color(color.green, "สี", group=gOpen)
+
+// --- เส้นปิด ---
+gClose    = "เส้นปิด"
+closeOn   = input.bool(true, "แสดงเส้นปิด", group=gClose)
+closeHour = input.int(7, "ชั่วโมง (ไทย)", minval=0, maxval=23, group=gClose)
+closeMin  = input.int(59, "นาที", minval=0, maxval=59, group=gClose)
+closeCol  = input.color(color.red, "สี", group=gClose)
+
+// --- ลักษณะเส้น ---
+gStyle = "ลักษณะเส้น"
+lineW  = input.int(1, "ความหนา", minval=1, maxval=5, group=gStyle)
+lineSt = input.string("ทึบ", "สไตล์", options=["ทึบ", "ประ", "จุด"], group=gStyle)
+
+styleOf(s) =>
+    s == "ประ" ? line.style_dashed : s == "จุด" ? line.style_dotted : line.style_solid
+
+// แท่งที่ "ครอบคลุม" เวลาเป้าหมาย = แท่งที่เริ่ม <= เวลา < เริ่ม + ขนาดแท่ง (รวมแท่งคร่อมเที่ยงคืน)
+barStart = hour(time, "Asia/Bangkok") * 60 + minute(time, "Asia/Bangkok")
+barLen   = timeframe.in_seconds() / 60
+barEnd   = barStart + barLen
+
+covers(t) =>
+    (barStart <= t and t < barEnd) or (barStart <= t + 1440 and t + 1440 < barEnd)
+
+isOpen  = timeframe.isintraday and openOn  and covers(openHour * 60 + openMin)
+isClose = timeframe.isintraday and closeOn and covers(closeHour * 60 + closeMin)
+
+if isOpen
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=openCol, width=lineW, style=styleOf(lineSt))
+if isClose
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=closeCol, width=lineW, style=styleOf(lineSt))

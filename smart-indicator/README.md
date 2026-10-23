@@ -12,6 +12,10 @@ TradingView Pine Script indicator ที่หา entry signal ตามเท�
 - `src/msnr.pine` — indicator แยก: MSNR (Malaysian Support & Resistance) เส้น A/V/Gap + fresh/unfresh + SBR/RBS + แท่งยืนยัน (เพิ่มลง TradingView เป็นอีกตัว ใส่กราฟคู่กันได้)
 - `msnr_technique.md` — กฎ MSNR ที่ implement จริง + preset
 - `msnr_research.md` — บันทึกค้นคว้า MSNR จากแหล่งสาธารณะ (เวอร์ชันที่แหล่งขัดกัน)
+- `src/msnr_sniper.pine` + `src/msnr_sniper_strategy.pine` — MSNR แบบ "sniper" ตามคลิปของผู้ใช้ (เส้น fresh → แตะ → MSS บนกราฟเล็ก → SL สั้น/TP ยอดย่อย) indicator กับสำเนา strategy สำหรับทดสอบ
+- `msnr_sniper_technique.md` — กฎ + ตารางที่มาของทุกกฎ (คลิป / ตีความ / ผมคิดเอง)
+- `msnr_video_notes.md` — สิ่งที่ได้ยินและเห็นจากคลิป (แคปเฟรม 1080p)
+- `msnr_backtest.md` — ผลทดสอบของ `msnr.pine` ชุดเดิม (ไม่ใช่ชุด sniper)
 - `indicator_style.md` — กฎหน้าตั้งค่า (input/group/UI), ค่า default ที่ล็อกไว้, ประวัติการตัดสินใจ/สิ่งที่เคยลองแล้วยกเลิก
 - `crt_technique.md` — กฎเทคนิค CRT (sweep/pending/disqualify/state machine เต็มๆ)
 - `fvg_technique.md` — กฎ/นิยาม FVG/iFVG

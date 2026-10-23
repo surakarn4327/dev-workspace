@@ -152,6 +152,63 @@ RWBTradeLab นับทุกคู่สีเดียวกันแม้�
 | TP | level fresh ถัดไปตามทิศ (LuxAlgo, toby) / RR ขั้นต่ำ 1:2 อยากได้ 1:3–1:4 (crowinvesting) / liquidity ภายนอก (slideshare) |
 | เทรดแบบทะลุ | level ที่ unfresh แล้ว = มองเป็นจุด breakout แล้วเทรด retest แบบ flip (LuxAlgo) |
 
+## 11.5 วิธีใช้งานจริงของเทรดเดอร์ (workflow) — ค้นเพิ่ม 2026-10-17
+
+ไม่มีแหล่งไหนให้ตัวอย่างเทรดครบตั้งแต่ต้นจนจบพร้อมราคาจริง และไม่มีสถิติ backtest เลย — ด้านล่างคือขั้นตอนที่ซ้ำกันหลายแหล่ง
+
+**ขั้นตอนหลัก (เกือบทุกแหล่งตรงกัน):**
+1. **ดู storyline บน TF ใหญ่ก่อน** (W/D หรือ M/W/D สาย Alchemist) ตัดสินว่าวันนี้หาแต่ซื้อ หรือหาแต่ขาย
+   — บางสำนัก: ขาลงให้ "mark แต่แนวต้าน" ขาขึ้น "mark แต่แนวรับ" (pullbackforextrading)
+2. **mark เส้นน้อยๆ** บน TF ใหญ่/กลาง (D/H4) แค่ 2–3 เส้นใกล้ราคา (pullbackforextrading, hoclamtrader) — ห้ามสร้างเส้นใหม่บน TF เข้า
+3. **รอเฉยๆ จนราคามาถึงเส้น fresh ที่ตรงทิศ** — "อย่าเปิด TF เล็กจนกว่าราคาจะมาถึงเส้นที่ mark ไว้" (SOP มาเลย์)
+   indicator หลายตัวมี alert "แตะเส้น fresh" ไว้ใช้ตรงนี้ (trading-guide MT, DoN_JCT)
+4. **ลง TF เล็กหาสัญญาณยืนยัน** — คู่ TF ที่พบ: D→H1 ("ลง 2 TF"), H4→H1/M30/M15, H1+→M5/M1 (MQL5 Detector), W→D→H4→H1→M15
+   สัญญาณ: pin bar, engulfing, doji/tweezer, ไส้ตีกลับ, LTF structure break
+5. **เข้า → SL เลยไส้ rejection แรก / เลยเส้น → TP ที่เส้นตรงข้ามถัดไป** (RR ที่อ้าง: 1:1.5 คงที่ (ebook), ≥1:2–1:4 (crowinvesting), 1:5 (blog))
+6. จด journal ทุกเทรด (hoclamtrader)
+
+**แบบเข้าเทรด 2 แบบที่พบ:**
+- **Reaction (เด้ง):** แตะเส้น fresh ตามทิศ + แท่งยืนยัน → เข้า (แบบที่ indicator เราทำอยู่)
+- **Breakout + retest (SBR/RBS):** storyline เริ่ม (แตะ HTF แล้วตีกลับ) → รอ **H1 ทะลุ (BO)** → รอราคากลับมาแตะ **เส้น fresh ล่าสุด** แล้วเข้า
+  (KororFX mentor doc) — มาเลย์บล็อกมี 2 ทางเลือก: เข้าทันทีแท่งถัดจากแท่งทะลุ หรือรอ retest แล้วค่อยเข้า (เลือกทางเดียว)
+
+**กฎเสริมที่เจอ:**
+- ถ้าแนวรับ fresh บน H1 ถูกทะลุ ห้ามซื้อที่แนวรับ H1 อื่นอีก ต้องขึ้นไปใช้ H4 (SnRNotes)
+- setup เกรด A+ = Daily rejection + H4/H1 ทะลุ + เข้าที่ QM/apex, setup ต่อเทรนด์ = เส้น fresh H4 ที่ตรงกับ H1 (โน้ต MSnR Abdoulaye Aziz — ผู้ใช้ตัด QM ไปแล้ว)
+- เส้นปัจจุบันทับเส้น HTF หรือ decision level = สัญญาณแรงสุด (DoN_JCT)
+- ราคาที่ไม่ชัดว่าเทรนด์/ไซด์เวย์ = ไม่เทรด (hoclamtrader)
+
+**แหล่งเพิ่ม:** DoN_JCT https://www.tradingview.com/script/KTVRYsRL/ ,
+MQL5 Malaysian SNR Detector https://www.mql5.com/en/market/product/170486 ,
+AlgoBot https://algobot.com/library/algobot-malaysian-snr-for-tradingview/ ,
+hoclamtrader workflow https://hoclamtrader.com/en/msnr-trading-strategy/ ,
+pullbackforextrading (มาเลย์) https://pullbackforextrading.com/cara-sebenar-menggunakan-snr-candlestick-dan-multi-timeframe/
+
+## 11.6 จุดเข้า / SL / TP — ค้นเพิ่ม 2026-10-17 (ผู้ใช้สั่ง "เลิกเดา" — ด้านล่างคือสิ่งที่แต่ละแหล่งพูดจริงๆ ไม่มีการเลือกให้)
+
+**ข้อสรุปตรงๆ: แหล่งสาธารณะฟรีไม่มีสูตร entry/SL/TP ชุดเดียวที่เป็นทางการ และไม่มีแหล่งไหนให้ backtest** — แต่ละแหล่งพูดไม่เหมือนกัน (RR ตั้งแต่ 1:1.5 ถึง 1:20)
+
+| แหล่ง | ชนิด | จุดเข้า | SL | TP / RR |
+|---|---|---|---|---|
+| GitHub mdavidjeremiah (โค้ดเปิด อ่านสูตรจริงได้) | indicator ชุมชน | ราคาปิดของแท่ง reaction (ไส้เข้าเขต ±1 ATR แล้วปิดกลับฝั่งเดิม) ในทิศ storyline | ขอบเส้น − **0.25 × ATR(14)** (ไม่ใช่เลยไส้) | เส้น**ที่ยังไม่ถูกทะลุ**ฝั่งตรงข้ามที่**ใกล้ที่สุด** ไม่มีเส้น = RR 2 — ผู้เขียนเตือนเองว่ายังไม่มีสถิติ backtest |
+| toby.fx1 (TikTok, OCL ขาลง) | เทรดเดอร์/ขายคอร์ส | รอแตะ OCL fresh + แท่งยืนยันขาลง ตามทิศ storyline | เหนือเส้น/โซน OCL "นิดเดียว" | เส้น fresh ถัดไป หรือ low สำคัญก่อนหน้า (ไม่ระบุ RR) |
+| Alchemist checklist (Scribd, ผ่านผล search — ตัวเลขดูเป็นแม่แบบ) | โน้ตคอร์ส | zone → rejection → ยืนยัน (engulfing) → เข้า | เลยสวิง/ไส้ fakeout **10–15 pip** | **25–30 pip, RR ≥ 1:3**, ปิดบางส่วนที่ 1:2–1:3, trailing, เสี่ยง 2%/ไม้, ≤3 ไม้/วัน |
+| slideshare (Malaysian SNR pdf) | โน้ตผสม SMC/ICT | เข้าจาก POI ของ TF ใหญ่ (Daily/H4) ช่วง London/NY | เหนือ rejection block, ตัวอย่าง **~3–5 pip**, ลดได้โดยวางเลยไส้ rejection | เล็ง external range liquidity — ตัวอย่างอ้าง **1:20, 17R, 32R** (ผู้เขียนแปลว่าเป็นตัวอย่าง ไม่ใช่กฎ) |
+| AlgoBot (หน้าขาย indicator) | โฆษณา | — | "narrow stop-loss" | "potential big risk-to-reward" (ไม่ระบุตัวเลข) |
+| pullbackforextrading (บล็อกมาเลย์) | บล็อก | H4 mark โซน → ลง H1/M30/M15 รอ pin bar/engulfing | อย่างต่ำ**เลยปลาย rejection แรก** | อ้าง RR ~1:5 ไม่มีวิธี |
+| YouTube "Simplest MSNR Entry Model (1:8rrr Storyline Secret)" | วิดีโอ | อ่านเนื้อหาไม่ได้ (เห็นแต่ชื่อ) | — | ชื่อวิดีโออ้าง RR 1:8 |
+| crowinvesting | บล็อก | H4 โซน fresh ตาม storyline → H1/M15 engulfing → เปิดแท่งถัดไป หรือ limit | ต่ำกว่า low ของโซน fresh (ขายกลับกัน) | **RR ≥ 1:2 ดีสุด 1:3–1:4** |
+| ebook "Malaysian SNR Day Trading Strategy" (เห็นแต่คำโฆษณา) | หนังสือ | bias รายวัน | — | **RR คงที่ 1:1.5** |
+| LuxAlgo / hoclamtrader | สารานุกรม/บล็อก | ไส้แตะเส้นแล้วปิดกลับฝั่งเดิม / trigger เช่น engulfing | เลยเส้น หรือเลย invalidation (จุดที่ไอเดียผิด) | เส้น fresh ถัดไป / ด่านตรงข้ามถัดไป ไม่มีตัวเลข RR |
+| Studocu คอร์สฝรั่งเศส (ผ่านผล search — เลขในนั้นขัดกันเอง) | โน้ตคอร์ส | — | — | TP1 = ครึ่งทางไปแนวต้าน, TP2 = โซน H4 |
+| Mr T / mentorship ทั่วไป | พอดแคสต์ | — | — | ไม่เปิดเผย (อ้างผลกำไรเอง ไม่พิสูจน์) |
+
+**ที่ตรงกันทุกแหล่ง:** SL อยู่ "ติดเส้น/ติดไส้ rejection" ไม่ใช่ไกลออกไป · TP คือเส้น fresh ถัดไป หรือ liquidity ของ TF ใหญ่ · ต้องมีแท่งยืนยันก่อนเข้า
+**ที่ขัดกัน:** ระยะ SL เป็นตัวเลขแน่นอน (pip / ATR) · RR ขั้นต่ำ (1:1.5 / 1:2 / 1:3) · TP เส้นใกล้ที่สุด หรือเส้นไกล/liquidity
+**ที่ไม่มีใครบอก:** TF ที่ใช้เข้าที่แน่นอน (H1 / M15 / M5 / M1 ต่างกัน) · วิธีวัดผลที่พิสูจน์ได้ · SL เมื่อเข้า M1 เป็นกี่ pip
+
+**หมายเหตุความผิดพลาดของผม:** ค่าเริ่มต้นเดิมใน `msnr.pine` (SL เลยเส้น + buffer ATR, TP เส้นที่ใกล้ที่สุด, สำรองด้วย RR คงที่) ตรงกับ indicator ของ GitHub mdavidjeremiah ตัวเดียว ซึ่งเป็นโค้ดของคนทำ indicator ไม่ใช่กฎของเทรดเดอร์ — ผมไม่ได้บอกผู้ใช้ตอนนั้น
+
 ## 12. จุดที่ต้องตัดสินใจถ้าจะเขียนลง Pine
 
 ถ้าจะ implement ต้องเลือกเวอร์ชันให้ชัดก่อน (แต่ละข้อมีหลายคำตอบในแหล่งข้อมูล):

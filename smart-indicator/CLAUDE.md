@@ -27,6 +27,8 @@ TradingView Pine Script indicator ที่หา entry signal ตามเท�
 - `demand_supply_zone.md` — กฎ/นิยาม Demand/Supply zone
 - `msnr_technique.md` — กฎ MSNR (โค้ดแยกไฟล์ `src/msnr.pine` เป็น indicator อีกตัว เพราะโควตา object 500 ของไฟล์หลักเต็ม)
 - `msnr_research.md` — บันทึกค้นคว้า MSNR (ที่มาของแต่ละกฎ/เวอร์ชันที่ขัดกัน)
+- `msnr_sniper_technique.md` — MSNR "sniper" ตามคลิปผู้ใช้ (โค้ด `src/msnr_sniper.pine` + `src/msnr_sniper_strategy.pine` ต้องแก้คู่กัน) — **ทุกกฎต้องมีที่มาในตาราง (คลิป/ตีความ/ผมคิดเอง) อย่าเติมค่าเองโดยไม่จด**
+- `msnr_video_notes.md` — สิ่งที่ได้ยิน/เห็นจากคลิปที่ผู้ใช้ส่งมา
 - `bugs.md` — บั๊กที่เจอ+แก้จริงมาก่อน (เปิดดูก่อนแก้จุดที่เคยมีปัญหาเสมอ)
 
 ## กฎเฉพาะของโปรเจกต์นี้
